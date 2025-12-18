@@ -42,6 +42,15 @@ export function AutomationStep({ onNext, onBack }: AutomationStepProps) {
   const [searchResults, setSearchResults] = useState<Product[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   
+  // Extract power from pump name (e.g., "Pompa ciepła XYZ 14kW" -> 14)
+  const extractPower = (name: string): number => {
+    const match = name.match(/(\d+(?:[.,]\d+)?)\s*kw/i);
+    if (match) {
+      return parseFloat(match[1].replace(',', '.'));
+    }
+    return 0;
+  };
+
   // Fetch heat pumps from database on mount
   useEffect(() => {
     const fetchHeatPumps = async () => {
@@ -51,6 +60,7 @@ export function AutomationStep({ onNext, onBack }: AutomationStepProps) {
           .from('products')
           .select('*')
           .or('name.ilike.%pompa ciepła%,name.ilike.%heat pump%,category.eq.pompy_ciepla')
+          .gt('price', 0) // Exclude products with price 0
           .order('price', { ascending: true });
         
         if (error) throw error;
@@ -91,7 +101,7 @@ export function AutomationStep({ onNext, onBack }: AutomationStepProps) {
           .from('products')
           .select('*')
           .or(`name.ilike.%${searchQuery}%,symbol.ilike.%${searchQuery}%`)
-          .or('name.ilike.%pompa ciepła%,name.ilike.%heat pump%')
+          .gt('price', 0) // Exclude products with price 0
           .limit(20);
         
         if (error) throw error;
@@ -124,17 +134,27 @@ export function AutomationStep({ onNext, onBack }: AutomationStepProps) {
     return () => clearTimeout(debounce);
   }, [searchQuery]);
   
-  // Sort heat pumps by price (as proxy for power - higher price = higher power typically)
+  // Sort heat pumps by extracted power (kW)
   const sortedHeatPumps = useMemo(() => {
-    return [...dbHeatPumps].sort((a, b) => getPriceInPLN(a) - getPriceInPLN(b));
+    return [...dbHeatPumps]
+      .map(p => ({ ...p, power: extractPower(p.name) }))
+      .filter(p => p.power > 0) // Only pumps with detectable power
+      .sort((a, b) => a.power - b.power);
   }, [dbHeatPumps]);
   
-  // Find suggested pump (first one that's reasonably priced for the volume)
-  const suggestedPump = sortedHeatPumps.length > 0 ? sortedHeatPumps[Math.min(Math.floor(sortedHeatPumps.length / 3), sortedHeatPumps.length - 1)] : null;
+  // Find suggested pump - first one with power >= recommended
+  const suggestedPump = useMemo(() => {
+    const suitable = sortedHeatPumps.find(p => p.power >= recommendedPower);
+    // If no pump meets requirements, suggest the most powerful one
+    return suitable || (sortedHeatPumps.length > 0 ? sortedHeatPumps[sortedHeatPumps.length - 1] : null);
+  }, [sortedHeatPumps, recommendedPower]);
   
-  // Get alternatives (2 higher power/price options)
-  const suggestedIndex = suggestedPump ? sortedHeatPumps.findIndex(p => p.id === suggestedPump.id) : -1;
-  const alternatives = suggestedIndex >= 0 ? sortedHeatPumps.slice(suggestedIndex + 1, suggestedIndex + 3) : [];
+  // Get alternatives (2 more powerful options than suggested)
+  const alternatives = useMemo(() => {
+    if (!suggestedPump) return [];
+    const suggestedIndex = sortedHeatPumps.findIndex(p => p.id === suggestedPump.id);
+    return sortedHeatPumps.slice(suggestedIndex + 1, suggestedIndex + 3);
+  }, [sortedHeatPumps, suggestedPump]);
 
   const toggleProduct = (product: Product) => {
     setSelectedItems(prev => {
