@@ -12,33 +12,66 @@ const OVERLAP_CM = 10; // 10cm overlap for foil welding
 const OVERLAP_M = OVERLAP_CM / 100;
 
 /**
- * Calculate pool volume and dimensions
+ * Calculate pool volume and dimensions based on shape
  */
 export function calculatePoolMetrics(
   dimensions: PoolDimensions,
   poolType: PoolType
 ): PoolCalculations {
-  const { length, width, depthShallow, depthDeep } = dimensions;
+  const { shape, length, width, depthShallow, depthDeep, lLength2, lWidth2 } = dimensions;
   
   // Average depth
   const avgDepth = (depthShallow + depthDeep) / 2;
   
-  // Volume in m3
-  const volume = length * width * avgDepth;
-  
-  // Surface area (water surface)
-  const surfaceArea = length * width;
-  
-  // Perimeter
-  const perimeterLength = 2 * (length + width);
-  
-  // Wall area (approximation with varying depth)
-  const wallAreaLong = 2 * length * avgDepth;
-  const wallAreaShort = 2 * width * avgDepth;
-  const wallArea = wallAreaLong + wallAreaShort;
-  
-  // Bottom area
-  const bottomArea = length * width;
+  let volume: number;
+  let surfaceArea: number;
+  let perimeterLength: number;
+  let wallArea: number;
+  let bottomArea: number;
+
+  switch (shape) {
+    case 'owalny':
+      // Oval pool (ellipse approximation)
+      surfaceArea = Math.PI * (length / 2) * (width / 2);
+      bottomArea = surfaceArea;
+      volume = surfaceArea * avgDepth;
+      // Perimeter approximation for ellipse
+      perimeterLength = Math.PI * (3 * (length / 2 + width / 2) - Math.sqrt((3 * length / 2 + width / 2) * (length / 2 + 3 * width / 2)));
+      wallArea = perimeterLength * avgDepth;
+      break;
+
+    case 'litera-l':
+      // L-shaped pool - two rectangles
+      const l1Area = length * width;
+      const l2Area = (lLength2 || 3) * (lWidth2 || 2);
+      surfaceArea = l1Area + l2Area;
+      bottomArea = surfaceArea;
+      volume = surfaceArea * avgDepth;
+      // Perimeter for L-shape
+      perimeterLength = 2 * length + 2 * width + 2 * (lLength2 || 3) + 2 * (lWidth2 || 2) - 2 * Math.min(width, lWidth2 || 2);
+      wallArea = perimeterLength * avgDepth;
+      break;
+
+    case 'prostokatny-schodki-zewnetrzne':
+    case 'prostokatny-schodki-narozne':
+      // Rectangle with steps - slight area increase
+      surfaceArea = length * width;
+      bottomArea = surfaceArea;
+      volume = surfaceArea * avgDepth * 0.95; // Steps reduce effective volume
+      perimeterLength = 2 * (length + width) + 2; // Extra for steps
+      wallArea = 2 * length * avgDepth + 2 * width * avgDepth + 3; // Extra for step walls
+      break;
+
+    case 'prostokatny':
+    default:
+      // Standard rectangle
+      surfaceArea = length * width;
+      bottomArea = surfaceArea;
+      volume = surfaceArea * avgDepth;
+      perimeterLength = 2 * (length + width);
+      wallArea = 2 * length * avgDepth + 2 * width * avgDepth;
+      break;
+  }
   
   // Required flow rate based on pool type (DIN standards)
   const cycleTime = cycleTimeByType[poolType];

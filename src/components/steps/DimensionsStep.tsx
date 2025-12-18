@@ -12,7 +12,7 @@ import {
   Info,
   Waves
 } from 'lucide-react';
-import { PoolType, poolTypeLabels, cycleTimeByType } from '@/types/configurator';
+import { PoolType, PoolShape, poolTypeLabels, poolShapeLabels, cycleTimeByType } from '@/types/configurator';
 import { calculatePoolMetrics, calculateFoilOptimization } from '@/lib/calculations';
 import { formatPrice } from '@/lib/calculations';
 
@@ -20,6 +20,51 @@ interface DimensionsStepProps {
   onNext: () => void;
   onBack: () => void;
 }
+
+// SVG Pool Shape Icons
+const PoolShapeIcon = ({ shape, isSelected }: { shape: PoolShape; isSelected: boolean }) => {
+  const strokeColor = isSelected ? 'hsl(190 80% 42%)' : 'currentColor';
+  const fillColor = isSelected ? 'hsl(190 80% 42% / 0.1)' : 'transparent';
+  
+  switch (shape) {
+    case 'prostokatny':
+      return (
+        <svg viewBox="0 0 60 40" className="w-full h-12">
+          <rect x="5" y="5" width="50" height="30" rx="2" fill={fillColor} stroke={strokeColor} strokeWidth="2"/>
+        </svg>
+      );
+    case 'owalny':
+      return (
+        <svg viewBox="0 0 60 40" className="w-full h-12">
+          <ellipse cx="30" cy="20" rx="25" ry="15" fill={fillColor} stroke={strokeColor} strokeWidth="2"/>
+        </svg>
+      );
+    case 'litera-l':
+      return (
+        <svg viewBox="0 0 60 40" className="w-full h-12">
+          <path d="M5 5 H35 V20 H20 V35 H5 Z" fill={fillColor} stroke={strokeColor} strokeWidth="2"/>
+        </svg>
+      );
+    case 'prostokatny-schodki-zewnetrzne':
+      return (
+        <svg viewBox="0 0 60 40" className="w-full h-12">
+          <rect x="5" y="5" width="50" height="30" rx="2" fill={fillColor} stroke={strokeColor} strokeWidth="2"/>
+          <path d="M55 15 H65 V25 H55" fill={fillColor} stroke={strokeColor} strokeWidth="1.5" strokeLinejoin="round"/>
+          <line x1="58" y1="18" x2="58" y2="22" stroke={strokeColor} strokeWidth="1"/>
+          <line x1="61" y1="18" x2="61" y2="22" stroke={strokeColor} strokeWidth="1"/>
+        </svg>
+      );
+    case 'prostokatny-schodki-narozne':
+      return (
+        <svg viewBox="0 0 60 40" className="w-full h-12">
+          <path d="M5 5 H55 V35 H5 Z M45 5 L55 5 L55 15 L50 15 L50 10 L45 10 Z" fill={fillColor} stroke={strokeColor} strokeWidth="2" fillRule="evenodd"/>
+          <path d="M47 7 L53 7 L53 13 L50 13 L50 10 L47 10 Z" fill={strokeColor} fillOpacity="0.3"/>
+        </svg>
+      );
+    default:
+      return null;
+  }
+};
 
 export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
   const { state, dispatch, companySettings } = useConfigurator();
@@ -38,23 +83,51 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
     dispatch({ type: 'SET_FOIL_CALCULATION', payload: foilCalc });
   }, [dimensions, poolType, state.foilType, companySettings.irregularSurchargePercent]);
 
-  const updateDimension = (field: keyof typeof dimensions, value: number | boolean) => {
+  const updateDimension = (field: keyof typeof dimensions, value: number | boolean | string) => {
     dispatch({
       type: 'SET_DIMENSIONS',
       payload: { ...dimensions, [field]: value },
     });
   };
 
+  const isLShape = dimensions.shape === 'litera-l';
+
   return (
     <div className="animate-slide-up">
       <div className="section-header">
         <Ruler className="w-5 h-5 text-primary" />
-        Wymiary i typ basenu
+        Wymiary i kształt basenu
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Left: Input form */}
         <div className="glass-card p-6 space-y-6">
+          {/* Pool Shape Selection */}
+          <div>
+            <Label className="text-base font-medium mb-4 block">Kształt basenu</Label>
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+              {(Object.keys(poolShapeLabels) as PoolShape[]).map((shape) => (
+                <button
+                  key={shape}
+                  onClick={() => updateDimension('shape', shape)}
+                  className={`flex flex-col items-center justify-center p-3 rounded-lg border transition-all ${
+                    dimensions.shape === shape
+                      ? 'border-primary bg-primary/10 shadow-md'
+                      : 'border-border bg-muted/30 hover:bg-muted/50 hover:border-primary/30'
+                  }`}
+                >
+                  <PoolShapeIcon shape={shape} isSelected={dimensions.shape === shape} />
+                  <span className={`text-xs mt-2 text-center leading-tight ${
+                    dimensions.shape === shape ? 'text-primary font-medium' : 'text-muted-foreground'
+                  }`}>
+                    {poolShapeLabels[shape]}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Pool Type */}
           <div>
             <Label className="text-base font-medium mb-4 block">Typ basenu</Label>
             <RadioGroup
@@ -83,9 +156,10 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
             </RadioGroup>
           </div>
 
+          {/* Main Dimensions */}
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="length">Długość (m)</Label>
+              <Label htmlFor="length">{isLShape ? 'Długość ramienia 1 (m)' : 'Długość (m)'}</Label>
               <Input
                 id="length"
                 type="number"
@@ -99,7 +173,7 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="width">Szerokość (m)</Label>
+              <Label htmlFor="width">{isLShape ? 'Szerokość ramienia 1 (m)' : 'Szerokość (m)'}</Label>
               <Input
                 id="width"
                 type="number"
@@ -111,6 +185,39 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
                 className="input-field"
               />
             </div>
+
+            {/* L-Shape additional dimensions */}
+            {isLShape && (
+              <>
+                <div className="space-y-2">
+                  <Label htmlFor="lLength2">Długość ramienia 2 (m)</Label>
+                  <Input
+                    id="lLength2"
+                    type="number"
+                    step="0.1"
+                    min="1"
+                    max="30"
+                    value={dimensions.lLength2 || 3}
+                    onChange={(e) => updateDimension('lLength2', parseFloat(e.target.value) || 0)}
+                    className="input-field"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="lWidth2">Szerokość ramienia 2 (m)</Label>
+                  <Input
+                    id="lWidth2"
+                    type="number"
+                    step="0.1"
+                    min="1"
+                    max="15"
+                    value={dimensions.lWidth2 || 2}
+                    onChange={(e) => updateDimension('lWidth2', parseFloat(e.target.value) || 0)}
+                    className="input-field"
+                  />
+                </div>
+              </>
+            )}
 
             <div className="space-y-2">
               <Label htmlFor="depthShallow">Głębokość płytka (m)</Label>
@@ -234,7 +341,7 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
           Wstecz
         </Button>
         <Button onClick={onNext} className="btn-primary px-8">
-          Dalej: Wykończenie
+          Dalej: Wykop
         </Button>
       </div>
     </div>
