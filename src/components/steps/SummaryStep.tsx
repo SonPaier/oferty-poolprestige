@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { getPriceInPLN } from '@/data/products';
 import { formatPrice } from '@/lib/calculations';
+import { generateOfferPDF } from '@/lib/pdfGenerator';
 import { OfferItem, ConfiguratorSection } from '@/types/configurator';
 import { ExcavationData, ExcavationSettings, calculateExcavation, generateOfferNumber, saveOffer, SavedOffer } from '@/types/offers';
 import { toast } from 'sonner';
@@ -106,10 +107,22 @@ export function SummaryStep({ onBack, onReset, excavationSettings }: SummaryStep
 
   const handleGeneratePDF = () => {
     handleSaveOffer();
-    toast.success('Generowanie PDF...', {
-      description: 'Oferta zostanie pobrana za chwilę.',
-    });
-    // PDF generation would be implemented here
+    
+    try {
+      generateOfferPDF({
+        state,
+        companySettings,
+        excavationSettings,
+      });
+      toast.success('PDF wygenerowany!', {
+        description: 'Plik został pobrany na dysk.',
+      });
+    } catch (error) {
+      console.error('PDF generation error:', error);
+      toast.error('Blad generowania PDF', {
+        description: 'Sprobuj ponownie.',
+      });
+    }
   };
 
   const renderSection = (key: keyof typeof sections, section: ConfiguratorSection) => {
