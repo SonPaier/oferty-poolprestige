@@ -107,6 +107,9 @@ export interface CompanySettings {
   website: string;
   irregularSurchargePercent: number;
   emailTemplate: EmailTemplateSettings;
+  volumeCoefficientPercent: number; // 3% per m³ scaling for "INNE" section
+  notesTemplate: string;
+  paymentTermsTemplate: string;
 }
 
 export interface EmailTemplateSettings {
@@ -134,6 +137,9 @@ export const defaultCompanySettings: CompanySettings = {
   website: 'www.poolprestige.pl',
   irregularSurchargePercent: 20,
   emailTemplate: defaultEmailTemplate,
+  volumeCoefficientPercent: 3,
+  notesTemplate: 'Oferta ważna 30 dni od daty wystawienia.',
+  paymentTermsTemplate: 'Zaliczka 30% przy zamówieniu, pozostałe 70% przed montażem.',
 };
 
 export const poolTypeLabels: Record<PoolType, string> = {

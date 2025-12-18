@@ -2,10 +2,10 @@ import { useState, useEffect } from 'react';
 import { useConfigurator } from '@/context/ConfiguratorContext';
 import { Button } from '@/components/ui/button';
 import { ProductCard } from '@/components/ProductCard';
-import { ArrowLeft, Filter, Droplets, Info, Zap } from 'lucide-react';
+import { ArrowLeft, Filter, Droplets, Info, Zap, Calculator } from 'lucide-react';
 import { products, Product } from '@/data/products';
 import { selectPump, selectFilter, formatPrice } from '@/lib/calculations';
-import { OfferItem } from '@/types/configurator';
+import { OfferItem, nominalLoadByType, poolTypeLabels } from '@/types/configurator';
 
 interface FiltrationStepProps {
   onNext: () => void;
@@ -14,9 +14,12 @@ interface FiltrationStepProps {
 
 export function FiltrationStep({ onNext, onBack }: FiltrationStepProps) {
   const { state, dispatch } = useConfigurator();
-  const { calculations, sections } = state;
+  const { calculations, sections, dimensions, poolType } = state;
   
   const requiredFlow = calculations?.requiredFlow || 15;
+  const volume = calculations?.volume || 0;
+  const nominalLoad = nominalLoadByType[poolType];
+  const attractions = poolType === 'hotelowy' ? dimensions.attractions : 0;
   
   const pumpSelection = selectPump(requiredFlow);
   const filterSelection = selectFilter(requiredFlow);
@@ -72,6 +75,11 @@ export function FiltrationStep({ onNext, onBack }: FiltrationStepProps) {
     onNext();
   };
 
+  // Build formula string for display
+  const formulaBase = `(0,37 × ${volume.toFixed(1)}) / ${nominalLoad}`;
+  const formulaAttractions = attractions > 0 ? ` + (6 × ${attractions})` : '';
+  const formulaResult = requiredFlow.toFixed(1);
+
   return (
     <div className="animate-slide-up">
       <div className="section-header">
@@ -82,11 +90,26 @@ export function FiltrationStep({ onNext, onBack }: FiltrationStepProps) {
       <div className="mb-4 p-4 rounded-lg bg-primary/10 border border-primary/20">
         <div className="flex items-start gap-2">
           <Droplets className="w-5 h-5 text-primary mt-0.5" />
-          <div>
+          <div className="flex-1">
             <p className="font-medium">Wymagana wydajność: {requiredFlow.toFixed(1)} m³/h</p>
             <p className="text-sm text-muted-foreground">
               Złoże filtracyjne: ~{filterSelection.filterMediaKg} kg
             </p>
+            
+            {/* Formula display */}
+            <div className="mt-2 pt-2 border-t border-primary/20">
+              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <Calculator className="w-3 h-3" />
+                <span>Formuła DIN:</span>
+              </div>
+              <p className="text-xs font-mono text-muted-foreground mt-1">
+                {formulaBase}{formulaAttractions} = <span className="text-primary font-semibold">{formulaResult} m³/h</span>
+              </p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Typ basenu: {poolTypeLabels[poolType]} (obciążenie: {nominalLoad})
+                {attractions > 0 && ` | Atrakcje: ${attractions}`}
+              </p>
+            </div>
           </div>
         </div>
       </div>

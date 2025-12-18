@@ -1,5 +1,14 @@
 import { useConfigurator } from '@/context/ConfiguratorContext';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { 
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { 
   ArrowLeft, 
   FileText, 
@@ -15,7 +24,10 @@ import {
   Shovel,
   Save,
   Loader2,
-  Mail
+  Mail,
+  Percent,
+  Edit2,
+  Package
 } from 'lucide-react';
 import { getPriceInPLN } from '@/data/products';
 import { formatPrice } from '@/lib/calculations';
@@ -23,7 +35,7 @@ import { OfferItem, ConfiguratorSection } from '@/types/configurator';
 import { ExcavationSettings, calculateExcavation, generateOfferNumber, saveOffer, SavedOffer } from '@/types/offers';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import logoImage from '@/assets/logo.png';
 
 interface SummaryStepProps {
@@ -32,7 +44,25 @@ interface SummaryStepProps {
   excavationSettings: ExcavationSettings;
 }
 
-const VAT_RATE = 0.08; // 8% VAT
+// Base prices for "INNE" items (for 77.6 m³ reference volume)
+const BASE_VOLUME = 77.6;
+const INNE_BASE_ITEMS = [
+  { id: 'inne-materialy', name: 'Materiały instalacyjne', unit: 'szt', basePrice: 11000, baseQuantity: 1 },
+  { id: 'inne-elektryka', name: 'Rozdzielnia elektryczna – prace elektryczne', unit: 'usł', basePrice: 3000, baseQuantity: 1 },
+  { id: 'inne-foliowanie', name: 'Foliowanie niecki', unit: 'm²', basePricePerUnit: 140, quantityFromArea: true },
+  { id: 'inne-foliowanie-schodow', name: 'Foliowanie schodów', unit: 'usł', basePrice: 3500, baseQuantity: 1 },
+  { id: 'inne-prace', name: 'Prace instalacyjne', unit: 'usł', basePrice: 25000, baseQuantity: 1 },
+  { id: 'inne-zestaw', name: 'Zestaw startowy – akcesoria, chemia', unit: 'szt', basePrice: 800, baseQuantity: 1 },
+];
+
+interface InneItem {
+  id: string;
+  name: string;
+  unit: string;
+  quantity: number;
+  unitPrice: number;
+  discount: number;
+}
 
 const sectionIcons: Record<string, React.ReactNode> = {
   wykonczenie: <Palette className="w-4 h-4" />,
@@ -60,6 +90,69 @@ export function SummaryStep({ onBack, onReset, excavationSettings }: SummaryStep
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
   const [isSendingEmail, setIsSendingEmail] = useState(false);
   const [logoBase64, setLogoBase64] = useState<string | null>(null);
+  
+  // VAT rate state (23% default, can change to 8%)
+  const [vatRate, setVatRate] = useState<number>(0.23);
+  
+  // Item discounts (100% = full price)
+  const [itemDiscounts, setItemDiscounts] = useState<Record<string, number>>({});
+  
+  // Custom prices for items
+  const [customPrices, setCustomPrices] = useState<Record<string, number>>({});
+  
+  // Notes and payment terms
+  const [notes, setNotes] = useState(companySettings.notesTemplate || '');
+  const [paymentTerms, setPaymentTerms] = useState(companySettings.paymentTermsTemplate || '');
+  
+  // INNE section items with volume-based calculation
+  const volume = calculations?.volume || 0;
+  const wallArea = calculations?.wallArea || 0;
+  const bottomArea = calculations?.bottomArea || 0;
+  const totalPoolArea = wallArea + bottomArea;
+  const volumeCoefficient = companySettings.volumeCoefficientPercent || 3;
+  
+  // Calculate volume scaling factor
+  const volumeScaleFactor = 1 + ((volume - BASE_VOLUME) / BASE_VOLUME) * (volumeCoefficient / 100) * (volume > BASE_VOLUME ? 1 : -1);
+  const actualScaleFactor = 1 + ((volume - BASE_VOLUME) * volumeCoefficient / 100);
+  
+  // Initialize INNE items
+  const [inneItems, setInneItems] = useState<InneItem[]>(() => {
+    return INNE_BASE_ITEMS.map(item => {
+      let quantity = item.baseQuantity || 1;
+      let unitPrice = item.basePrice || 0;
+      
+      if (item.quantityFromArea) {
+        quantity = Math.ceil(totalPoolArea);
+        unitPrice = item.basePricePerUnit || 0;
+      } else {
+        // Scale price by volume
+        unitPrice = Math.round(item.basePrice! * actualScaleFactor);
+      }
+      
+      return {
+        id: item.id,
+        name: item.name,
+        unit: item.unit,
+        quantity,
+        unitPrice,
+        discount: 100,
+      };
+    });
+  });
+
+  // Update INNE items when pool dimensions change
+  useEffect(() => {
+    setInneItems(prev => prev.map((item, index) => {
+      const baseItem = INNE_BASE_ITEMS[index];
+      if (baseItem.quantityFromArea) {
+        return { ...item, quantity: Math.ceil(totalPoolArea) };
+      }
+      return {
+        ...item,
+        unitPrice: Math.round(baseItem.basePrice! * actualScaleFactor),
+      };
+    }));
+  }, [volume, totalPoolArea, actualScaleFactor]);
 
   // Convert logo to base64 on mount
   useEffect(() => {
@@ -88,10 +181,23 @@ export function SummaryStep({ onBack, onReset, excavationSettings }: SummaryStep
     });
   };
 
+  const getItemDiscount = (itemId: string) => itemDiscounts[itemId] ?? 100;
+  const getCustomPrice = (itemId: string, originalPrice: number) => customPrices[itemId] ?? originalPrice;
+
+  const calculateItemTotal = (item: OfferItem): number => {
+    const basePrice = getPriceInPLN(item.product);
+    const customPrice = getCustomPrice(item.id, basePrice);
+    const discount = getItemDiscount(item.id) / 100;
+    return customPrice * item.quantity * discount;
+  };
+
   const calculateSectionTotal = (items: OfferItem[]): number => {
-    return items.reduce((sum, item) => {
-      const price = item.customPrice || getPriceInPLN(item.product);
-      return sum + price * item.quantity;
+    return items.reduce((sum, item) => sum + calculateItemTotal(item), 0);
+  };
+
+  const calculateInneTotal = (): number => {
+    return inneItems.reduce((sum, item) => {
+      return sum + (item.unitPrice * item.quantity * (item.discount / 100));
     }, 0);
   };
 
@@ -100,9 +206,10 @@ export function SummaryStep({ onBack, onReset, excavationSettings }: SummaryStep
     0
   );
 
+  const inneTotal = calculateInneTotal();
   const excavationTotal = excavation.excavationTotal + excavation.removalFixedPrice;
-  const grandTotalNet = productsTotal + excavationTotal;
-  const vatAmount = grandTotalNet * VAT_RATE;
+  const grandTotalNet = productsTotal + excavationTotal + inneTotal;
+  const vatAmount = grandTotalNet * vatRate;
   const grandTotalGross = grandTotalNet + vatAmount;
 
   const handleSaveOffer = () => {
@@ -137,7 +244,6 @@ export function SummaryStep({ onBack, onReset, excavationSettings }: SummaryStep
     setIsGeneratingPDF(true);
 
     try {
-      // Prepare data for backend
       const pdfData = {
         offerNumber,
         companySettings: {
@@ -166,9 +272,17 @@ export function SummaryStep({ onBack, onReset, excavationSettings }: SummaryStep
                 symbol: item.product.symbol,
               },
               quantity: item.quantity,
-              unitPrice: item.customPrice || getPriceInPLN(item.product),
+              unitPrice: getCustomPrice(item.id, getPriceInPLN(item.product)),
+              discount: getItemDiscount(item.id),
             })),
           })),
+        inneItems: inneItems.map(item => ({
+          name: item.name,
+          unit: item.unit,
+          quantity: item.quantity,
+          unitPrice: item.unitPrice,
+          discount: item.discount,
+        })),
         excavation: {
           volume: excavation.excavationVolume,
           pricePerM3: excavation.excavationPricePerM3,
@@ -177,11 +291,15 @@ export function SummaryStep({ onBack, onReset, excavationSettings }: SummaryStep
         },
         totals: {
           productsTotal,
+          inneTotal,
           excavationTotal,
           grandTotalNet,
+          vatRate: vatRate * 100,
           vatAmount,
           grandTotalGross,
         },
+        notes,
+        paymentTerms,
       };
 
       const { data, error } = await supabase.functions.invoke('generate-pdf', {
@@ -196,7 +314,6 @@ export function SummaryStep({ onBack, onReset, excavationSettings }: SummaryStep
         return;
       }
 
-      // Download PDF
       if (data?.pdf) {
         const link = document.createElement('a');
         link.href = data.pdf;
@@ -229,7 +346,6 @@ export function SummaryStep({ onBack, onReset, excavationSettings }: SummaryStep
     setIsSendingEmail(true);
 
     try {
-      // First generate PDF
       const pdfData = {
         offerNumber,
         companySettings: {
@@ -258,9 +374,17 @@ export function SummaryStep({ onBack, onReset, excavationSettings }: SummaryStep
                 symbol: item.product.symbol,
               },
               quantity: item.quantity,
-              unitPrice: item.customPrice || getPriceInPLN(item.product),
+              unitPrice: getCustomPrice(item.id, getPriceInPLN(item.product)),
+              discount: getItemDiscount(item.id),
             })),
           })),
+        inneItems: inneItems.map(item => ({
+          name: item.name,
+          unit: item.unit,
+          quantity: item.quantity,
+          unitPrice: item.unitPrice,
+          discount: item.discount,
+        })),
         excavation: {
           volume: excavation.excavationVolume,
           pricePerM3: excavation.excavationPricePerM3,
@@ -269,11 +393,15 @@ export function SummaryStep({ onBack, onReset, excavationSettings }: SummaryStep
         },
         totals: {
           productsTotal,
+          inneTotal,
           excavationTotal,
           grandTotalNet,
+          vatRate: vatRate * 100,
           vatAmount,
           grandTotalGross,
         },
+        notes,
+        paymentTerms,
       };
 
       const { data: pdfResult, error: pdfError } = await supabase.functions.invoke('generate-pdf', {
@@ -286,11 +414,9 @@ export function SummaryStep({ onBack, onReset, excavationSettings }: SummaryStep
         return;
       }
 
-      // Build email content from template
       const template = companySettings.emailTemplate;
       const emailBody = `${template.greeting}\n\n${template.body}\n\n${template.signature}`;
 
-      // Send email
       const { data: emailResult, error: emailError } = await supabase.functions.invoke('send-offer-email', {
         body: {
           to: customerData.email,
@@ -343,30 +469,73 @@ export function SummaryStep({ onBack, onReset, excavationSettings }: SummaryStep
         </div>
         
         <div className="space-y-2">
-          {section.items.map(item => (
-            <div 
-              key={item.id}
-              className="flex items-center justify-between p-2 rounded bg-muted/30 text-sm"
-            >
-              <div className="flex-1 min-w-0">
-                <p className="truncate">{item.product.name}</p>
-                <p className="text-xs text-muted-foreground">
-                  {item.quantity} × {formatPrice(getPriceInPLN(item.product))}
-                </p>
+          {section.items.map(item => {
+            const basePrice = getPriceInPLN(item.product);
+            const customPrice = getCustomPrice(item.id, basePrice);
+            const discount = getItemDiscount(item.id);
+            const itemTotal = calculateItemTotal(item);
+            
+            return (
+              <div 
+                key={item.id}
+                className="p-3 rounded bg-muted/30 text-sm space-y-2"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium">{item.product.name}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {item.quantity} × {formatPrice(customPrice)}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium whitespace-nowrap">
+                      {formatPrice(itemTotal)}
+                    </span>
+                    <button
+                      onClick={() => removeItem(key, item.id)}
+                      className="p-1 hover:bg-destructive/20 rounded text-muted-foreground hover:text-destructive transition-colors"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </button>
+                  </div>
+                </div>
+                
+                {/* Discount and custom price row */}
+                <div className="flex items-center gap-3 pt-2 border-t border-border/50">
+                  <div className="flex items-center gap-1.5">
+                    <Percent className="w-3 h-3 text-muted-foreground" />
+                    <Input
+                      type="number"
+                      min={0}
+                      max={100}
+                      value={discount}
+                      onChange={(e) => setItemDiscounts(prev => ({
+                        ...prev,
+                        [item.id]: Math.min(100, Math.max(0, parseFloat(e.target.value) || 0))
+                      }))}
+                      className="w-16 h-7 text-xs input-field"
+                    />
+                    <span className="text-xs text-muted-foreground">%</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <Edit2 className="w-3 h-3 text-muted-foreground" />
+                    <Input
+                      type="number"
+                      min={0}
+                      step={10}
+                      value={customPrice}
+                      onChange={(e) => setCustomPrices(prev => ({
+                        ...prev,
+                        [item.id]: parseFloat(e.target.value) || 0
+                      }))}
+                      className="w-24 h-7 text-xs input-field"
+                    />
+                    <span className="text-xs text-muted-foreground">PLN</span>
+                  </div>
+                </div>
               </div>
-              <div className="flex items-center gap-2">
-                <span className="font-medium">
-                  {formatPrice(getPriceInPLN(item.product) * item.quantity)}
-                </span>
-                <button
-                  onClick={() => removeItem(key, item.id)}
-                  className="p-1 hover:bg-destructive/20 rounded text-muted-foreground hover:text-destructive transition-colors"
-                >
-                  <Trash2 className="w-3 h-3" />
-                </button>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     );
@@ -453,6 +622,26 @@ export function SummaryStep({ onBack, onReset, excavationSettings }: SummaryStep
               </div>
             </div>
           </div>
+          
+          {/* VAT selector */}
+          <div className="glass-card p-4">
+            <h4 className="font-medium flex items-center gap-2 mb-3">
+              <Percent className="w-4 h-4 text-primary" />
+              Stawka VAT
+            </h4>
+            <Select
+              value={String(vatRate * 100)}
+              onValueChange={(val) => setVatRate(parseInt(val) / 100)}
+            >
+              <SelectTrigger className="input-field">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="23">23%</SelectItem>
+                <SelectItem value="8">8%</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </div>
 
         {/* Middle: Sections */}
@@ -461,12 +650,106 @@ export function SummaryStep({ onBack, onReset, excavationSettings }: SummaryStep
             renderSection(key as keyof typeof sections, section)
           )}
 
+          {/* INNE section */}
+          <div className="glass-card p-4">
+            <div className="flex items-center justify-between mb-3">
+              <h4 className="font-medium flex items-center gap-2">
+                <Package className="w-4 h-4 text-primary" />
+                Inne
+              </h4>
+              <span className="text-sm font-semibold text-primary">
+                {formatPrice(inneTotal)}
+              </span>
+            </div>
+            
+            <div className="space-y-2">
+              {inneItems.map((item, index) => {
+                const itemTotal = item.unitPrice * item.quantity * (item.discount / 100);
+                
+                return (
+                  <div 
+                    key={item.id}
+                    className="p-3 rounded bg-muted/30 text-sm space-y-2"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium">{item.name}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {item.quantity} {item.unit} × {formatPrice(item.unitPrice)}
+                        </p>
+                      </div>
+                      <span className="font-medium whitespace-nowrap">
+                        {formatPrice(itemTotal)}
+                      </span>
+                    </div>
+                    
+                    {/* Editable fields */}
+                    <div className="flex items-center gap-3 pt-2 border-t border-border/50">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-xs text-muted-foreground">Ilość:</span>
+                        <Input
+                          type="number"
+                          min={0}
+                          value={item.quantity}
+                          onChange={(e) => {
+                            const newItems = [...inneItems];
+                            newItems[index] = { ...item, quantity: parseFloat(e.target.value) || 0 };
+                            setInneItems(newItems);
+                          }}
+                          className="w-16 h-7 text-xs input-field"
+                        />
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-xs text-muted-foreground">Cena:</span>
+                        <Input
+                          type="number"
+                          min={0}
+                          step={10}
+                          value={item.unitPrice}
+                          onChange={(e) => {
+                            const newItems = [...inneItems];
+                            newItems[index] = { ...item, unitPrice: parseFloat(e.target.value) || 0 };
+                            setInneItems(newItems);
+                          }}
+                          className="w-24 h-7 text-xs input-field"
+                        />
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <Percent className="w-3 h-3 text-muted-foreground" />
+                        <Input
+                          type="number"
+                          min={0}
+                          max={100}
+                          value={item.discount}
+                          onChange={(e) => {
+                            const newItems = [...inneItems];
+                            newItems[index] = { 
+                              ...item, 
+                              discount: Math.min(100, Math.max(0, parseFloat(e.target.value) || 0)) 
+                            };
+                            setInneItems(newItems);
+                          }}
+                          className="w-16 h-7 text-xs input-field"
+                        />
+                        <span className="text-xs text-muted-foreground">%</span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
           {/* Grand total */}
           <div className="glass-card p-6 bg-primary/5 border-primary/30">
             <div className="space-y-3">
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">Produkty i usługi</span>
                 <span>{formatPrice(productsTotal)}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Inne</span>
+                <span>{formatPrice(inneTotal)}</span>
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">Roboty ziemne</span>
@@ -478,7 +761,7 @@ export function SummaryStep({ onBack, onReset, excavationSettings }: SummaryStep
                   <span className="text-xl font-bold">{formatPrice(grandTotalNet)}</span>
                 </div>
                 <div className="flex justify-between text-sm text-muted-foreground mt-1">
-                  <span>+ VAT 8%</span>
+                  <span>+ VAT {vatRate * 100}%</span>
                   <span>{formatPrice(vatAmount)}</span>
                 </div>
                 <div className="flex justify-between mt-2 pt-2 border-t border-border">
@@ -487,6 +770,31 @@ export function SummaryStep({ onBack, onReset, excavationSettings }: SummaryStep
                     {formatPrice(grandTotalGross)}
                   </span>
                 </div>
+              </div>
+            </div>
+          </div>
+          
+          {/* Notes and payment terms */}
+          <div className="glass-card p-4">
+            <h4 className="font-medium mb-3">Uwagi i warunki płatności</h4>
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs text-muted-foreground block mb-1">Uwagi</label>
+                <Textarea
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  placeholder="Uwagi do oferty..."
+                  className="input-field min-h-[60px]"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground block mb-1">Warunki płatności</label>
+                <Textarea
+                  value={paymentTerms}
+                  onChange={(e) => setPaymentTerms(e.target.value)}
+                  placeholder="Warunki płatności..."
+                  className="input-field min-h-[60px]"
+                />
               </div>
             </div>
           </div>

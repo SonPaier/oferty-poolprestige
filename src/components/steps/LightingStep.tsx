@@ -1,10 +1,10 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useConfigurator } from '@/context/ConfiguratorContext';
 import { Button } from '@/components/ui/button';
 import { ProductCard } from '@/components/ProductCard';
 import { ArrowLeft, Lightbulb, Info } from 'lucide-react';
-import { products, Product } from '@/data/products';
-import { calculateLightingRecommendation } from '@/lib/calculations';
+import { products, Product, getPriceInPLN } from '@/data/products';
+import { calculateLightingRecommendation, formatPrice } from '@/lib/calculations';
 import { OfferItem } from '@/types/configurator';
 
 interface LightingStepProps {
@@ -20,13 +20,23 @@ export function LightingStep({ onNext, onBack }: LightingStepProps) {
   const lightingRec = calculateLightingRecommendation(surfaceArea);
   
   const lightingProducts = products.filter(p => p.category === 'oswietlenie');
-  const lamps = lightingProducts.filter(p => 
-    p.name.toLowerCase().includes('lampa')
-  );
-  const bulbs = lightingProducts.filter(p => 
-    p.name.toLowerCase().includes('żarówka')
-  );
+  
+  // Separate lamps and bulbs, sort by price
+  const lamps = useMemo(() => {
+    return lightingProducts
+      .filter(p => p.name.toLowerCase().includes('lampa'))
+      .sort((a, b) => getPriceInPLN(a) - getPriceInPLN(b));
+  }, [lightingProducts]);
+  
+  const bulbs = useMemo(() => {
+    return lightingProducts
+      .filter(p => p.name.toLowerCase().includes('żarówka'))
+      .sort((a, b) => getPriceInPLN(a) - getPriceInPLN(b));
+  }, [lightingProducts]);
 
+  // Cheapest lamp is first (index 0) after sorting
+  const cheapestLamp = lamps[0];
+  
   const [selectedLamp, setSelectedLamp] = useState<{ product: Product; quantity: number } | null>(null);
   const [selectedBulb, setSelectedBulb] = useState<{ product: Product; quantity: number } | null>(null);
 
@@ -96,19 +106,23 @@ export function LightingStep({ onNext, onBack }: LightingStepProps) {
         <div className="glass-card p-6">
           <h3 className="text-base font-medium mb-4">Oprawy oświetleniowe</h3>
           <div className="space-y-3">
-            {lamps.map((product, index) => (
-              <ProductCard
-                key={product.id}
-                product={product}
-                isSelected={selectedLamp?.product.id === product.id}
-                isSuggested={index === 0}
-                quantity={selectedLamp?.quantity || lightingRec.count}
-                onSelect={() => handleLampSelect(product)}
-                onQuantityChange={(qty) => setSelectedLamp(prev => 
-                  prev ? { ...prev, quantity: qty } : null
-                )}
-              />
-            ))}
+            {lamps.map((product, index) => {
+              const isCheapest = index === 0;
+              return (
+                <ProductCard
+                  key={product.id}
+                  product={product}
+                  isSelected={selectedLamp?.product.id === product.id}
+                  isSuggested={isCheapest}
+                  quantity={selectedLamp?.product.id === product.id ? selectedLamp.quantity : lightingRec.count}
+                  onSelect={() => handleLampSelect(product)}
+                  onQuantityChange={(qty) => setSelectedLamp(prev => 
+                    prev ? { ...prev, quantity: qty } : null
+                  )}
+                  badge={isCheapest ? 'Najtańsza' : undefined}
+                />
+              );
+            })}
           </div>
         </div>
 
@@ -116,19 +130,23 @@ export function LightingStep({ onNext, onBack }: LightingStepProps) {
         <div className="glass-card p-6">
           <h3 className="text-base font-medium mb-4">Żarówki LED</h3>
           <div className="space-y-3">
-            {bulbs.map((product, index) => (
-              <ProductCard
-                key={product.id}
-                product={product}
-                isSelected={selectedBulb?.product.id === product.id}
-                isSuggested={index === 0}
-                quantity={selectedBulb?.quantity || lightingRec.count}
-                onSelect={() => handleBulbSelect(product)}
-                onQuantityChange={(qty) => setSelectedBulb(prev => 
-                  prev ? { ...prev, quantity: qty } : null
-                )}
-              />
-            ))}
+            {bulbs.map((product, index) => {
+              const isCheapest = index === 0;
+              return (
+                <ProductCard
+                  key={product.id}
+                  product={product}
+                  isSelected={selectedBulb?.product.id === product.id}
+                  isSuggested={isCheapest}
+                  quantity={selectedBulb?.product.id === product.id ? selectedBulb.quantity : lightingRec.count}
+                  onSelect={() => handleBulbSelect(product)}
+                  onQuantityChange={(qty) => setSelectedBulb(prev => 
+                    prev ? { ...prev, quantity: qty } : null
+                  )}
+                  badge={isCheapest ? 'Najtańsza' : undefined}
+                />
+              );
+            })}
           </div>
         </div>
       </div>

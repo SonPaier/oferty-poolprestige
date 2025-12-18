@@ -11,6 +11,7 @@ interface ProductCardProps {
   onSelect: () => void;
   onQuantityChange?: (quantity: number) => void;
   compact?: boolean;
+  badge?: string; // Custom badge text (e.g., "Najtańsza")
 }
 
 export function ProductCard({
@@ -21,6 +22,7 @@ export function ProductCard({
   onSelect,
   onQuantityChange,
   compact = false,
+  badge,
 }: ProductCardProps) {
   const price = getPriceInPLN(product);
 
@@ -36,7 +38,14 @@ export function ProductCard({
         )}
       >
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium truncate">{product.name}</p>
+          <div className="flex items-center gap-2">
+            <p className="text-sm font-medium truncate">{product.name}</p>
+            {badge && (
+              <span className="px-1.5 py-0.5 bg-accent/20 text-accent text-xs font-medium rounded">
+                {badge}
+              </span>
+            )}
+          </div>
           <p className="text-xs text-muted-foreground">{product.symbol}</p>
         </div>
         <div className="flex items-center gap-3">
@@ -53,6 +62,9 @@ export function ProductCard({
     );
   }
 
+  // Determine badge text (custom badge takes precedence)
+  const badgeText = badge || (isSuggested ? 'Sugerowany' : null);
+
   return (
     <div
       className={cn(
@@ -62,9 +74,9 @@ export function ProductCard({
       )}
       onClick={onSelect}
     >
-      {isSuggested && (
+      {badgeText && (
         <div className="absolute -top-2 -right-2 px-2 py-0.5 bg-accent text-accent-foreground text-xs font-medium rounded-full">
-          Sugerowany
+          {badgeText}
         </div>
       )}
       

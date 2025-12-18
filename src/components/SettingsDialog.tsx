@@ -133,6 +133,25 @@ export function SettingsDialog({
                 />
               </div>
               <div className="space-y-2">
+                <Label htmlFor="volumeCoefficient">Współczynnik objętości (%/m³)</Label>
+                <Input
+                  id="volumeCoefficient"
+                  type="number"
+                  min="0"
+                  max="10"
+                  step="0.1"
+                  value={company.volumeCoefficientPercent || 3}
+                  onChange={(e) => setCompany({ 
+                    ...company, 
+                    volumeCoefficientPercent: parseFloat(e.target.value) || 3 
+                  })}
+                  className="input-field"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Skalowanie cen sekcji INNE względem objętości basenu
+                </p>
+              </div>
+              <div className="space-y-2">
                 <Label htmlFor="irregularSurcharge">Dopłata za kształt nieregularny (%)</Label>
                 <Input
                   id="irregularSurcharge"
