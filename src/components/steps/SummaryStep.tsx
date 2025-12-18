@@ -29,7 +29,7 @@ import {
   Edit2,
   Package
 } from 'lucide-react';
-import { getPriceInPLN } from '@/data/products';
+import { getPriceInPLN, products } from '@/data/products';
 import { formatPrice } from '@/lib/calculations';
 import { OfferItem, ConfiguratorSection } from '@/types/configurator';
 import { ExcavationSettings, calculateExcavation, generateOfferNumber, saveOffer, SavedOffer } from '@/types/offers';
@@ -37,6 +37,12 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useState, useEffect, useMemo } from 'react';
 import logoImage from '@/assets/logo.png';
+
+interface OptionItem {
+  name: string;
+  quantity: number;
+  priceDifference: number;
+}
 
 interface SummaryStepProps {
   onBack: () => void;
@@ -212,6 +218,75 @@ export function SummaryStep({ onBack, onReset, excavationSettings }: SummaryStep
   const vatAmount = grandTotalNet * vatRate;
   const grandTotalGross = grandTotalNet + vatAmount;
 
+  // Generate options (more expensive alternatives) for PDF
+  const generateOptions = useMemo((): OptionItem[] => {
+    const options: OptionItem[] = [];
+    
+    // Check lighting section for alternatives
+    const lightingItems = sections.oswietlenie?.items || [];
+    for (const item of lightingItems) {
+      // Find more expensive lamps in the same category
+      const isLamp = item.product.name.toLowerCase().includes('lampa');
+      const isBulb = item.product.name.toLowerCase().includes('żarówka');
+      
+      if (isLamp || isBulb) {
+        const selectedPrice = getPriceInPLN(item.product);
+        const alternatives = products.filter(p => 
+          p.category === 'oswietlenie' &&
+          ((isLamp && p.name.toLowerCase().includes('lampa')) ||
+           (isBulb && p.name.toLowerCase().includes('żarówka'))) &&
+          getPriceInPLN(p) > selectedPrice
+        );
+        
+        // Add the most expensive alternative as an option
+        if (alternatives.length > 0) {
+          const sorted = alternatives.sort((a, b) => getPriceInPLN(b) - getPriceInPLN(a));
+          const mostExpensive = sorted[0];
+          const priceDiff = (getPriceInPLN(mostExpensive) - selectedPrice) * item.quantity;
+          
+          if (priceDiff > 0) {
+            options.push({
+              name: mostExpensive.name,
+              quantity: item.quantity,
+              priceDifference: priceDiff,
+            });
+          }
+        }
+      }
+    }
+    
+    // Check automation section for heat pump alternatives
+    const automationItems = sections.automatyka?.items || [];
+    for (const item of automationItems) {
+      const isHeatPump = item.product.name.toLowerCase().includes('pompa ciepła');
+      
+      if (isHeatPump) {
+        const selectedPrice = getPriceInPLN(item.product);
+        const alternatives = products.filter(p => 
+          p.category === 'automatyka' &&
+          p.name.toLowerCase().includes('pompa ciepła') &&
+          getPriceInPLN(p) > selectedPrice
+        );
+        
+        if (alternatives.length > 0) {
+          const sorted = alternatives.sort((a, b) => getPriceInPLN(b) - getPriceInPLN(a));
+          const mostExpensive = sorted[0];
+          const priceDiff = (getPriceInPLN(mostExpensive) - selectedPrice) * item.quantity;
+          
+          if (priceDiff > 0) {
+            options.push({
+              name: mostExpensive.name,
+              quantity: item.quantity,
+              priceDifference: priceDiff,
+            });
+          }
+        }
+      }
+    }
+    
+    return options;
+  }, [sections.oswietlenie?.items, sections.automatyka?.items]);
+
   const handleSaveOffer = () => {
     const offerNumber = generateOfferNumber();
     const offer: SavedOffer = {
@@ -300,6 +375,7 @@ export function SummaryStep({ onBack, onReset, excavationSettings }: SummaryStep
         },
         notes,
         paymentTerms,
+        options: generateOptions,
       };
 
       const { data, error } = await supabase.functions.invoke('generate-pdf', {
@@ -402,6 +478,7 @@ export function SummaryStep({ onBack, onReset, excavationSettings }: SummaryStep
         },
         notes,
         paymentTerms,
+        options: generateOptions,
       };
 
       const { data: pdfResult, error: pdfError } = await supabase.functions.invoke('generate-pdf', {
