@@ -92,7 +92,22 @@ export interface CompanySettings {
   email: string;
   website: string;
   irregularSurchargePercent: number;
+  emailTemplate: EmailTemplateSettings;
 }
+
+export interface EmailTemplateSettings {
+  greeting: string;
+  body: string;
+  signature: string;
+  ccEmail: string;
+}
+
+export const defaultEmailTemplate: EmailTemplateSettings = {
+  greeting: 'Dzień dobry,',
+  body: 'W odpowiedzi na Pana zapytanie ofertowe, przesyłamy ofertę na basen. Oferta w załączniku.',
+  signature: 'pozdrawiam,\nJakub Rohde, Pool Prestige',
+  ccEmail: 'biuro@poolprestige.pl',
+};
 
 export const defaultCompanySettings: CompanySettings = {
   name: 'Pool Prestige',
@@ -104,6 +119,7 @@ export const defaultCompanySettings: CompanySettings = {
   email: 'kontakt@poolprestige.pl',
   website: 'www.poolprestige.pl',
   irregularSurchargePercent: 20,
+  emailTemplate: defaultEmailTemplate,
 };
 
 export const poolTypeLabels: Record<PoolType, string> = {
