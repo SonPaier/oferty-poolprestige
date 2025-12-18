@@ -82,7 +82,6 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
   const { state, dispatch, companySettings } = useConfigurator();
   const { dimensions, poolType, calculations } = state;
   const [showCustomDrawer, setShowCustomDrawer] = useState(false);
-  const { dimensions, poolType, calculations } = state;
 
   useEffect(() => {
     // Recalculate when dimensions or pool type change
@@ -129,7 +128,26 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
     });
     setShowCustomDrawer(false);
   };
+
+  return (
     <div className="animate-slide-up">
+      {/* Custom Pool Drawer Dialog */}
+      <Dialog open={showCustomDrawer} onOpenChange={setShowCustomDrawer}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Pencil className="w-5 h-5 text-primary" />
+              Rysuj własny kształt basenu
+            </DialogTitle>
+          </DialogHeader>
+          <CustomPoolDrawer
+            onComplete={handleCustomShapeComplete}
+            onCancel={() => setShowCustomDrawer(false)}
+            initialVertices={dimensions.customVertices}
+          />
+        </DialogContent>
+      </Dialog>
+
       <div className="section-header">
         <Ruler className="w-5 h-5 text-primary" />
         Wymiary i kształt basenu
@@ -141,11 +159,11 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
           {/* Pool Shape Selection */}
           <div>
             <Label className="text-base font-medium mb-4 block">Kształt basenu</Label>
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
               {(Object.keys(poolShapeLabels) as PoolShape[]).map((shape) => (
                 <button
                   key={shape}
-                  onClick={() => updateDimension('shape', shape)}
+                  onClick={() => handleShapeSelect(shape)}
                   className={`flex flex-col items-center justify-center p-3 rounded-lg border transition-all ${
                     dimensions.shape === shape
                       ? 'border-primary bg-primary/10 shadow-md'
@@ -161,6 +179,17 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
                 </button>
               ))}
             </div>
+            {isCustomShape && dimensions.customArea && (
+              <div className="mt-3 p-3 rounded-lg bg-primary/10 border border-primary/20">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm">Własny kształt: {dimensions.customArea.toFixed(1)} m², obwód: {dimensions.customPerimeter?.toFixed(1)} m</span>
+                  <Button variant="outline" size="sm" onClick={() => setShowCustomDrawer(true)}>
+                    <Pencil className="w-3 h-3 mr-1" />
+                    Edytuj
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Pool Type */}
@@ -221,69 +250,74 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
             </RadioGroup>
           </div>
 
-          {/* Main Dimensions */}
+          {/* Main Dimensions - hidden for custom shape */}
+          {!isCustomShape && (
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="length">{isLShape ? 'Długość ramienia 1 (m)' : 'Długość (m)'}</Label>
+                <Input
+                  id="length"
+                  type="number"
+                  step="0.1"
+                  min="2"
+                  max="50"
+                  value={dimensions.length}
+                  onChange={(e) => updateDimension('length', parseFloat(e.target.value) || 0)}
+                  className="input-field"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="width">{isLShape ? 'Szerokość ramienia 1 (m)' : 'Szerokość (m)'}</Label>
+                <Input
+                  id="width"
+                  type="number"
+                  step="0.1"
+                  min="2"
+                  max="25"
+                  value={dimensions.width}
+                  onChange={(e) => updateDimension('width', parseFloat(e.target.value) || 0)}
+                  className="input-field"
+                />
+              </div>
+
+              {/* L-Shape additional dimensions */}
+              {isLShape && (
+                <>
+                  <div className="space-y-2">
+                    <Label htmlFor="lLength2">Długość ramienia 2 (m)</Label>
+                    <Input
+                      id="lLength2"
+                      type="number"
+                      step="0.1"
+                      min="1"
+                      max="30"
+                      value={dimensions.lLength2 || 3}
+                      onChange={(e) => updateDimension('lLength2', parseFloat(e.target.value) || 0)}
+                      className="input-field"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="lWidth2">Szerokość ramienia 2 (m)</Label>
+                    <Input
+                      id="lWidth2"
+                      type="number"
+                      step="0.1"
+                      min="1"
+                      max="15"
+                      value={dimensions.lWidth2 || 2}
+                      onChange={(e) => updateDimension('lWidth2', parseFloat(e.target.value) || 0)}
+                      className="input-field"
+                    />
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
+          {/* Depth - always visible */}
           <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="length">{isLShape ? 'Długość ramienia 1 (m)' : 'Długość (m)'}</Label>
-              <Input
-                id="length"
-                type="number"
-                step="0.1"
-                min="2"
-                max="50"
-                value={dimensions.length}
-                onChange={(e) => updateDimension('length', parseFloat(e.target.value) || 0)}
-                className="input-field"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="width">{isLShape ? 'Szerokość ramienia 1 (m)' : 'Szerokość (m)'}</Label>
-              <Input
-                id="width"
-                type="number"
-                step="0.1"
-                min="2"
-                max="25"
-                value={dimensions.width}
-                onChange={(e) => updateDimension('width', parseFloat(e.target.value) || 0)}
-                className="input-field"
-              />
-            </div>
-
-            {/* L-Shape additional dimensions */}
-            {isLShape && (
-              <>
-                <div className="space-y-2">
-                  <Label htmlFor="lLength2">Długość ramienia 2 (m)</Label>
-                  <Input
-                    id="lLength2"
-                    type="number"
-                    step="0.1"
-                    min="1"
-                    max="30"
-                    value={dimensions.lLength2 || 3}
-                    onChange={(e) => updateDimension('lLength2', parseFloat(e.target.value) || 0)}
-                    className="input-field"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="lWidth2">Szerokość ramienia 2 (m)</Label>
-                  <Input
-                    id="lWidth2"
-                    type="number"
-                    step="0.1"
-                    min="1"
-                    max="15"
-                    value={dimensions.lWidth2 || 2}
-                    onChange={(e) => updateDimension('lWidth2', parseFloat(e.target.value) || 0)}
-                    className="input-field"
-                  />
-                </div>
-              </>
-            )}
-
             <div className="space-y-2">
               <Label htmlFor="depth">Głębokość niecki (m)</Label>
               <Input
@@ -336,6 +370,7 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
               id="irregular"
               checked={dimensions.isIrregular}
               onCheckedChange={(checked) => updateDimension('isIrregular', checked)}
+              disabled={isCustomShape}
             />
           </div>
         </div>
