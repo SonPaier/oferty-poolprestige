@@ -27,73 +27,80 @@ const SCALE = 30; // pixels per meter for visualization
 
 export function FoilLayoutVisualization({ dimensions, rollWidth, label }: FoilLayoutVisualizationProps) {
   const depth = dimensions.depth;
+  
+  // Strips go ALONG the longer side for fewer joins
+  const longerSide = Math.max(dimensions.length, dimensions.width);
+  const shorterSide = Math.min(dimensions.length, dimensions.width);
 
   const layouts = useMemo(() => {
     const result: SurfaceLayout[] = [];
 
     // Calculate strip layout for a surface
-    const calculateStrips = (surfaceWidth: number, surfaceHeight: number): FoilStrip[] => {
+    // stripLength = dimension along which strips run (longer side)
+    // coverWidth = dimension to cover with strips (shorter side)
+    const calculateStrips = (stripLength: number, coverWidth: number): FoilStrip[] => {
       const strips: FoilStrip[] = [];
       const effectiveWidth = rollWidth - OVERLAP;
-      let currentX = 0;
+      let currentCover = 0;
       let stripIndex = 0;
 
-      while (currentX < surfaceWidth) {
-        const stripWidth = Math.min(rollWidth, surfaceWidth - currentX + (stripIndex > 0 ? OVERLAP : 0));
-        const x = stripIndex > 0 ? currentX - OVERLAP : currentX;
+      while (currentCover < coverWidth) {
+        const isFirst = stripIndex === 0;
+        const stripCover = isFirst ? rollWidth : effectiveWidth;
+        const actualWidth = Math.min(stripCover, coverWidth - currentCover + (isFirst ? 0 : OVERLAP));
         
         strips.push({
-          x: x * SCALE,
+          x: currentCover * SCALE - (isFirst ? 0 : OVERLAP * SCALE),
           y: 0,
-          width: stripWidth * SCALE,
-          height: surfaceHeight * SCALE,
+          width: actualWidth * SCALE,
+          height: stripLength * SCALE,
           isOverlap: false,
         });
 
         // Add overlap indicator if not the first strip
-        if (stripIndex > 0) {
+        if (!isFirst) {
           strips.push({
-            x: x * SCALE,
+            x: (currentCover - OVERLAP) * SCALE,
             y: 0,
             width: OVERLAP * SCALE,
-            height: surfaceHeight * SCALE,
+            height: stripLength * SCALE,
             isOverlap: true,
           });
         }
 
-        currentX += effectiveWidth;
+        currentCover += isFirst ? rollWidth : effectiveWidth;
         stripIndex++;
       }
 
       return strips;
     };
 
-    // Bottom
+    // Bottom - strips along longer side
     result.push({
-      name: 'Dno basenu',
-      realWidth: dimensions.length,
-      realHeight: dimensions.width,
-      strips: calculateStrips(dimensions.length, dimensions.width),
+      name: `Dno basenu (pasy wzdłuż ${longerSide}m)`,
+      realWidth: shorterSide,
+      realHeight: longerSide,
+      strips: calculateStrips(longerSide, shorterSide),
     });
 
-    // Long walls (length x depth) - strips go along the longer side (length)
+    // Long walls (longerSide x depth) - strips along longer side
     result.push({
-      name: 'Ściana boczna (długa)',
-      realWidth: dimensions.length,
-      realHeight: depth,
-      strips: calculateStrips(dimensions.length, depth),
+      name: `Ściana boczna (pasy wzdłuż ${longerSide}m)`,
+      realWidth: depth,
+      realHeight: longerSide,
+      strips: calculateStrips(longerSide, depth),
     });
 
-    // Short walls (width x depth)
+    // Short walls (shorterSide x depth) - strips along shorter side
     result.push({
-      name: 'Ściana czołowa (krótka)',
-      realWidth: dimensions.width,
-      realHeight: depth,
-      strips: calculateStrips(dimensions.width, depth),
+      name: `Ściana czołowa (pasy wzdłuż ${shorterSide}m)`,
+      realWidth: depth,
+      realHeight: shorterSide,
+      strips: calculateStrips(shorterSide, depth),
     });
 
     return result;
-  }, [dimensions, rollWidth, depth]);
+  }, [dimensions, rollWidth, depth, longerSide, shorterSide]);
 
   // Calculate total strips needed
   const totalStrips = layouts.reduce((sum, layout) => {

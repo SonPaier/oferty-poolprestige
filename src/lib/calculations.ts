@@ -92,26 +92,45 @@ export function calculatePoolMetrics(
   };
 }
 
-export interface FoilRollSimulation {
-  rollWidth: number;
-  rollLength: number;
-  rollArea: number;
-  rollsNeeded: number;
-  totalRollArea: number;
-  wastePercentage: number;
+export interface FoilStrip {
+  surface: 'bottom' | 'wall-long' | 'wall-short';
+  rollWidth: 1.65 | 2.05;
+  stripLength: number; // length along the longer side
+  usedWidth: number; // actual width used (can be less than rollWidth)
+  wasteWidth: number; // unused width
+}
+
+export interface FoilRollAllocation {
+  rollWidth: 1.65 | 2.05;
+  count: number;
+  usedArea: number;
   wasteArea: number;
 }
 
 export interface FoilOptimizationResult extends FoilCalculation {
-  simulation165: FoilRollSimulation;
-  simulation205: FoilRollSimulation;
-  suggestedRoll: '165' | '205';
+  strips: FoilStrip[];
+  rolls165: number;
+  rolls205: number;
+  mixedRolls: FoilRollAllocation[];
+  totalUsedArea: number;
+  totalWasteArea: number;
+  wastePercentage: number;
   baseAreaWithMargin: number;
+  // Comparisons
+  onlyRolls165: { rolls: number; waste: number; wastePercent: number };
+  onlyRolls205: { rolls: number; waste: number; wastePercent: number };
+  mixedOptimal: { rolls165: number; rolls205: number; waste: number; wastePercent: number };
 }
+
+const ROLL_165_WIDTH = 1.65;
+const ROLL_205_WIDTH = 2.05;
+const ROLL_LENGTH = 25; // meters
+const OVERLAP = 0.1; // 10cm overlap for welding
 
 /**
  * Optimize foil cutting to minimize waste
- * Calculates both 1.65m and 2.05m roll options for comparison
+ * Strips go along the LONGER side of each surface
+ * Can mix 1.65m and 2.05m rolls for optimal coverage
  */
 export function calculateFoilOptimization(
   dimensions: PoolDimensions,
@@ -120,10 +139,21 @@ export function calculateFoilOptimization(
 ): FoilOptimizationResult {
   const { length, width, depth, isIrregular } = dimensions;
   
-  // Total foil area needed - strips go along the LONGER side
+  // Determine longer/shorter sides for each surface
+  // Strips go ALONG the longer side (fewer joins)
   const longerSide = Math.max(length, width);
   const shorterSide = Math.min(length, width);
   
+  // Surfaces to cover with strips going along the longer dimension
+  const surfaces = [
+    { type: 'bottom' as const, stripLength: longerSide, coverWidth: shorterSide },
+    { type: 'wall-long' as const, stripLength: longerSide, coverWidth: depth },
+    { type: 'wall-long' as const, stripLength: longerSide, coverWidth: depth }, // two long walls
+    { type: 'wall-short' as const, stripLength: shorterSide, coverWidth: depth },
+    { type: 'wall-short' as const, stripLength: shorterSide, coverWidth: depth }, // two short walls
+  ];
+  
+  // Calculate base areas
   const bottomArea = length * width;
   const wallArea = 2 * (length * depth) + 2 * (width * depth);
   const baseArea = bottomArea + wallArea;
@@ -133,59 +163,231 @@ export function calculateFoilOptimization(
   const irregularSurcharge = isIrregular ? irregularSurchargePercent : 0;
   const totalAreaNeeded = baseAreaWithMargin * (1 + irregularSurcharge / 100);
   
-  // Simulate using only 1.65m rolls
-  const ROLL_165_WIDTH = 1.65;
-  const ROLL_165_LENGTH = 25;
-  const ROLL_165_AREA = ROLL_165_WIDTH * ROLL_165_LENGTH; // 41.25 m²
-  
-  const rolls165Needed = Math.ceil(totalAreaNeeded / ROLL_165_AREA);
-  const totalArea165 = rolls165Needed * ROLL_165_AREA;
-  const waste165 = totalArea165 - totalAreaNeeded;
-  const wastePercent165 = (waste165 / totalArea165) * 100;
-  
-  const simulation165: FoilRollSimulation = {
-    rollWidth: ROLL_165_WIDTH,
-    rollLength: ROLL_165_LENGTH,
-    rollArea: ROLL_165_AREA,
-    rollsNeeded: rolls165Needed,
-    totalRollArea: totalArea165,
-    wastePercentage: wastePercent165,
-    wasteArea: waste165,
+  // Optimization: Find best strip arrangement for each surface
+  // Try to use roll widths that minimize waste for each strip
+  const optimizeStrips = (coverWidth: number): { strips: { width: 1.65 | 2.05; used: number }[]; waste: number } => {
+    const effectiveWidth165 = ROLL_165_WIDTH - OVERLAP;
+    const effectiveWidth205 = ROLL_205_WIDTH - OVERLAP;
+    
+    // Try different combinations and find the one with minimum waste
+    let bestResult = { strips: [] as { width: 1.65 | 2.05; used: number }[], waste: Infinity };
+    
+    // Dynamic programming approach - try all combinations up to reasonable count
+    const maxStrips = Math.ceil(coverWidth / effectiveWidth165) + 2;
+    
+    const tryCombo = (n165: number, n205: number): { waste: number; valid: boolean } => {
+      // First strip uses full width, subsequent strips overlap
+      let totalCover = 0;
+      if (n165 + n205 > 0) {
+        // First strip
+        if (n165 > 0) {
+          totalCover = ROLL_165_WIDTH;
+          for (let i = 1; i < n165; i++) totalCover += effectiveWidth165;
+        } else {
+          totalCover = ROLL_205_WIDTH;
+          n205--;
+        }
+        // Add remaining 2.05 strips
+        totalCover += n205 * effectiveWidth205;
+        // Add remaining 1.65 strips if first was 2.05
+        if (n165 > 0) {
+          // already counted
+        }
+      }
+      
+      // Recalculate properly
+      totalCover = 0;
+      let remaining165 = n165;
+      let remaining205 = n205;
+      let isFirst = true;
+      
+      while (remaining165 > 0 || remaining205 > 0) {
+        // Choose which roll to use next
+        const use165 = remaining165 > 0;
+        const use205 = remaining205 > 0;
+        
+        if (use165) {
+          totalCover += isFirst ? ROLL_165_WIDTH : effectiveWidth165;
+          remaining165--;
+        } else if (use205) {
+          totalCover += isFirst ? ROLL_205_WIDTH : effectiveWidth205;
+          remaining205--;
+        }
+        isFirst = false;
+      }
+      
+      const waste = totalCover - coverWidth;
+      return { waste, valid: totalCover >= coverWidth && waste >= 0 };
+    };
+    
+    // Brute force optimal combination (small search space)
+    for (let n165 = 0; n165 <= maxStrips; n165++) {
+      for (let n205 = 0; n205 <= maxStrips; n205++) {
+        if (n165 + n205 === 0) continue;
+        
+        let totalCover = 0;
+        const strips: { width: 1.65 | 2.05; used: number }[] = [];
+        let remaining165 = n165;
+        let remaining205 = n205;
+        let isFirst = true;
+        
+        while (remaining165 > 0 || remaining205 > 0) {
+          // Prefer the roll that fits better
+          const widthNeeded = coverWidth - totalCover;
+          const use165Next = remaining165 > 0;
+          const use205Next = remaining205 > 0;
+          
+          // Choose the better fit
+          let useWidth: 1.65 | 2.05;
+          if (use165Next && !use205Next) {
+            useWidth = 1.65;
+          } else if (!use165Next && use205Next) {
+            useWidth = 2.05;
+          } else {
+            // Both available - choose based on remaining width
+            const cover165 = isFirst ? ROLL_165_WIDTH : effectiveWidth165;
+            const cover205 = isFirst ? ROLL_205_WIDTH : effectiveWidth205;
+            
+            // Prefer the one that creates less waste for this strip
+            if (widthNeeded <= cover165) {
+              useWidth = 1.65; // 1.65 is enough
+            } else if (widthNeeded <= cover205) {
+              useWidth = 2.05; // need 2.05
+            } else {
+              // Both will have waste, prefer bigger
+              useWidth = 2.05;
+            }
+          }
+          
+          if (useWidth === 1.65) {
+            const cover = isFirst ? ROLL_165_WIDTH : effectiveWidth165;
+            strips.push({ width: 1.65, used: Math.min(cover, widthNeeded) });
+            totalCover += cover;
+            remaining165--;
+          } else {
+            const cover = isFirst ? ROLL_205_WIDTH : effectiveWidth205;
+            strips.push({ width: 2.05, used: Math.min(cover, widthNeeded) });
+            totalCover += cover;
+            remaining205--;
+          }
+          isFirst = false;
+          
+          if (totalCover >= coverWidth) break;
+        }
+        
+        if (totalCover >= coverWidth) {
+          const waste = totalCover - coverWidth;
+          if (waste < bestResult.waste) {
+            bestResult = { strips, waste };
+          }
+        }
+      }
+    }
+    
+    return bestResult;
   };
   
-  // Simulate using only 2.05m rolls
-  const ROLL_205_WIDTH = 2.05;
-  const ROLL_205_LENGTH = 25;
-  const ROLL_205_AREA = ROLL_205_WIDTH * ROLL_205_LENGTH; // 51.25 m²
+  // Calculate optimal strip layout for each surface
+  const allStrips: FoilStrip[] = [];
+  let totalRolls165Used = 0;
+  let totalRolls205Used = 0;
   
-  const rolls205Needed = Math.ceil(totalAreaNeeded / ROLL_205_AREA);
-  const totalArea205 = rolls205Needed * ROLL_205_AREA;
-  const waste205 = totalArea205 - totalAreaNeeded;
-  const wastePercent205 = (waste205 / totalArea205) * 100;
+  surfaces.forEach(surface => {
+    const result = optimizeStrips(surface.coverWidth);
+    result.strips.forEach(strip => {
+      allStrips.push({
+        surface: surface.type,
+        rollWidth: strip.width,
+        stripLength: surface.stripLength,
+        usedWidth: strip.used,
+        wasteWidth: strip.width - strip.used,
+      });
+      if (strip.width === 1.65) totalRolls165Used++;
+      else totalRolls205Used++;
+    });
+  });
   
-  const simulation205: FoilRollSimulation = {
-    rollWidth: ROLL_205_WIDTH,
-    rollLength: ROLL_205_LENGTH,
-    rollArea: ROLL_205_AREA,
-    rollsNeeded: rolls205Needed,
-    totalRollArea: totalArea205,
-    wastePercentage: wastePercent205,
-    wasteArea: waste205,
+  // Calculate total roll usage (how many full rolls needed)
+  // Each strip uses stripLength from a roll, rolls are 25m long
+  const usage165: number[] = [];
+  const usage205: number[] = [];
+  
+  allStrips.forEach(strip => {
+    if (strip.rollWidth === 1.65) {
+      usage165.push(strip.stripLength);
+    } else {
+      usage205.push(strip.stripLength);
+    }
+  });
+  
+  // Pack strips into rolls (simple first-fit decreasing)
+  const packIntoRolls = (lengths: number[]): number => {
+    if (lengths.length === 0) return 0;
+    
+    const sorted = [...lengths].sort((a, b) => b - a);
+    const rolls: number[] = [];
+    
+    sorted.forEach(len => {
+      // Find a roll with enough space
+      let placed = false;
+      for (let i = 0; i < rolls.length; i++) {
+        if (rolls[i] + len <= ROLL_LENGTH) {
+          rolls[i] += len;
+          placed = true;
+          break;
+        }
+      }
+      if (!placed) {
+        rolls.push(len);
+      }
+    });
+    
+    return rolls.length;
   };
   
-  // Determine which option is better (less total area = less waste = cheaper)
-  const suggestedRoll: '165' | '205' = totalArea165 <= totalArea205 ? '165' : '205';
+  const rolls165Needed = packIntoRolls(usage165);
+  const rolls205Needed = packIntoRolls(usage205);
+  
+  // Calculate total areas
+  const totalUsedArea = allStrips.reduce((sum, s) => sum + s.stripLength * s.usedWidth, 0);
+  const totalRollArea = (rolls165Needed * ROLL_165_WIDTH * ROLL_LENGTH) + (rolls205Needed * ROLL_205_WIDTH * ROLL_LENGTH);
+  const totalWasteArea = totalRollArea - totalUsedArea;
+  const wastePercentage = totalRollArea > 0 ? (totalWasteArea / totalRollArea) * 100 : 0;
+  
+  // Calculate comparison scenarios
+  const calcOnlyRolls = (rollWidth: number): { rolls: number; waste: number; wastePercent: number } => {
+    const rollArea = rollWidth * ROLL_LENGTH;
+    const rolls = Math.ceil(totalAreaNeeded / rollArea);
+    const totalArea = rolls * rollArea;
+    const waste = totalArea - totalAreaNeeded;
+    return { rolls, waste, wastePercent: (waste / totalArea) * 100 };
+  };
+  
+  const onlyRolls165 = calcOnlyRolls(ROLL_165_WIDTH);
+  const onlyRolls205 = calcOnlyRolls(ROLL_205_WIDTH);
   
   return {
     totalArea: totalAreaNeeded,
-    rolls165: suggestedRoll === '165' ? rolls165Needed : 0,
-    rolls205: suggestedRoll === '205' ? rolls205Needed : 0,
-    wastePercentage: suggestedRoll === '165' ? wastePercent165 : wastePercent205,
+    rolls165: rolls165Needed,
+    rolls205: rolls205Needed,
+    wastePercentage,
     irregularSurcharge,
-    simulation165,
-    simulation205,
-    suggestedRoll,
+    strips: allStrips,
+    mixedRolls: [
+      { rollWidth: 1.65, count: rolls165Needed, usedArea: usage165.reduce((a, b) => a + b, 0) * ROLL_165_WIDTH, wasteArea: 0 },
+      { rollWidth: 2.05, count: rolls205Needed, usedArea: usage205.reduce((a, b) => a + b, 0) * ROLL_205_WIDTH, wasteArea: 0 },
+    ],
+    totalUsedArea,
+    totalWasteArea,
     baseAreaWithMargin,
+    onlyRolls165,
+    onlyRolls205,
+    mixedOptimal: { 
+      rolls165: rolls165Needed, 
+      rolls205: rolls205Needed, 
+      waste: totalWasteArea, 
+      wastePercent: wastePercentage 
+    },
   };
 }
 
