@@ -34,19 +34,39 @@ serve(async (req) => {
       throw new Error("Invalid products data");
     }
 
-    // Filter out products with empty symbols and prepare for upsert
-    const validProducts = products
+    // Define product type for the map
+    type ProcessedProduct = {
+      symbol: string;
+      name: string;
+      price: number;
+      currency: string;
+      description: string | null;
+      stock_quantity: number;
+      image_id: string | null;
+      category: string | null;
+    };
+
+    // Filter out products with empty symbols and deduplicate by symbol
+    const productMap = new Map<string, ProcessedProduct>();
+    
+    products
       .filter(p => p.symbol && p.symbol.trim() !== "")
-      .map(p => ({
-        symbol: p.symbol.trim(),
-        name: p.name?.trim() || p.symbol.trim(),
-        price: p.price || 0,
-        currency: p.currency === "EUR" ? "EUR" : "PLN",
-        description: p.description?.trim() || null,
-        stock_quantity: p.stock_quantity || 0,
-        image_id: p.image_id?.trim() || null,
-        category: p.category?.trim() || null,
-      }));
+      .forEach(p => {
+        const symbol = p.symbol.trim();
+        // Keep the last occurrence of each symbol (overwrites duplicates)
+        productMap.set(symbol, {
+          symbol,
+          name: p.name?.trim() || symbol,
+          price: p.price || 0,
+          currency: p.currency === "EUR" ? "EUR" : "PLN",
+          description: p.description?.trim() || null,
+          stock_quantity: p.stock_quantity || 0,
+          image_id: p.image_id?.trim() || null,
+          category: p.category?.trim() || null,
+        });
+      });
+    
+    const validProducts = Array.from(productMap.values());
 
     // Insert in batches of 100
     const batchSize = 100;
