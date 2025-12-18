@@ -1,8 +1,13 @@
 import { Product } from '@/data/products';
 
 export type PoolType = 'prywatny' | 'polprywatny' | 'hotelowy';
-export type PoolShape = 'prostokatny' | 'owalny' | 'litera-l' | 'prostokatny-schodki-zewnetrzne' | 'prostokatny-schodki-narozne';
+export type PoolShape = 'prostokatny' | 'owalny' | 'litera-l' | 'prostokatny-schodki-zewnetrzne' | 'prostokatny-schodki-narozne' | 'wlasny';
 export type PoolOverflowType = 'skimmerowy' | 'rynnowy';
+
+export interface CustomPoolVertex {
+  x: number;
+  y: number;
+}
 
 // Nominal load values for DIN filtration formula
 export const nominalLoadByType: Record<PoolType, number> = {
@@ -22,6 +27,10 @@ export interface PoolDimensions {
   // Additional dimensions for L-shape
   lLength2?: number; // Second arm length
   lWidth2?: number;  // Second arm width
+  // Custom shape vertices
+  customVertices?: CustomPoolVertex[];
+  customArea?: number; // Pre-calculated area for custom shape
+  customPerimeter?: number; // Pre-calculated perimeter for custom shape
 }
 
 export interface PoolCalculations {
@@ -154,6 +163,7 @@ export const poolShapeLabels: Record<PoolShape, string> = {
   'litera-l': 'Litera L',
   'prostokatny-schodki-zewnetrzne': 'Prostokątny ze schodkami zewn.',
   'prostokatny-schodki-narozne': 'Prostokątny ze schodkami narożnymi',
+  wlasny: 'Własny kształt',
 };
 
 // Overflow type labels

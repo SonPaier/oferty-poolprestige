@@ -1,20 +1,22 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useConfigurator } from '@/context/ConfiguratorContext';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { 
   Ruler, 
   Droplets, 
   ArrowLeft,
   Info,
-  Waves
+  Waves,
+  Pencil
 } from 'lucide-react';
-import { PoolType, PoolShape, PoolOverflowType, poolTypeLabels, poolShapeLabels, overflowTypeLabels, nominalLoadByType } from '@/types/configurator';
+import { PoolType, PoolShape, PoolOverflowType, poolTypeLabels, poolShapeLabels, overflowTypeLabels, nominalLoadByType, CustomPoolVertex } from '@/types/configurator';
 import { calculatePoolMetrics, calculateFoilOptimization } from '@/lib/calculations';
-import { formatPrice } from '@/lib/calculations';
+import { CustomPoolDrawer } from '@/components/CustomPoolDrawer';
 
 interface DimensionsStepProps {
   onNext: () => void;
@@ -61,6 +63,16 @@ const PoolShapeIcon = ({ shape, isSelected }: { shape: PoolShape; isSelected: bo
           <path d="M47 7 L53 7 L53 13 L50 13 L50 10 L47 10 Z" fill={strokeColor} fillOpacity="0.3"/>
         </svg>
       );
+    case 'wlasny':
+      return (
+        <svg viewBox="0 0 60 40" className="w-full h-12">
+          <path d="M10 30 L15 10 L30 5 L45 10 L50 25 L40 35 L20 35 Z" fill={fillColor} stroke={strokeColor} strokeWidth="2"/>
+          <circle cx="15" cy="10" r="2" fill={strokeColor}/>
+          <circle cx="30" cy="5" r="2" fill={strokeColor}/>
+          <circle cx="45" cy="10" r="2" fill={strokeColor}/>
+          <circle cx="50" cy="25" r="2" fill={strokeColor}/>
+        </svg>
+      );
     default:
       return null;
   }
@@ -68,6 +80,8 @@ const PoolShapeIcon = ({ shape, isSelected }: { shape: PoolShape; isSelected: bo
 
 export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
   const { state, dispatch, companySettings } = useConfigurator();
+  const { dimensions, poolType, calculations } = state;
+  const [showCustomDrawer, setShowCustomDrawer] = useState(false);
   const { dimensions, poolType, calculations } = state;
 
   useEffect(() => {
@@ -91,9 +105,30 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
   };
 
   const isLShape = dimensions.shape === 'litera-l';
+  const isCustomShape = dimensions.shape === 'wlasny';
   const isPublicPool = poolType === 'hotelowy';
 
-  return (
+  const handleShapeSelect = (shape: PoolShape) => {
+    if (shape === 'wlasny') {
+      setShowCustomDrawer(true);
+    }
+    updateDimension('shape', shape);
+  };
+
+  const handleCustomShapeComplete = (vertices: CustomPoolVertex[], area: number, perimeter: number) => {
+    dispatch({
+      type: 'SET_DIMENSIONS',
+      payload: {
+        ...dimensions,
+        shape: 'wlasny',
+        customVertices: vertices,
+        customArea: area,
+        customPerimeter: perimeter,
+        isIrregular: true,
+      },
+    });
+    setShowCustomDrawer(false);
+  };
     <div className="animate-slide-up">
       <div className="section-header">
         <Ruler className="w-5 h-5 text-primary" />
