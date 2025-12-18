@@ -1,8 +1,12 @@
+import { useState } from 'react';
 import { useConfigurator } from '@/context/ConfiguratorContext';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
-import { User, Building, Mail, Phone, MapPin } from 'lucide-react';
+import { Textarea } from '@/components/ui/textarea';
+import { User, Building, Mail, Phone, MapPin, Sparkles, Loader2 } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
+import { toast } from 'sonner';
 
 interface CustomerStepProps {
   onNext: () => void;
@@ -11,12 +15,91 @@ interface CustomerStepProps {
 export function CustomerStep({ onNext }: CustomerStepProps) {
   const { state, dispatch } = useConfigurator();
   const { customerData } = state;
+  
+  const [emailInput, setEmailInput] = useState('');
+  const [isExtracting, setIsExtracting] = useState(false);
 
   const updateField = (field: keyof typeof customerData, value: string) => {
     dispatch({
       type: 'SET_CUSTOMER_DATA',
       payload: { ...customerData, [field]: value },
     });
+  };
+
+  const handleExtractFromEmail = async () => {
+    if (!emailInput.trim()) {
+      toast.error('Wklej treść maila lub wiadomości');
+      return;
+    }
+
+    setIsExtracting(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('extract-from-email', {
+        body: { emailContent: emailInput },
+      });
+
+      if (error) {
+        console.error('Extraction error:', error);
+        toast.error('Błąd ekstrakcji danych', { 
+          description: error.message || 'Spróbuj ponownie'
+        });
+        return;
+      }
+
+      console.log('Extracted data:', data);
+
+      // Update customer data
+      if (data.customerData) {
+        const extracted = data.customerData;
+        dispatch({
+          type: 'SET_CUSTOMER_DATA',
+          payload: {
+            ...customerData,
+            companyName: extracted.companyName || customerData.companyName,
+            contactPerson: extracted.contactPerson || customerData.contactPerson,
+            email: extracted.email || customerData.email,
+            phone: extracted.phone || customerData.phone,
+            address: extracted.address || customerData.address,
+            city: extracted.city || customerData.city,
+            postalCode: extracted.postalCode || customerData.postalCode,
+            nip: extracted.nip || customerData.nip,
+          },
+        });
+      }
+
+      // Update pool dimensions if found
+      if (data.poolDimensions) {
+        const dims = data.poolDimensions;
+        if (dims.length || dims.width) {
+          dispatch({
+            type: 'SET_DIMENSIONS',
+            payload: {
+              ...state.dimensions,
+              length: dims.length || state.dimensions.length,
+              width: dims.width || state.dimensions.width,
+              depthShallow: dims.depthShallow || state.dimensions.depthShallow,
+              depthDeep: dims.depthDeep || state.dimensions.depthDeep,
+            },
+          });
+        }
+      }
+
+      // Update pool type if found
+      if (data.poolType) {
+        dispatch({ type: 'SET_POOL_TYPE', payload: data.poolType });
+      }
+
+      toast.success('Dane wyekstrahowane', {
+        description: 'Sprawdź i uzupełnij brakujące pola',
+      });
+
+      setEmailInput('');
+    } catch (err) {
+      console.error('Extract error:', err);
+      toast.error('Błąd połączenia');
+    } finally {
+      setIsExtracting(false);
+    }
   };
 
   const isValid = customerData.contactPerson && customerData.phone;
@@ -26,6 +109,41 @@ export function CustomerStep({ onNext }: CustomerStepProps) {
       <div className="section-header">
         <User className="w-5 h-5 text-primary" />
         Dane klienta
+      </div>
+
+      {/* AI Extraction Input */}
+      <div className="glass-card p-4 mb-6">
+        <div className="flex items-center gap-2 mb-3">
+          <Sparkles className="w-5 h-5 text-accent" />
+          <h3 className="font-medium">Automatyczne uzupełnianie z maila</h3>
+        </div>
+        <p className="text-sm text-muted-foreground mb-3">
+          Wklej treść maila od klienta, a AI wyekstrahuje dane kontaktowe i wymiary basenu.
+        </p>
+        <Textarea
+          value={emailInput}
+          onChange={(e) => setEmailInput(e.target.value)}
+          placeholder="Wklej tutaj treść maila, wiadomości lub zapytania od klienta..."
+          className="input-field min-h-[100px] mb-3"
+        />
+        <Button
+          onClick={handleExtractFromEmail}
+          disabled={isExtracting || !emailInput.trim()}
+          variant="secondary"
+          className="w-full sm:w-auto"
+        >
+          {isExtracting ? (
+            <>
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              Analizuję...
+            </>
+          ) : (
+            <>
+              <Sparkles className="w-4 h-4 mr-2" />
+              Wyekstrahuj dane
+            </>
+          )}
+        </Button>
       </div>
       
       <div className="glass-card p-6 space-y-6">

@@ -1,0 +1,7 @@
+project_id = "flqzzgwdrdeseyxghqpj"
+
+[functions.extract-from-email]
+verify_jwt = false
+
+[functions.generate-pdf]
+verify_jwt = false
