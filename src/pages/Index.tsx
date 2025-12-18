@@ -10,6 +10,7 @@ import { FiltrationStep } from '@/components/steps/FiltrationStep';
 import { LightingStep } from '@/components/steps/LightingStep';
 import { AutomationStep } from '@/components/steps/AutomationStep';
 import { ExcavationStep } from '@/components/steps/ExcavationStep';
+import { AdditionsStep } from '@/components/steps/AdditionsStep';
 import { SummaryStep } from '@/components/steps/SummaryStep';
 import { SettingsDialog } from '@/components/SettingsDialog';
 import { OfferHistoryDialog } from '@/components/OfferHistoryDialog';
@@ -61,7 +62,7 @@ function ConfiguratorContent() {
       });
     });
     
-    dispatch({ type: 'SET_STEP', payload: 9 });
+    dispatch({ type: 'SET_STEP', payload: 10 });
     setShowHistory(false);
     toast.success('Oferta załadowana', { description: offer.offerNumber });
   };
@@ -106,6 +107,8 @@ function ConfiguratorContent() {
       case 8:
         return <ExcavationStep onNext={nextStep} onBack={prevStep} excavationSettings={excavationSettings} />;
       case 9:
+        return <AdditionsStep onNext={nextStep} onBack={prevStep} />;
+      case 10:
         return <SummaryStep onBack={prevStep} onReset={resetConfigurator} excavationSettings={excavationSettings} />;
       default:
         return <CustomerStep onNext={nextStep} />;
