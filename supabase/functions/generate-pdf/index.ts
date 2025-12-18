@@ -7,8 +7,6 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const VAT_RATE = 0.08;
-
 // Font with full Polish diacritics support
 let fontFamily: "helvetica" | "NotoSans" = "helvetica";
 let notoSansRegularBase64 = "";
@@ -42,11 +40,26 @@ interface OfferItem {
   };
   quantity: number;
   unitPrice: number;
+  discount?: number;
 }
 
 interface Section {
   name: string;
   items: OfferItem[];
+}
+
+interface InneItem {
+  name: string;
+  unit: string;
+  quantity: number;
+  unitPrice: number;
+  discount: number;
+}
+
+interface OptionItem {
+  name: string;
+  quantity: number;
+  priceDifference: number; // Total price difference (positive = more expensive)
 }
 
 interface PDFRequest {
@@ -76,14 +89,15 @@ interface PDFRequest {
     type: string;
     length: number;
     width: number;
-    depthShallow: number;
-    depthDeep: number;
+    depth: number;
     volume: number;
     requiredFlow: number;
     isIrregular: boolean;
     irregularSurcharge: number;
+    overflowType?: string;
   };
   sections: Section[];
+  inneItems?: InneItem[];
   excavation: {
     volume: number;
     pricePerM3: number;
@@ -92,11 +106,16 @@ interface PDFRequest {
   };
   totals: {
     productsTotal: number;
+    inneTotal?: number;
     excavationTotal: number;
     grandTotalNet: number;
+    vatRate?: number;
     vatAmount: number;
     grandTotalGross: number;
   };
+  notes?: string;
+  paymentTerms?: string;
+  options?: OptionItem[]; // More expensive alternatives as upgrade options
 }
 
 // Format price with proper Polish currency
@@ -143,6 +162,7 @@ serve(async (req) => {
     const darkText: [number, number, number] = [30, 30, 30];
     const grayText: [number, number, number] = [100, 100, 100];
     const lightGray: [number, number, number] = [240, 240, 240];
+    const accentColor: [number, number, number] = [255, 152, 0]; // Orange for options
 
     // Helper functions
     const addText = (
@@ -263,15 +283,24 @@ serve(async (req) => {
       hotelowy: "Hotelowy / Publiczny",
     };
 
+    const overflowTypeLabels: Record<string, string> = {
+      skimmerowy: "Skimmerowy",
+      rynnowy: "Rynnowy",
+    };
+
     // Pool params in a grid
     const paramBoxWidth = (contentWidth - 10) / 3;
     const params = [
       { label: "Typ basenu", value: poolTypeLabels[data.poolParams.type] || data.poolParams.type },
       { label: "Wymiary", value: `${data.poolParams.length} x ${data.poolParams.width} m` },
-      { label: "Głębokość", value: `${data.poolParams.depthShallow} - ${data.poolParams.depthDeep} m` },
+      { label: "Głębokość", value: `${data.poolParams.depth} m` },
       { label: "Objętość", value: `${formatNumber(data.poolParams.volume)} m³` },
       { label: "Wydajność filtracji", value: `${formatNumber(data.poolParams.requiredFlow)} m³/h` },
     ];
+
+    if (data.poolParams.overflowType) {
+      params.push({ label: "Typ przelewu", value: overflowTypeLabels[data.poolParams.overflowType] || data.poolParams.overflowType });
+    }
 
     if (data.poolParams.isIrregular) {
       params.push({ label: "Kształt nieregularny", value: `+${data.poolParams.irregularSurcharge}%` });
@@ -314,7 +343,8 @@ serve(async (req) => {
 
       // Table header
       addText("Produkt", margin, y, { size: 7, color: grayText });
-      addText("Ilość", pageWidth - margin - 50, y, { size: 7, color: grayText });
+      addText("Ilość", pageWidth - margin - 60, y, { size: 7, color: grayText });
+      addText("Rabat", pageWidth - margin - 35, y, { size: 7, color: grayText });
       addText("Wartość", pageWidth - margin, y, { size: 7, color: grayText, align: "right" });
       y += 4;
 
@@ -323,15 +353,53 @@ serve(async (req) => {
 
         // Truncate long product names
         let productName = item.product.name;
-        const maxNameWidth = contentWidth - 65;
+        const maxNameWidth = contentWidth - 80;
         while (doc.getTextWidth(productName) > maxNameWidth && productName.length > 10) {
           productName = productName.slice(0, -4) + "...";
         }
 
         addText(productName, margin, y, { size: 8, color: darkText });
         
-        const itemTotal = item.unitPrice * item.quantity;
-        addText(`${item.quantity} szt.`, pageWidth - margin - 45, y, { size: 8, color: grayText });
+        const discount = item.discount ?? 100;
+        const itemTotal = item.unitPrice * item.quantity * (discount / 100);
+        addText(`${item.quantity} szt.`, pageWidth - margin - 55, y, { size: 8, color: grayText });
+        addText(`${discount}%`, pageWidth - margin - 30, y, { size: 8, color: discount < 100 ? accentColor : grayText });
+        addText(formatPrice(itemTotal), pageWidth - margin, y, { size: 8, style: "bold", color: darkText, align: "right" });
+
+        y += 6;
+      }
+
+      y += 4;
+    }
+
+    // === INNE SECTION ===
+    if (data.inneItems && data.inneItems.length > 0) {
+      checkPageBreak(25 + data.inneItems.length * 8);
+
+      drawRoundedRect(margin, y - 2, contentWidth, 7, 1, [245, 248, 250]);
+      addText("INNE", margin + 3, y + 3, { size: 9, style: "bold", color: primaryColor });
+      y += 10;
+
+      addText("Pozycja", margin, y, { size: 7, color: grayText });
+      addText("Ilość", pageWidth - margin - 60, y, { size: 7, color: grayText });
+      addText("Rabat", pageWidth - margin - 35, y, { size: 7, color: grayText });
+      addText("Wartość", pageWidth - margin, y, { size: 7, color: grayText, align: "right" });
+      y += 4;
+
+      for (const item of data.inneItems) {
+        checkPageBreak(8);
+
+        let itemName = item.name;
+        const maxNameWidth = contentWidth - 80;
+        while (doc.getTextWidth(itemName) > maxNameWidth && itemName.length > 10) {
+          itemName = itemName.slice(0, -4) + "...";
+        }
+
+        addText(itemName, margin, y, { size: 8, color: darkText });
+        
+        const itemTotal = item.unitPrice * item.quantity * (item.discount / 100);
+        addText(`${item.quantity} ${item.unit}`, pageWidth - margin - 55, y, { size: 8, color: grayText });
+        addText(`${item.discount}%`, pageWidth - margin - 30, y, { size: 8, color: item.discount < 100 ? accentColor : grayText });
         addText(formatPrice(itemTotal), pageWidth - margin, y, { size: 8, style: "bold", color: darkText, align: "right" });
 
         y += 6;
@@ -356,10 +424,13 @@ serve(async (req) => {
     y += 12;
 
     // === SUMMARY ===
-    checkPageBreak(55);
+    checkPageBreak(65);
+
+    const vatRate = data.totals.vatRate ?? 23;
 
     // Summary box
-    drawRoundedRect(margin, y, contentWidth, 45, 3, [250, 252, 255]);
+    const summaryBoxHeight = data.totals.inneTotal ? 52 : 45;
+    drawRoundedRect(margin, y, contentWidth, summaryBoxHeight, 3, [250, 252, 255]);
     
     const summaryCol1 = margin + 10;
     const summaryCol2 = pageWidth - margin - 10;
@@ -368,6 +439,12 @@ serve(async (req) => {
     addText("Produkty i usługi:", summaryCol1, summaryY, { size: 9, color: grayText });
     addText(formatPrice(data.totals.productsTotal), summaryCol2, summaryY, { size: 9, color: darkText, align: "right" });
     summaryY += 7;
+
+    if (data.totals.inneTotal) {
+      addText("Inne:", summaryCol1, summaryY, { size: 9, color: grayText });
+      addText(formatPrice(data.totals.inneTotal), summaryCol2, summaryY, { size: 9, color: darkText, align: "right" });
+      summaryY += 7;
+    }
 
     addText("Roboty ziemne:", summaryCol1, summaryY, { size: 9, color: grayText });
     addText(formatPrice(data.totals.excavationTotal), summaryCol2, summaryY, { size: 9, color: darkText, align: "right" });
@@ -380,10 +457,10 @@ serve(async (req) => {
     addText(formatPrice(data.totals.grandTotalNet), summaryCol2, summaryY, { size: 10, style: "bold", color: darkText, align: "right" });
     summaryY += 7;
 
-    addText(`+ VAT ${(VAT_RATE * 100).toFixed(0)}%:`, summaryCol1, summaryY, { size: 9, color: grayText });
+    addText(`+ VAT ${vatRate}%:`, summaryCol1, summaryY, { size: 9, color: grayText });
     addText(formatPrice(data.totals.vatAmount), summaryCol2, summaryY, { size: 9, color: grayText, align: "right" });
 
-    y += 50;
+    y += summaryBoxHeight + 5;
 
     // Grand total bar
     drawRoundedRect(margin, y, contentWidth, 14, 2, primaryColor);
@@ -392,14 +469,78 @@ serve(async (req) => {
 
     y += 25;
 
+    // === OPTIONS SECTION (More expensive alternatives) ===
+    if (data.options && data.options.length > 0) {
+      checkPageBreak(20 + data.options.length * 8);
+
+      drawRoundedRect(margin, y - 2, contentWidth, 7, 1, [255, 243, 224]); // Light orange background
+      addText("OPCJE DODATKOWE", margin + 3, y + 3, { size: 9, style: "bold", color: accentColor });
+      y += 10;
+
+      addText("Alternatywa", margin, y, { size: 7, color: grayText });
+      addText("Ilość", pageWidth - margin - 50, y, { size: 7, color: grayText });
+      addText("Dopłata", pageWidth - margin, y, { size: 7, color: grayText, align: "right" });
+      y += 4;
+
+      for (const option of data.options) {
+        checkPageBreak(8);
+
+        let optionName = option.name;
+        const maxNameWidth = contentWidth - 65;
+        while (doc.getTextWidth(optionName) > maxNameWidth && optionName.length > 10) {
+          optionName = optionName.slice(0, -4) + "...";
+        }
+
+        addText(optionName, margin, y, { size: 8, color: darkText });
+        addText(`${option.quantity} szt.`, pageWidth - margin - 45, y, { size: 8, color: grayText });
+        
+        const priceStr = option.priceDifference >= 0 
+          ? `+${formatPrice(option.priceDifference)}` 
+          : formatPrice(option.priceDifference);
+        addText(priceStr, pageWidth - margin, y, { size: 8, style: "bold", color: accentColor, align: "right" });
+
+        y += 6;
+      }
+
+      y += 8;
+    }
+
+    // === NOTES AND PAYMENT TERMS ===
+    if (data.notes || data.paymentTerms) {
+      checkPageBreak(30);
+      
+      if (data.notes) {
+        addText("UWAGI:", margin, y, { size: 8, style: "bold", color: primaryColor });
+        y += 5;
+        
+        // Split notes into lines if too long
+        const notesLines = doc.splitTextToSize(data.notes, contentWidth);
+        for (const line of notesLines) {
+          checkPageBreak(5);
+          addText(line, margin, y, { size: 8, color: darkText });
+          y += 4;
+        }
+        y += 4;
+      }
+
+      if (data.paymentTerms) {
+        addText("WARUNKI PŁATNOŚCI:", margin, y, { size: 8, style: "bold", color: primaryColor });
+        y += 5;
+        
+        const termsLines = doc.splitTextToSize(data.paymentTerms, contentWidth);
+        for (const line of termsLines) {
+          checkPageBreak(5);
+          addText(line, margin, y, { size: 8, color: darkText });
+          y += 4;
+        }
+        y += 4;
+      }
+    }
+
     // === FOOTER ===
     checkPageBreak(25);
     
-    addText("Oferta ważna 30 dni od daty wystawienia.", margin, y, { size: 7, color: grayText });
     y += 4;
-    addText("Ceny nie zawierają kosztów transportu i montażu, chyba że zaznaczono inaczej.", margin, y, { size: 7, color: grayText });
-    y += 8;
-    
     addLine(y);
     y += 6;
     addText(`${data.companySettings.name} | ${data.companySettings.website} | ${data.companySettings.phone}`, pageWidth / 2, y, { size: 7, color: primaryColor, align: "center" });
