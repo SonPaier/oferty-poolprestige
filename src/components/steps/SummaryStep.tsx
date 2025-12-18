@@ -14,14 +14,15 @@ import {
   Trash2,
   Shovel,
   Save,
-  Copy
+  Loader2
 } from 'lucide-react';
 import { getPriceInPLN } from '@/data/products';
 import { formatPrice } from '@/lib/calculations';
-import { generateOfferPDF } from '@/lib/pdfGenerator';
 import { OfferItem, ConfiguratorSection } from '@/types/configurator';
-import { ExcavationData, ExcavationSettings, calculateExcavation, generateOfferNumber, saveOffer, SavedOffer } from '@/types/offers';
+import { ExcavationSettings, calculateExcavation, generateOfferNumber, saveOffer, SavedOffer } from '@/types/offers';
+import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { useState } from 'react';
 
 interface SummaryStepProps {
   onBack: () => void;
@@ -54,6 +55,7 @@ const sectionLabels: Record<string, string> = {
 export function SummaryStep({ onBack, onReset, excavationSettings }: SummaryStepProps) {
   const { state, dispatch, companySettings } = useConfigurator();
   const { customerData, dimensions, calculations, sections, poolType, foilCalculation } = state;
+  const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
 
   const excavation = calculateExcavation(dimensions, excavationSettings);
 
@@ -82,9 +84,10 @@ export function SummaryStep({ onBack, onReset, excavationSettings }: SummaryStep
   const grandTotalGross = grandTotalNet + vatAmount;
 
   const handleSaveOffer = () => {
+    const offerNumber = generateOfferNumber();
     const offer: SavedOffer = {
       id: crypto.randomUUID(),
-      offerNumber: generateOfferNumber(),
+      offerNumber,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       customerData,
@@ -103,25 +106,89 @@ export function SummaryStep({ onBack, onReset, excavationSettings }: SummaryStep
     toast.success('Oferta została zapisana', {
       description: `Numer: ${offer.offerNumber}`,
     });
+    
+    return offerNumber;
   };
 
-  const handleGeneratePDF = () => {
-    handleSaveOffer();
-    
+  const handleGeneratePDF = async () => {
+    const offerNumber = handleSaveOffer();
+    setIsGeneratingPDF(true);
+
     try {
-      generateOfferPDF({
-        state,
+      // Prepare data for backend
+      const pdfData = {
+        offerNumber,
         companySettings,
-        excavationSettings,
+        customerData,
+        poolParams: {
+          type: poolType,
+          length: dimensions.length,
+          width: dimensions.width,
+          depthShallow: dimensions.depthShallow,
+          depthDeep: dimensions.depthDeep,
+          volume: calculations?.volume || 0,
+          requiredFlow: calculations?.requiredFlow || 0,
+          isIrregular: dimensions.isIrregular,
+          irregularSurcharge: companySettings.irregularSurchargePercent,
+        },
+        sections: Object.entries(sections)
+          .filter(([_, section]) => section.items.length > 0)
+          .map(([key, section]) => ({
+            name: sectionLabels[key] || key,
+            items: section.items.map(item => ({
+              product: {
+                name: item.product.name,
+                symbol: item.product.symbol,
+              },
+              quantity: item.quantity,
+              unitPrice: item.customPrice || getPriceInPLN(item.product),
+            })),
+          })),
+        excavation: {
+          volume: excavation.excavationVolume,
+          pricePerM3: excavation.excavationPricePerM3,
+          excavationTotal: excavation.excavationTotal,
+          removalFixedPrice: excavation.removalFixedPrice,
+        },
+        totals: {
+          productsTotal,
+          excavationTotal,
+          grandTotalNet,
+          vatAmount,
+          grandTotalGross,
+        },
+      };
+
+      const { data, error } = await supabase.functions.invoke('generate-pdf', {
+        body: pdfData,
       });
-      toast.success('PDF wygenerowany!', {
-        description: 'Plik został pobrany na dysk.',
-      });
-    } catch (error) {
-      console.error('PDF generation error:', error);
-      toast.error('Blad generowania PDF', {
-        description: 'Sprobuj ponownie.',
-      });
+
+      if (error) {
+        console.error('PDF generation error:', error);
+        toast.error('Błąd generowania PDF', {
+          description: error.message || 'Spróbuj ponownie',
+        });
+        return;
+      }
+
+      // Download PDF
+      if (data?.pdf) {
+        const link = document.createElement('a');
+        link.href = data.pdf;
+        link.download = `Oferta_${offerNumber.replace(/\//g, '-')}_${customerData.contactPerson.replace(/\s+/g, '_')}.pdf`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+
+        toast.success('PDF wygenerowany!', {
+          description: 'Plik został pobrany na dysk.',
+        });
+      }
+    } catch (err) {
+      console.error('PDF error:', err);
+      toast.error('Błąd połączenia z serwerem');
+    } finally {
+      setIsGeneratingPDF(false);
     }
   };
 
@@ -306,13 +373,22 @@ export function SummaryStep({ onBack, onReset, excavationSettings }: SummaryStep
             </Button>
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" onClick={handleSaveOffer}>
+            <Button variant="outline" onClick={() => handleSaveOffer()}>
               <Save className="w-4 h-4 mr-2" />
               Zapisz ofertę
             </Button>
-            <Button onClick={handleGeneratePDF} className="btn-primary">
-              <Download className="w-4 h-4 mr-2" />
-              Generuj PDF
+            <Button onClick={handleGeneratePDF} className="btn-primary" disabled={isGeneratingPDF}>
+              {isGeneratingPDF ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Generuję...
+                </>
+              ) : (
+                <>
+                  <Download className="w-4 h-4 mr-2" />
+                  Generuj PDF
+                </>
+              )}
             </Button>
           </div>
         </div>
