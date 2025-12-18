@@ -48,24 +48,23 @@ export function CustomerStep({ onNext }: CustomerStepProps) {
 
       console.log('Extracted data:', data);
 
-      // Update customer data
-      if (data.customerData) {
-        const extracted = data.customerData;
-        dispatch({
-          type: 'SET_CUSTOMER_DATA',
-          payload: {
-            ...customerData,
-            companyName: extracted.companyName || customerData.companyName,
-            contactPerson: extracted.contactPerson || customerData.contactPerson,
-            email: extracted.email || customerData.email,
-            phone: extracted.phone || customerData.phone,
-            address: extracted.address || customerData.address,
-            city: extracted.city || customerData.city,
-            postalCode: extracted.postalCode || customerData.postalCode,
-            nip: extracted.nip || customerData.nip,
-          },
-        });
-      }
+      // Update customer data with extracted info and save source email
+      const extracted = data.customerData || {};
+      dispatch({
+        type: 'SET_CUSTOMER_DATA',
+        payload: {
+          ...customerData,
+          companyName: extracted.companyName || customerData.companyName,
+          contactPerson: extracted.contactPerson || customerData.contactPerson,
+          email: extracted.email || customerData.email,
+          phone: extracted.phone || customerData.phone,
+          address: extracted.address || customerData.address,
+          city: extracted.city || customerData.city,
+          postalCode: extracted.postalCode || customerData.postalCode,
+          nip: extracted.nip || customerData.nip,
+          sourceEmail: emailInput, // Save original email content
+        },
+      });
 
       // Update pool dimensions if found
       if (data.poolDimensions) {

@@ -43,6 +43,7 @@ export interface CustomerData {
   city: string;
   postalCode: string;
   nip?: string;
+  sourceEmail?: string; // Original email content used for this offer
 }
 
 export interface OfferItem {

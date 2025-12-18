@@ -42,6 +42,7 @@ const initialCustomerData: CustomerData = {
   city: '',
   postalCode: '',
   nip: '',
+  sourceEmail: '',
 };
 
 const createEmptySection = (id: string, name: string): ConfiguratorSection => ({
