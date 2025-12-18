@@ -101,7 +101,7 @@ export function CustomerStep({ onNext }: CustomerStepProps) {
     }
   };
 
-  const isValid = customerData.contactPerson && customerData.phone;
+  const isValid = customerData.contactPerson;
 
   return (
     <div className="animate-slide-up">
@@ -192,7 +192,7 @@ export function CustomerStep({ onNext }: CustomerStepProps) {
           <div className="space-y-2">
             <Label htmlFor="phone" className="flex items-center gap-2">
               <Phone className="w-4 h-4 text-muted-foreground" />
-              Telefon *
+              Telefon
             </Label>
             <Input
               id="phone"
@@ -201,7 +201,6 @@ export function CustomerStep({ onNext }: CustomerStepProps) {
               onChange={(e) => updateField('phone', e.target.value)}
               placeholder="+48 123 456 789"
               className="input-field"
-              required
             />
           </div>
 
