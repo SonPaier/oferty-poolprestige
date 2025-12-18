@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { encode as encodeBase64 } from "https://deno.land/std@0.168.0/encoding/base64.ts";
 import { PDFDocument, rgb, StandardFonts } from "https://esm.sh/pdf-lib@1.17.1";
 import fontkit from "https://esm.sh/@pdf-lib/fontkit@1.1.1";
 
@@ -97,20 +98,18 @@ const formatNumber = (num: number, decimals: number = 1): string => {
   return num.toFixed(decimals).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
 };
 
-// Fetch and cache font
+// Load and cache fonts (local files)
 let cachedFont: Uint8Array | null = null;
 let cachedFontBold: Uint8Array | null = null;
 
 async function loadFonts() {
   if (!cachedFont) {
-    console.log("Loading Noto Sans font...");
-    const regularResponse = await fetch("https://cdn.jsdelivr.net/npm/@fontsource/noto-sans@5.0.0/files/noto-sans-latin-ext-400-normal.woff");
-    cachedFont = new Uint8Array(await regularResponse.arrayBuffer());
+    console.log("Loading Noto Sans font (local TTF)...");
+    cachedFont = await Deno.readFile(new URL("./NotoSans-Regular.ttf", import.meta.url));
     console.log("Noto Sans Regular loaded");
   }
   if (!cachedFontBold) {
-    const boldResponse = await fetch("https://cdn.jsdelivr.net/npm/@fontsource/noto-sans@5.0.0/files/noto-sans-latin-ext-700-normal.woff");
-    cachedFontBold = new Uint8Array(await boldResponse.arrayBuffer());
+    cachedFontBold = await Deno.readFile(new URL("./NotoSans-Bold.ttf", import.meta.url));
     console.log("Noto Sans Bold loaded");
   }
   return { regular: cachedFont, bold: cachedFontBold };
@@ -567,7 +566,9 @@ serve(async (req) => {
 
     // Generate PDF
     const pdfBytes = await pdfDoc.save();
-    const base64 = btoa(String.fromCharCode(...pdfBytes));
+    const base64 = encodeBase64(
+      pdfBytes.buffer.slice(pdfBytes.byteOffset, pdfBytes.byteOffset + pdfBytes.byteLength) as ArrayBuffer
+    );
     const pdfOutput = `data:application/pdf;base64,${base64}`;
 
     console.log("PDF generated successfully with Polish characters");
