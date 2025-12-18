@@ -98,18 +98,26 @@ const formatNumber = (num: number, decimals: number = 1): string => {
   return num.toFixed(decimals).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
 };
 
-// Load and cache fonts (local files)
+// Fetch and cache fonts (remote files)
 let cachedFont: Uint8Array | null = null;
 let cachedFontBold: Uint8Array | null = null;
 
 async function loadFonts() {
   if (!cachedFont) {
-    console.log("Loading Noto Sans font (local TTF)...");
-    cachedFont = await Deno.readFile(new URL("./NotoSans-Regular.ttf", import.meta.url));
+    console.log("Loading Noto Sans font (remote)...");
+    const regularResponse = await fetch(
+      "https://cdn.jsdelivr.net/npm/@fontsource/noto-sans@5.0.0/files/noto-sans-latin-ext-400-normal.woff",
+    );
+    if (!regularResponse.ok) throw new Error(`Font download failed: ${regularResponse.status}`);
+    cachedFont = new Uint8Array(await regularResponse.arrayBuffer());
     console.log("Noto Sans Regular loaded");
   }
   if (!cachedFontBold) {
-    cachedFontBold = await Deno.readFile(new URL("./NotoSans-Bold.ttf", import.meta.url));
+    const boldResponse = await fetch(
+      "https://cdn.jsdelivr.net/npm/@fontsource/noto-sans@5.0.0/files/noto-sans-latin-ext-700-normal.woff",
+    );
+    if (!boldResponse.ok) throw new Error(`Font download failed: ${boldResponse.status}`);
+    cachedFontBold = new Uint8Array(await boldResponse.arrayBuffer());
     console.log("Noto Sans Bold loaded");
   }
   return { regular: cachedFont, bold: cachedFontBold };
@@ -566,9 +574,9 @@ serve(async (req) => {
 
     // Generate PDF
     const pdfBytes = await pdfDoc.save();
-    const base64 = encodeBase64(
-      pdfBytes.buffer.slice(pdfBytes.byteOffset, pdfBytes.byteOffset + pdfBytes.byteLength) as ArrayBuffer
-    );
+    // Force a dedicated ArrayBuffer (avoids SharedArrayBuffer typing/runtime edge cases)
+    const safeBuffer = new Uint8Array(pdfBytes).buffer;
+    const base64 = encodeBase64(safeBuffer);
     const pdfOutput = `data:application/pdf;base64,${base64}`;
 
     console.log("PDF generated successfully with Polish characters");
