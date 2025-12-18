@@ -5,11 +5,13 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
 import { ProductCard } from '@/components/ProductCard';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { ArrowLeft, Palette, Info, Calculator, CheckCircle, Badge } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { ArrowLeft, Palette, Info, Calculator, CheckCircle, Eye } from 'lucide-react';
 import { products, Product, getPriceInPLN } from '@/data/products';
 import { formatPrice, calculateFoilOptimization, FoilRollSimulation, FoilOptimizationResult } from '@/lib/calculations';
 import { OfferItem } from '@/types/configurator';
 import { poolShapeLabels } from '@/types/configurator';
+import { FoilLayoutVisualization } from '@/components/FoilLayoutVisualization';
 
 interface FoilStepProps {
   onNext: () => void;
@@ -140,10 +142,24 @@ export function FoilStep({ onNext, onBack }: FoilStepProps) {
                         Zobacz kalkulacje
                       </Button>
                     </DialogTrigger>
-                    <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+                    <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
                       <DialogHeader>
                         <DialogTitle>Kalkulacja folii basenowej</DialogTitle>
                       </DialogHeader>
+                      
+                      <Tabs defaultValue="calculations" className="w-full">
+                        <TabsList className="grid w-full grid-cols-2">
+                          <TabsTrigger value="calculations" className="gap-2">
+                            <Calculator className="w-4 h-4" />
+                            Kalkulacje
+                          </TabsTrigger>
+                          <TabsTrigger value="visualization" className="gap-2">
+                            <Eye className="w-4 h-4" />
+                            Wizualizacja
+                          </TabsTrigger>
+                        </TabsList>
+                        
+                        <TabsContent value="calculations" className="mt-4">
                       <div className="space-y-4 text-sm">
                         {/* Pool dimensions */}
                         <div className="p-3 rounded-lg bg-muted/50">
@@ -324,6 +340,62 @@ export function FoilStep({ onNext, onBack }: FoilStepProps) {
                           );
                         })()}
                       </div>
+                        </TabsContent>
+                        
+                        <TabsContent value="visualization" className="mt-4">
+                          <div className="space-y-6">
+                            <p className="text-sm text-muted-foreground">
+                              Poniżej wizualizacja rozkładu folii na poszczególnych powierzchniach basenu.
+                              Przerywana linia oznacza zakładkę (spaw) między pasami folii.
+                            </p>
+                            
+                            <Tabs defaultValue="165" className="w-full">
+                              <TabsList className="grid w-full grid-cols-2 mb-4">
+                                <TabsTrigger value="165" className={(() => {
+                                  const calc = foilCalculation as FoilOptimizationResult | null;
+                                  return calc?.suggestedRoll === '165' ? 'data-[state=active]:bg-primary data-[state=active]:text-primary-foreground' : '';
+                                })()}>
+                                  Rolki 1,65m
+                                  {(() => {
+                                    const calc = foilCalculation as FoilOptimizationResult | null;
+                                    return calc?.suggestedRoll === '165' ? (
+                                      <CheckCircle className="w-3 h-3 ml-1" />
+                                    ) : null;
+                                  })()}
+                                </TabsTrigger>
+                                <TabsTrigger value="205" className={(() => {
+                                  const calc = foilCalculation as FoilOptimizationResult | null;
+                                  return calc?.suggestedRoll === '205' ? 'data-[state=active]:bg-primary data-[state=active]:text-primary-foreground' : '';
+                                })()}>
+                                  Rolki 2,05m
+                                  {(() => {
+                                    const calc = foilCalculation as FoilOptimizationResult | null;
+                                    return calc?.suggestedRoll === '205' ? (
+                                      <CheckCircle className="w-3 h-3 ml-1" />
+                                    ) : null;
+                                  })()}
+                                </TabsTrigger>
+                              </TabsList>
+                              
+                              <TabsContent value="165">
+                                <FoilLayoutVisualization
+                                  dimensions={dimensions}
+                                  rollWidth={1.65}
+                                  label="Rozkład folii - rolki 1,65m"
+                                />
+                              </TabsContent>
+                              
+                              <TabsContent value="205">
+                                <FoilLayoutVisualization
+                                  dimensions={dimensions}
+                                  rollWidth={2.05}
+                                  label="Rozkład folii - rolki 2,05m"
+                                />
+                              </TabsContent>
+                            </Tabs>
+                          </div>
+                        </TabsContent>
+                      </Tabs>
                     </DialogContent>
                   </Dialog>
                 </div>
