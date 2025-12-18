@@ -1,13 +1,13 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useConfigurator } from '@/context/ConfiguratorContext';
 import { Button } from '@/components/ui/button';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
 import { ProductCard } from '@/components/ProductCard';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { ArrowLeft, Palette, Info, Calculator } from 'lucide-react';
+import { ArrowLeft, Palette, Info, Calculator, CheckCircle, Badge } from 'lucide-react';
 import { products, Product, getPriceInPLN } from '@/data/products';
-import { formatPrice, calculateFoilOptimization } from '@/lib/calculations';
+import { formatPrice, calculateFoilOptimization, FoilRollSimulation, FoilOptimizationResult } from '@/lib/calculations';
 import { OfferItem } from '@/types/configurator';
 import { poolShapeLabels } from '@/types/configurator';
 
@@ -140,7 +140,7 @@ export function FoilStep({ onNext, onBack }: FoilStepProps) {
                         Zobacz kalkulacje
                       </Button>
                     </DialogTrigger>
-                    <DialogContent className="max-w-lg">
+                    <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
                       <DialogHeader>
                         <DialogTitle>Kalkulacja folii basenowej</DialogTitle>
                       </DialogHeader>
@@ -164,57 +164,165 @@ export function FoilStep({ onNext, onBack }: FoilStepProps) {
                           const wallsLength = 2 * dimensions.length * avgDepth;
                           const wallsWidth = 2 * dimensions.width * avgDepth;
                           const totalBase = bottomArea + wallsLength + wallsWidth;
+                          const calc = foilCalculation as FoilOptimizationResult | null;
+                          
+                          // Get foil prices from products
+                          const foil165 = products.find(p => p.specs?.szerokosc === 1.65 && p.category === 'folia');
+                          const foil205 = products.find(p => p.specs?.szerokosc === 2.05 && p.category === 'folia');
+                          const pricePerM2_165 = foil165 ? getPriceInPLN(foil165) : 50;
+                          const pricePerM2_205 = foil205 ? getPriceInPLN(foil205) : 50;
+                          
+                          const sim165 = calc?.simulation165;
+                          const sim205 = calc?.simulation205;
+                          
+                          const cost165 = sim165 ? sim165.totalRollArea * pricePerM2_165 : 0;
+                          const cost205 = sim205 ? sim205.totalRollArea * pricePerM2_205 : 0;
                           
                           return (
-                            <div className="p-3 rounded-lg bg-muted/50">
-                              <h4 className="font-medium mb-2">Obliczenie powierzchni</h4>
-                              <div className="space-y-1 text-muted-foreground">
-                                <p>Dno basenu: <span className="text-foreground font-medium">{bottomArea.toFixed(2)} m²</span></p>
-                                <p>Ściany boczne (dł.): <span className="text-foreground font-medium">2 × {dimensions.length} × {avgDepth.toFixed(2)} = {wallsLength.toFixed(2)} m²</span></p>
-                                <p>Ściany boczne (szer.): <span className="text-foreground font-medium">2 × {dimensions.width} × {avgDepth.toFixed(2)} = {wallsWidth.toFixed(2)} m²</span></p>
-                                <p className="text-xs italic">* Średnia głębokość: ({dimensions.depthShallow} + {dimensions.depthDeep}) / 2 = {avgDepth.toFixed(2)} m</p>
-                                <div className="border-t border-border mt-2 pt-2">
-                                  <p className="font-medium text-foreground">
-                                    Suma podstawowa: {totalBase.toFixed(2)} m²
-                                  </p>
+                            <>
+                              <div className="p-3 rounded-lg bg-muted/50">
+                                <h4 className="font-medium mb-2">Obliczenie powierzchni</h4>
+                                <div className="space-y-1 text-muted-foreground">
+                                  <p>Dno basenu: <span className="text-foreground font-medium">{bottomArea.toFixed(2)} m²</span></p>
+                                  <p>Ściany boczne (dł.): <span className="text-foreground font-medium">2 × {dimensions.length} × {avgDepth.toFixed(2)} = {wallsLength.toFixed(2)} m²</span></p>
+                                  <p>Ściany boczne (szer.): <span className="text-foreground font-medium">2 × {dimensions.width} × {avgDepth.toFixed(2)} = {wallsWidth.toFixed(2)} m²</span></p>
+                                  <p className="text-xs italic">* Średnia głębokość: ({dimensions.depthShallow} + {dimensions.depthDeep}) / 2 = {avgDepth.toFixed(2)} m</p>
+                                  <div className="border-t border-border mt-2 pt-2">
+                                    <p className="font-medium text-foreground">
+                                      Suma podstawowa: {totalBase.toFixed(2)} m²
+                                    </p>
+                                  </div>
                                 </div>
                               </div>
-                            </div>
+
+                              {/* Waste and surcharge */}
+                              <div className="p-3 rounded-lg bg-muted/50">
+                                <h4 className="font-medium mb-2">Naddatki</h4>
+                                <div className="space-y-1 text-muted-foreground">
+                                  <p>Naddatek na spawy (~10%): <span className="text-foreground font-medium">+ {(totalBase * 0.1).toFixed(2)} m²</span></p>
+                                  {calc && calc.irregularSurcharge > 0 && (
+                                    <p>Nieregularny kształt (+{calc.irregularSurcharge}%): <span className="text-foreground font-medium">+ {(calc.baseAreaWithMargin * calc.irregularSurcharge / 100).toFixed(2)} m²</span></p>
+                                  )}
+                                  <div className="border-t border-border mt-2 pt-2">
+                                    <p className="font-medium text-foreground">
+                                      Powierzchnia do pokrycia: {calc?.totalArea.toFixed(2)} m²
+                                    </p>
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Two simulations comparison */}
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                {/* Simulation 1.65m */}
+                                <div className={`p-3 rounded-lg border-2 transition-all ${calc?.suggestedRoll === '165' ? 'border-primary bg-primary/10' : 'border-border bg-muted/30'}`}>
+                                  <div className="flex items-center justify-between mb-2">
+                                    <h4 className="font-medium">Rolki 1,65m</h4>
+                                    {calc?.suggestedRoll === '165' && (
+                                      <span className="flex items-center gap-1 text-xs text-primary font-medium">
+                                        <CheckCircle className="w-3 h-3" />
+                                        Sugerowane
+                                      </span>
+                                    )}
+                                  </div>
+                                  {sim165 && (
+                                    <div className="space-y-2 text-sm">
+                                      <div className="flex justify-between">
+                                        <span className="text-muted-foreground">Rozmiar rolki:</span>
+                                        <span className="font-medium">1,65m × 25m</span>
+                                      </div>
+                                      <div className="flex justify-between">
+                                        <span className="text-muted-foreground">Pow. rolki:</span>
+                                        <span className="font-medium">{sim165.rollArea.toFixed(2)} m²</span>
+                                      </div>
+                                      <div className="flex justify-between">
+                                        <span className="text-muted-foreground">Ilość rolek:</span>
+                                        <span className="font-bold text-lg">{sim165.rollsNeeded} szt.</span>
+                                      </div>
+                                      <div className="flex justify-between">
+                                        <span className="text-muted-foreground">Całk. powierzchnia:</span>
+                                        <span className="font-medium">{sim165.totalRollArea.toFixed(2)} m²</span>
+                                      </div>
+                                      <div className="flex justify-between text-destructive">
+                                        <span>Odpad:</span>
+                                        <span className="font-medium">{sim165.wasteArea.toFixed(2)} m² ({sim165.wastePercentage.toFixed(1)}%)</span>
+                                      </div>
+                                      <div className="border-t border-border mt-2 pt-2 flex justify-between">
+                                        <span className="font-medium">Szac. koszt:</span>
+                                        <span className="font-bold">{formatPrice(cost165)}</span>
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+
+                                {/* Simulation 2.05m */}
+                                <div className={`p-3 rounded-lg border-2 transition-all ${calc?.suggestedRoll === '205' ? 'border-primary bg-primary/10' : 'border-border bg-muted/30'}`}>
+                                  <div className="flex items-center justify-between mb-2">
+                                    <h4 className="font-medium">Rolki 2,05m</h4>
+                                    {calc?.suggestedRoll === '205' && (
+                                      <span className="flex items-center gap-1 text-xs text-primary font-medium">
+                                        <CheckCircle className="w-3 h-3" />
+                                        Sugerowane
+                                      </span>
+                                    )}
+                                  </div>
+                                  {sim205 && (
+                                    <div className="space-y-2 text-sm">
+                                      <div className="flex justify-between">
+                                        <span className="text-muted-foreground">Rozmiar rolki:</span>
+                                        <span className="font-medium">2,05m × 25m</span>
+                                      </div>
+                                      <div className="flex justify-between">
+                                        <span className="text-muted-foreground">Pow. rolki:</span>
+                                        <span className="font-medium">{sim205.rollArea.toFixed(2)} m²</span>
+                                      </div>
+                                      <div className="flex justify-between">
+                                        <span className="text-muted-foreground">Ilość rolek:</span>
+                                        <span className="font-bold text-lg">{sim205.rollsNeeded} szt.</span>
+                                      </div>
+                                      <div className="flex justify-between">
+                                        <span className="text-muted-foreground">Całk. powierzchnia:</span>
+                                        <span className="font-medium">{sim205.totalRollArea.toFixed(2)} m²</span>
+                                      </div>
+                                      <div className="flex justify-between text-destructive">
+                                        <span>Odpad:</span>
+                                        <span className="font-medium">{sim205.wasteArea.toFixed(2)} m² ({sim205.wastePercentage.toFixed(1)}%)</span>
+                                      </div>
+                                      <div className="border-t border-border mt-2 pt-2 flex justify-between">
+                                        <span className="font-medium">Szac. koszt:</span>
+                                        <span className="font-bold">{formatPrice(cost205)}</span>
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* Summary */}
+                              {calc && sim165 && sim205 && (
+                                <div className="p-3 rounded-lg bg-accent/10 border border-accent/20">
+                                  <h4 className="font-medium mb-2 flex items-center gap-2">
+                                    <Info className="w-4 h-4 text-accent" />
+                                    Podsumowanie
+                                  </h4>
+                                  <p className="text-sm text-muted-foreground">
+                                    {calc.suggestedRoll === '165' ? (
+                                      <>
+                                        Sugerujemy <span className="font-bold text-foreground">rolki 1,65m</span> - mniejszy całkowity odpad 
+                                        ({sim165.wasteArea.toFixed(1)} m² vs {sim205.wasteArea.toFixed(1)} m²) 
+                                        i niższy koszt (o {formatPrice(cost205 - cost165)} taniej).
+                                      </>
+                                    ) : (
+                                      <>
+                                        Sugerujemy <span className="font-bold text-foreground">rolki 2,05m</span> - mniejszy całkowity odpad 
+                                        ({sim205.wasteArea.toFixed(1)} m² vs {sim165.wasteArea.toFixed(1)} m²) 
+                                        i niższy koszt (o {formatPrice(cost165 - cost205)} taniej).
+                                      </>
+                                    )}
+                                  </p>
+                                </div>
+                              )}
+                            </>
                           );
                         })()}
-
-                        {/* Waste and surcharge */}
-                        <div className="p-3 rounded-lg bg-muted/50">
-                          <h4 className="font-medium mb-2">Naddatki i odpady</h4>
-                          <div className="space-y-1 text-muted-foreground">
-                            <p>Naddatek na spawy (~10%): <span className="text-foreground font-medium">+ {(foilCalculation.totalArea * 0.1 / 1.1).toFixed(2)} m²</span></p>
-                            {foilCalculation.irregularSurcharge > 0 && (
-                              <p>Nieregularny kształt (+{foilCalculation.irregularSurcharge}%): <span className="text-foreground font-medium">+ {(foilCalculation.totalArea * foilCalculation.irregularSurcharge / 100 / (1 + foilCalculation.irregularSurcharge / 100)).toFixed(2)} m²</span></p>
-                            )}
-                            <p>Szacowany odpad: <span className="text-foreground font-medium">~{foilCalculation.wastePercentage.toFixed(1)}%</span></p>
-                          </div>
-                        </div>
-
-                        {/* Roll calculation */}
-                        <div className="p-3 rounded-lg bg-primary/10 border border-primary/20">
-                          <h4 className="font-medium mb-2">Potrzebne rolki</h4>
-                          <div className="space-y-2">
-                            <div className="flex justify-between items-center">
-                              <span className="text-muted-foreground">Rolki 1,65m × 25m (41,25 m²):</span>
-                              <span className="font-bold text-primary">{foilCalculation.rolls165} szt.</span>
-                            </div>
-                            <div className="flex justify-between items-center">
-                              <span className="text-muted-foreground">Rolki 2,05m × 25m (51,25 m²):</span>
-                              <span className="font-bold text-primary">{foilCalculation.rolls205} szt.</span>
-                            </div>
-                            <div className="border-t border-border mt-2 pt-2">
-                              <div className="flex justify-between items-center">
-                                <span className="font-medium">Całkowita powierzchnia:</span>
-                                <span className="font-bold text-lg">{foilCalculation.totalArea.toFixed(1)} m²</span>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
                       </div>
                     </DialogContent>
                   </Dialog>

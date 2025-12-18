@@ -88,71 +88,98 @@ export function calculatePoolMetrics(
   };
 }
 
+export interface FoilRollSimulation {
+  rollWidth: number;
+  rollLength: number;
+  rollArea: number;
+  rollsNeeded: number;
+  totalRollArea: number;
+  wastePercentage: number;
+  wasteArea: number;
+}
+
+export interface FoilOptimizationResult extends FoilCalculation {
+  simulation165: FoilRollSimulation;
+  simulation205: FoilRollSimulation;
+  suggestedRoll: '165' | '205';
+  baseAreaWithMargin: number;
+}
+
 /**
  * Optimize foil cutting to minimize waste
- * Uses combination of 1.65m and 2.05m rolls
+ * Calculates both 1.65m and 2.05m roll options for comparison
  */
 export function calculateFoilOptimization(
   dimensions: PoolDimensions,
   foilType: 'tradycyjna' | 'strukturalna',
   irregularSurchargePercent: number = 20
-): FoilCalculation {
+): FoilOptimizationResult {
   const { length, width, depthShallow, depthDeep, isIrregular } = dimensions;
   const avgDepth = (depthShallow + depthDeep) / 2;
   
   // Total foil area needed
-  // Bottom: length × width
-  // Walls: 2×(length × avgDepth) + 2×(width × avgDepth)
-  // Plus overlap and welding margin (15% extra)
-  
   const bottomArea = length * width;
   const wallArea = 2 * (length * avgDepth) + 2 * (width * avgDepth);
-  const baseArea = (bottomArea + wallArea) * 1.15; // 15% margin
-  
-  // Optimize roll selection
-  // For bottom: prefer wider rolls (2.05m) to minimize seams
-  // For walls: use based on wall height
-  
-  const ROLL_165 = 1.65 - OVERLAP_M;
-  const ROLL_205 = 2.05 - OVERLAP_M;
-  
-  // Calculate how many strips needed
-  let rolls165 = 0;
-  let rolls205 = 0;
-  
-  // Bottom strips along width
-  const bottomStripsNeeded = Math.ceil(width / ROLL_205);
-  const bottomMeters = bottomStripsNeeded * length;
-  
-  // Use 2.05m rolls for bottom
-  rolls205 += Math.ceil(bottomMeters / 25); // 25m per roll assumption
-  
-  // Wall strips
-  const wallHeight = avgDepth + 0.15; // 15cm over edge
-  
-  if (wallHeight <= ROLL_165) {
-    // Use 1.65m rolls for walls
-    const wallMeters = 2 * (length + width) + 2; // +2m buffer
-    rolls165 += Math.ceil(wallMeters / 25);
-  } else {
-    // Use 2.05m rolls
-    const wallMeters = 2 * (length + width) + 2;
-    rolls205 += Math.ceil(wallMeters / 25);
-  }
-  
-  // Calculate waste
-  const totalRollArea = (rolls165 * 25 * 1.65) + (rolls205 * 25 * 2.05);
-  const wastePercentage = ((totalRollArea - baseArea) / totalRollArea) * 100;
+  const baseArea = bottomArea + wallArea;
+  const baseAreaWithMargin = baseArea * 1.1; // 10% seam allowance
   
   // Irregular pool surcharge
   const irregularSurcharge = isIrregular ? irregularSurchargePercent : 0;
+  const totalAreaNeeded = baseAreaWithMargin * (1 + irregularSurcharge / 100);
+  
+  // Simulate using only 1.65m rolls
+  const ROLL_165_WIDTH = 1.65;
+  const ROLL_165_LENGTH = 25;
+  const ROLL_165_AREA = ROLL_165_WIDTH * ROLL_165_LENGTH; // 41.25 m²
+  
+  const rolls165Needed = Math.ceil(totalAreaNeeded / ROLL_165_AREA);
+  const totalArea165 = rolls165Needed * ROLL_165_AREA;
+  const waste165 = totalArea165 - totalAreaNeeded;
+  const wastePercent165 = (waste165 / totalArea165) * 100;
+  
+  const simulation165: FoilRollSimulation = {
+    rollWidth: ROLL_165_WIDTH,
+    rollLength: ROLL_165_LENGTH,
+    rollArea: ROLL_165_AREA,
+    rollsNeeded: rolls165Needed,
+    totalRollArea: totalArea165,
+    wastePercentage: wastePercent165,
+    wasteArea: waste165,
+  };
+  
+  // Simulate using only 2.05m rolls
+  const ROLL_205_WIDTH = 2.05;
+  const ROLL_205_LENGTH = 25;
+  const ROLL_205_AREA = ROLL_205_WIDTH * ROLL_205_LENGTH; // 51.25 m²
+  
+  const rolls205Needed = Math.ceil(totalAreaNeeded / ROLL_205_AREA);
+  const totalArea205 = rolls205Needed * ROLL_205_AREA;
+  const waste205 = totalArea205 - totalAreaNeeded;
+  const wastePercent205 = (waste205 / totalArea205) * 100;
+  
+  const simulation205: FoilRollSimulation = {
+    rollWidth: ROLL_205_WIDTH,
+    rollLength: ROLL_205_LENGTH,
+    rollArea: ROLL_205_AREA,
+    rollsNeeded: rolls205Needed,
+    totalRollArea: totalArea205,
+    wastePercentage: wastePercent205,
+    wasteArea: waste205,
+  };
+  
+  // Determine which option is better (less total area = less waste = cheaper)
+  const suggestedRoll: '165' | '205' = totalArea165 <= totalArea205 ? '165' : '205';
   
   return {
-    totalArea: baseArea * (1 + irregularSurcharge / 100),
-    rolls165,
-    rolls205,
-    wastePercentage: Math.max(0, wastePercentage),
+    totalArea: totalAreaNeeded,
+    rolls165: suggestedRoll === '165' ? rolls165Needed : 0,
+    rolls205: suggestedRoll === '205' ? rolls205Needed : 0,
+    wastePercentage: suggestedRoll === '165' ? wastePercent165 : wastePercent205,
     irregularSurcharge,
+    simulation165,
+    simulation205,
+    suggestedRoll,
+    baseAreaWithMargin,
   };
 }
 
