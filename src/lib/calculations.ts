@@ -19,7 +19,7 @@ export function calculatePoolMetrics(
   dimensions: PoolDimensions,
   poolType: PoolType
 ): PoolCalculations {
-  const { shape, length, width, depth, lLength2, lWidth2, overflowType, attractions } = dimensions;
+  const { shape, length, width, depth, lLength2, lWidth2, overflowType, attractions, customVertices, customArea, customPerimeter } = dimensions;
   
   // Water depth: depth - 10cm for skimmer pools, = depth for gutter pools
   const waterDepth = overflowType === 'skimmerowy' ? depth - 0.1 : depth;
@@ -31,6 +31,15 @@ export function calculatePoolMetrics(
   let bottomArea: number;
 
   switch (shape) {
+    case 'wlasny':
+      // Custom shape - use pre-calculated values
+      surfaceArea = customArea || 0;
+      bottomArea = surfaceArea;
+      volume = surfaceArea * waterDepth;
+      perimeterLength = customPerimeter || 0;
+      wallArea = perimeterLength * depth;
+      break;
+
     case 'owalny':
       // Oval pool (ellipse approximation)
       surfaceArea = Math.PI * (length / 2) * (width / 2);
