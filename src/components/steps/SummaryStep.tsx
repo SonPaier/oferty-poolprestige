@@ -314,6 +314,14 @@ export function SummaryStep({ onBack, onReset, excavationSettings }: SummaryStep
     return offerNumber;
   };
 
+  const blobToDataUrl = (blob: Blob) =>
+    new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(String(reader.result));
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(blob);
+    });
+
   const handleGeneratePDF = async () => {
     const offerNumber = handleSaveOffer();
     setIsGeneratingPDF(true);
@@ -380,6 +388,7 @@ export function SummaryStep({ onBack, onReset, excavationSettings }: SummaryStep
 
       const { data, error } = await supabase.functions.invoke('generate-pdf', {
         body: pdfData,
+        responseType: 'blob',
       });
 
       if (error) {
@@ -390,18 +399,27 @@ export function SummaryStep({ onBack, onReset, excavationSettings }: SummaryStep
         return;
       }
 
-      if (data?.pdf) {
-        const link = document.createElement('a');
-        link.href = data.pdf;
-        link.download = `Oferta_${offerNumber.replace(/\//g, '-')}_${customerData.contactPerson.replace(/\s+/g, '_')}.pdf`;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-
-        toast.success('PDF wygenerowany!', {
-          description: 'Plik został pobrany na dysk.',
+      if (!data) {
+        toast.error('Błąd generowania PDF', {
+          description: 'Brak danych z serwera',
         });
+        return;
       }
+
+      const pdfBlob = data instanceof Blob ? data : new Blob([data as any], { type: 'application/pdf' });
+      const url = URL.createObjectURL(pdfBlob);
+
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `Oferta_${offerNumber.replace(/\//g, '-')}_${customerData.contactPerson.replace(/\s+/g, '_')}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      toast.success('PDF wygenerowany!', {
+        description: 'Plik został pobrany na dysk.',
+      });
     } catch (err) {
       console.error('PDF error:', err);
       toast.error('Błąd połączenia z serwerem');
@@ -483,6 +501,7 @@ export function SummaryStep({ onBack, onReset, excavationSettings }: SummaryStep
 
       const { data: pdfResult, error: pdfError } = await supabase.functions.invoke('generate-pdf', {
         body: pdfData,
+        responseType: 'blob',
       });
 
       if (pdfError) {
@@ -490,6 +509,16 @@ export function SummaryStep({ onBack, onReset, excavationSettings }: SummaryStep
         toast.error('Błąd generowania PDF');
         return;
       }
+
+      if (!pdfResult) {
+        toast.error('Błąd generowania PDF', { description: 'Brak danych z serwera' });
+        return;
+      }
+
+      const pdfBlob = pdfResult instanceof Blob
+        ? pdfResult
+        : new Blob([pdfResult as any], { type: 'application/pdf' });
+      const pdfBase64 = await blobToDataUrl(pdfBlob);
 
       const template = companySettings.emailTemplate;
       const emailBody = `${template.greeting}\n\n${template.body}\n\n${template.signature}`;
@@ -500,7 +529,7 @@ export function SummaryStep({ onBack, onReset, excavationSettings }: SummaryStep
           cc: template.ccEmail,
           subject: `Oferta ${offerNumber} - Pool Prestige`,
           body: emailBody,
-          pdfBase64: pdfResult?.pdf,
+          pdfBase64,
           pdfFilename: `Oferta_${offerNumber.replace(/\//g, '-')}.pdf`,
         },
       });
