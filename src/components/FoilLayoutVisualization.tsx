@@ -26,7 +26,7 @@ const OVERLAP = 0.1; // 10cm overlap
 const SCALE = 30; // pixels per meter for visualization
 
 export function FoilLayoutVisualization({ dimensions, rollWidth, label }: FoilLayoutVisualizationProps) {
-  const avgDepth = (dimensions.depthShallow + dimensions.depthDeep) / 2;
+  const depth = dimensions.depth;
 
   const layouts = useMemo(() => {
     const result: SurfaceLayout[] = [];
@@ -76,24 +76,24 @@ export function FoilLayoutVisualization({ dimensions, rollWidth, label }: FoilLa
       strips: calculateStrips(dimensions.length, dimensions.width),
     });
 
-    // Long walls (length x depth)
+    // Long walls (length x depth) - strips go along the longer side (length)
     result.push({
       name: 'Ściana boczna (długa)',
       realWidth: dimensions.length,
-      realHeight: avgDepth,
-      strips: calculateStrips(dimensions.length, avgDepth),
+      realHeight: depth,
+      strips: calculateStrips(dimensions.length, depth),
     });
 
     // Short walls (width x depth)
     result.push({
       name: 'Ściana czołowa (krótka)',
       realWidth: dimensions.width,
-      realHeight: avgDepth,
-      strips: calculateStrips(dimensions.width, avgDepth),
+      realHeight: depth,
+      strips: calculateStrips(dimensions.width, depth),
     });
 
     return result;
-  }, [dimensions, rollWidth, avgDepth]);
+  }, [dimensions, rollWidth, depth]);
 
   // Calculate total strips needed
   const totalStrips = layouts.reduce((sum, layout) => {

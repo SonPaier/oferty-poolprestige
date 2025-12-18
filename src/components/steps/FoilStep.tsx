@@ -167,18 +167,17 @@ export function FoilStep({ onNext, onBack }: FoilStepProps) {
                           <div className="grid grid-cols-2 gap-2 text-muted-foreground">
                             <p>Długość: <span className="text-foreground font-medium">{dimensions.length} m</span></p>
                             <p>Szerokość: <span className="text-foreground font-medium">{dimensions.width} m</span></p>
-                            <p>Głębokość płytka: <span className="text-foreground font-medium">{dimensions.depthShallow} m</span></p>
-                            <p>Głębokość głęboka: <span className="text-foreground font-medium">{dimensions.depthDeep} m</span></p>
+                            <p>Głębokość niecki: <span className="text-foreground font-medium">{dimensions.depth} m</span></p>
                             <p>Kształt: <span className="text-foreground font-medium">{poolShapeLabels[dimensions.shape]}</span></p>
                           </div>
                         </div>
 
                         {/* Surface calculation */}
                         {(() => {
-                          const avgDepth = (dimensions.depthShallow + dimensions.depthDeep) / 2;
+                          const depth = dimensions.depth;
                           const bottomArea = dimensions.length * dimensions.width;
-                          const wallsLength = 2 * dimensions.length * avgDepth;
-                          const wallsWidth = 2 * dimensions.width * avgDepth;
+                          const wallsLength = 2 * dimensions.length * depth;
+                          const wallsWidth = 2 * dimensions.width * depth;
                           const totalBase = bottomArea + wallsLength + wallsWidth;
                           const calc = foilCalculation as FoilOptimizationResult | null;
                           
@@ -200,9 +199,9 @@ export function FoilStep({ onNext, onBack }: FoilStepProps) {
                                 <h4 className="font-medium mb-2">Obliczenie powierzchni</h4>
                                 <div className="space-y-1 text-muted-foreground">
                                   <p>Dno basenu: <span className="text-foreground font-medium">{bottomArea.toFixed(2)} m²</span></p>
-                                  <p>Ściany boczne (dł.): <span className="text-foreground font-medium">2 × {dimensions.length} × {avgDepth.toFixed(2)} = {wallsLength.toFixed(2)} m²</span></p>
-                                  <p>Ściany boczne (szer.): <span className="text-foreground font-medium">2 × {dimensions.width} × {avgDepth.toFixed(2)} = {wallsWidth.toFixed(2)} m²</span></p>
-                                  <p className="text-xs italic">* Średnia głębokość: ({dimensions.depthShallow} + {dimensions.depthDeep}) / 2 = {avgDepth.toFixed(2)} m</p>
+                                  <p>Ściany boczne (dł.): <span className="text-foreground font-medium">2 × {dimensions.length} × {depth.toFixed(2)} = {wallsLength.toFixed(2)} m²</span></p>
+                                  <p>Ściany boczne (szer.): <span className="text-foreground font-medium">2 × {dimensions.width} × {depth.toFixed(2)} = {wallsWidth.toFixed(2)} m²</span></p>
+                                  <p className="text-xs italic">* Głębokość niecki: {dimensions.depth} m</p>
                                   <div className="border-t border-border mt-2 pt-2">
                                     <p className="font-medium text-foreground">
                                       Suma podstawowa: {totalBase.toFixed(2)} m²

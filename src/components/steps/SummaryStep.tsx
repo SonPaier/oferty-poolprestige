@@ -149,12 +149,12 @@ export function SummaryStep({ onBack, onReset, excavationSettings }: SummaryStep
           type: poolType,
           length: dimensions.length,
           width: dimensions.width,
-          depthShallow: dimensions.depthShallow,
-          depthDeep: dimensions.depthDeep,
+          depth: dimensions.depth,
           volume: calculations?.volume || 0,
           requiredFlow: calculations?.requiredFlow || 0,
           isIrregular: dimensions.isIrregular,
           irregularSurcharge: companySettings.irregularSurchargePercent,
+          overflowType: dimensions.overflowType,
         },
         sections: Object.entries(sections)
           .filter(([_, section]) => section.items.length > 0)
@@ -241,12 +241,12 @@ export function SummaryStep({ onBack, onReset, excavationSettings }: SummaryStep
           type: poolType,
           length: dimensions.length,
           width: dimensions.width,
-          depthShallow: dimensions.depthShallow,
-          depthDeep: dimensions.depthDeep,
+          depth: dimensions.depth,
           volume: calculations?.volume || 0,
           requiredFlow: calculations?.requiredFlow || 0,
           isIrregular: dimensions.isIrregular,
           irregularSurcharge: companySettings.irregularSurchargePercent,
+          overflowType: dimensions.overflowType,
         },
         sections: Object.entries(sections)
           .filter(([_, section]) => section.items.length > 0)
@@ -414,7 +414,7 @@ export function SummaryStep({ onBack, onReset, excavationSettings }: SummaryStep
               </div>
               <div className="p-2 rounded bg-muted/30">
                 <p className="text-xs text-muted-foreground">Głębokość</p>
-                <p className="font-medium">{dimensions.depthShallow} - {dimensions.depthDeep} m</p>
+                <p className="font-medium">{dimensions.depth} m</p>
               </div>
               <div className="p-2 rounded bg-muted/30">
                 <p className="text-xs text-muted-foreground">Objętość</p>

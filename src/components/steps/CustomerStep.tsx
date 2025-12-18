@@ -76,8 +76,7 @@ export function CustomerStep({ onNext }: CustomerStepProps) {
               ...state.dimensions,
               length: dims.length || state.dimensions.length,
               width: dims.width || state.dimensions.width,
-              depthShallow: dims.depthShallow || state.dimensions.depthShallow,
-              depthDeep: dims.depthDeep || state.dimensions.depthDeep,
+              depth: dims.depth || state.dimensions.depth,
             },
           });
         }
