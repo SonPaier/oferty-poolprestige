@@ -9,30 +9,30 @@
 
 @layer base {
   :root {
-    /* Pool Prestige - Dark aquatic theme */
-    --background: 222 47% 8%;
-    --foreground: 200 20% 95%;
+    /* Pool Prestige - Light aquatic theme */
+    --background: 210 40% 98%;
+    --foreground: 220 30% 15%;
 
-    --card: 220 45% 11%;
-    --card-foreground: 200 20% 95%;
+    --card: 0 0% 100%;
+    --card-foreground: 220 30% 15%;
 
-    --popover: 220 45% 11%;
-    --popover-foreground: 200 20% 95%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 220 30% 15%;
 
     /* Aqua teal primary */
-    --primary: 190 80% 50%;
-    --primary-foreground: 220 47% 8%;
+    --primary: 190 80% 42%;
+    --primary-foreground: 0 0% 100%;
 
-    /* Deep ocean secondary */
-    --secondary: 210 50% 20%;
-    --secondary-foreground: 200 20% 90%;
+    /* Light ocean secondary */
+    --secondary: 210 30% 92%;
+    --secondary-foreground: 220 30% 25%;
 
-    --muted: 215 40% 16%;
-    --muted-foreground: 215 20% 60%;
+    --muted: 210 25% 94%;
+    --muted-foreground: 220 15% 45%;
 
     /* Cyan accent */
-    --accent: 185 70% 45%;
-    --accent-foreground: 220 47% 8%;
+    --accent: 185 70% 38%;
+    --accent-foreground: 0 0% 100%;
 
     --destructive: 0 72% 51%;
     --destructive-foreground: 0 0% 100%;
@@ -41,38 +41,38 @@
     --success-foreground: 0 0% 100%;
 
     --warning: 38 92% 50%;
-    --warning-foreground: 220 47% 8%;
+    --warning-foreground: 220 30% 15%;
 
-    --border: 215 35% 20%;
-    --input: 215 35% 20%;
-    --ring: 190 80% 50%;
+    --border: 210 25% 85%;
+    --input: 210 25% 85%;
+    --ring: 190 80% 42%;
 
     --radius: 0.75rem;
 
     /* Gradient tokens */
-    --gradient-ocean: linear-gradient(135deg, hsl(210 60% 12%) 0%, hsl(220 50% 8%) 100%);
-    --gradient-aqua: linear-gradient(135deg, hsl(190 80% 50%) 0%, hsl(185 70% 45%) 100%);
-    --gradient-glow: radial-gradient(ellipse at center, hsl(190 80% 50% / 0.15) 0%, transparent 70%);
-    --gradient-card: linear-gradient(180deg, hsl(220 45% 13%) 0%, hsl(220 45% 10%) 100%);
+    --gradient-ocean: linear-gradient(135deg, hsl(210 40% 98%) 0%, hsl(200 30% 95%) 100%);
+    --gradient-aqua: linear-gradient(135deg, hsl(190 80% 42%) 0%, hsl(185 70% 38%) 100%);
+    --gradient-glow: radial-gradient(ellipse at center, hsl(190 80% 42% / 0.1) 0%, transparent 70%);
+    --gradient-card: linear-gradient(180deg, hsl(0 0% 100%) 0%, hsl(210 30% 98%) 100%);
     
     /* Shadows */
-    --shadow-glow: 0 0 40px hsl(190 80% 50% / 0.2);
-    --shadow-card: 0 4px 20px hsl(220 60% 5% / 0.5);
-    --shadow-elevated: 0 8px 40px hsl(220 60% 5% / 0.6);
+    --shadow-glow: 0 0 40px hsl(190 80% 42% / 0.2);
+    --shadow-card: 0 4px 20px hsl(220 30% 15% / 0.08);
+    --shadow-elevated: 0 8px 40px hsl(220 30% 15% / 0.12);
 
     /* Sidebar */
-    --sidebar-background: 220 50% 10%;
-    --sidebar-foreground: 200 20% 90%;
-    --sidebar-primary: 190 80% 50%;
-    --sidebar-primary-foreground: 220 47% 8%;
-    --sidebar-accent: 215 40% 18%;
-    --sidebar-accent-foreground: 200 20% 90%;
-    --sidebar-border: 215 35% 20%;
-    --sidebar-ring: 190 80% 50%;
+    --sidebar-background: 0 0% 100%;
+    --sidebar-foreground: 220 30% 25%;
+    --sidebar-primary: 190 80% 42%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 210 30% 95%;
+    --sidebar-accent-foreground: 220 30% 25%;
+    --sidebar-border: 210 25% 88%;
+    --sidebar-ring: 190 80% 42%;
   }
 
   .dark {
-    /* Same as root - dark by default */
+    /* Dark mode can be added later if needed */
   }
 }
 
@@ -100,7 +100,7 @@
 
 @layer components {
   .glass-card {
-    @apply bg-card/80 backdrop-blur-xl border border-border/50 rounded-xl;
+    @apply bg-card border border-border/60 rounded-xl;
     box-shadow: var(--shadow-card);
   }
 
@@ -109,12 +109,12 @@
   }
 
   .glass-card-hover:hover {
-    @apply border-primary/30;
+    @apply border-primary/50;
     box-shadow: var(--shadow-glow);
   }
 
   .glow-text {
-    text-shadow: 0 0 20px hsl(190 80% 50% / 0.5);
+    text-shadow: 0 0 20px hsl(190 80% 42% / 0.4);
   }
 
   .gradient-text {
@@ -151,7 +151,7 @@
     left: 50%;
     width: 200%;
     height: 200%;
-    background: radial-gradient(circle, hsl(190 80% 50% / 0.1) 0%, transparent 50%);
+    background: radial-gradient(circle, hsl(190 80% 42% / 0.08) 0%, transparent 50%);
     transform: translate(-50%, -50%) scale(0);
     transition: transform 0.6s ease-out;
   }
@@ -180,11 +180,11 @@
 
   .btn-primary {
     @apply bg-primary text-primary-foreground hover:bg-primary/90 transition-all duration-200;
-    box-shadow: 0 4px 14px hsl(190 80% 50% / 0.3);
+    box-shadow: 0 4px 14px hsl(190 80% 42% / 0.25);
   }
 
   .btn-primary:hover {
-    box-shadow: 0 6px 20px hsl(190 80% 50% / 0.4);
+    box-shadow: 0 6px 20px hsl(190 80% 42% / 0.35);
   }
 
   .section-header {
@@ -226,10 +226,10 @@
 
 @keyframes pulse-glow {
   0%, 100% {
-    box-shadow: 0 0 20px hsl(190 80% 50% / 0.3);
+    box-shadow: 0 0 20px hsl(190 80% 42% / 0.2);
   }
   50% {
-    box-shadow: 0 0 40px hsl(190 80% 50% / 0.5);
+    box-shadow: 0 0 40px hsl(190 80% 42% / 0.35);
   }
 }
 
@@ -270,5 +270,5 @@
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: hsl(var(--primary) / 0.5);
+  background: hsl(var(--primary) / 0.6);
 }

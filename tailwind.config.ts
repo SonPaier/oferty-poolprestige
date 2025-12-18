@@ -96,7 +96,7 @@ export default {
       },
       backgroundImage: {
         'gradient-radial': 'radial-gradient(var(--tw-gradient-stops))',
-        'gradient-ocean': 'linear-gradient(135deg, hsl(210 60% 12%) 0%, hsl(220 50% 8%) 100%)',
+        'gradient-ocean': 'linear-gradient(135deg, hsl(210 40% 98%) 0%, hsl(200 30% 95%) 100%)',
       },
     },
   },
