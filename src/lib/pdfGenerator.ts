@@ -132,7 +132,7 @@ export function generateOfferPDF({
   addText(`${dimensions.length} x ${dimensions.width} m`, col2, y + 4, { fontSize: 10, fontStyle: 'bold' });
   
   addText('Glebokosc:', col3, y, { fontSize: 9, color: [80, 80, 80] });
-  addText(`${dimensions.depthShallow} - ${dimensions.depthDeep} m`, col3, y + 4, { fontSize: 10, fontStyle: 'bold' });
+  addText(`${dimensions.depth} m`, col3, y + 4, { fontSize: 10, fontStyle: 'bold' });
   
   y += 12;
   
@@ -205,7 +205,7 @@ export function generateOfferPDF({
   
   const excLength = dimensions.length + (excavationSettings.marginWidth * 2);
   const excWidth = dimensions.width + (excavationSettings.marginWidth * 2);
-  const excDepth = ((dimensions.depthShallow + dimensions.depthDeep) / 2) + excavationSettings.marginDepth;
+  const excDepth = dimensions.depth + excavationSettings.marginDepth;
   
   addText(`Wykop: ${excLength.toFixed(1)} x ${excWidth.toFixed(1)} x ${excDepth.toFixed(1)} m = ${excavation.excavationVolume.toFixed(1)} m3`, margin, y, { fontSize: 9 });
   addText(formatPrice(excavation.excavationTotal), pageWidth - margin - 25, y, { fontSize: 9, fontStyle: 'bold' });

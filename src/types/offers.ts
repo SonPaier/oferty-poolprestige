@@ -40,13 +40,12 @@ export function calculateExcavation(
   dimensions: PoolDimensions,
   settings: ExcavationSettings
 ): ExcavationData {
-  const { length, width, depthShallow, depthDeep } = dimensions;
-  const avgDepth = (depthShallow + depthDeep) / 2;
+  const { length, width, depth } = dimensions;
   
   // Excavation dimensions: pool + margins
   const excLength = length + (settings.marginWidth * 2);
   const excWidth = width + (settings.marginWidth * 2);
-  const excDepth = avgDepth + settings.marginDepth;
+  const excDepth = depth + settings.marginDepth;
   
   const excavationVolume = excLength * excWidth * excDepth;
   const excavationTotal = excavationVolume * settings.pricePerM3;

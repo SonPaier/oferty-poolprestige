@@ -29,9 +29,10 @@ const initialDimensions: PoolDimensions = {
   shape: 'prostokatny',
   length: 8,
   width: 4,
-  depthShallow: 1.2,
-  depthDeep: 1.8,
+  depth: 1.5,
   isIrregular: false,
+  overflowType: 'skimmerowy',
+  attractions: 0,
 };
 
 const initialCustomerData: CustomerData = {

@@ -35,7 +35,7 @@ export function ExcavationStep({ onNext, onBack, excavationSettings }: Excavatio
   const excavationDimensions = {
     length: dimensions.length + (excavationSettings.marginWidth * 2),
     width: dimensions.width + (excavationSettings.marginWidth * 2),
-    depth: ((dimensions.depthShallow + dimensions.depthDeep) / 2) + excavationSettings.marginDepth,
+    depth: dimensions.depth + excavationSettings.marginDepth,
   };
 
   const totalExcavationCost = excavation.excavationTotal + excavation.removalFixedPrice;

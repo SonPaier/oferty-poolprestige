@@ -4,7 +4,7 @@ import {
   PoolCalculations, 
   FoilCalculation,
   FilterCalculation,
-  cycleTimeByType 
+  nominalLoadByType
 } from '@/types/configurator';
 import { Product, products, getPriceInPLN } from '@/data/products';
 
@@ -13,15 +13,16 @@ const OVERLAP_M = OVERLAP_CM / 100;
 
 /**
  * Calculate pool volume and dimensions based on shape
+ * NEW DIN formula: (0.37 × volume) / nominal_load + (6 × attractions)
  */
 export function calculatePoolMetrics(
   dimensions: PoolDimensions,
   poolType: PoolType
 ): PoolCalculations {
-  const { shape, length, width, depthShallow, depthDeep, lLength2, lWidth2 } = dimensions;
+  const { shape, length, width, depth, lLength2, lWidth2, overflowType, attractions } = dimensions;
   
-  // Average depth
-  const avgDepth = (depthShallow + depthDeep) / 2;
+  // Water depth: depth - 10cm for skimmer pools, = depth for gutter pools
+  const waterDepth = overflowType === 'skimmerowy' ? depth - 0.1 : depth;
   
   let volume: number;
   let surfaceArea: number;
@@ -34,10 +35,10 @@ export function calculatePoolMetrics(
       // Oval pool (ellipse approximation)
       surfaceArea = Math.PI * (length / 2) * (width / 2);
       bottomArea = surfaceArea;
-      volume = surfaceArea * avgDepth;
+      volume = surfaceArea * waterDepth;
       // Perimeter approximation for ellipse
       perimeterLength = Math.PI * (3 * (length / 2 + width / 2) - Math.sqrt((3 * length / 2 + width / 2) * (length / 2 + 3 * width / 2)));
-      wallArea = perimeterLength * avgDepth;
+      wallArea = perimeterLength * depth; // Wall area uses full depth (niecka)
       break;
 
     case 'litera-l':
@@ -46,10 +47,10 @@ export function calculatePoolMetrics(
       const l2Area = (lLength2 || 3) * (lWidth2 || 2);
       surfaceArea = l1Area + l2Area;
       bottomArea = surfaceArea;
-      volume = surfaceArea * avgDepth;
+      volume = surfaceArea * waterDepth;
       // Perimeter for L-shape
       perimeterLength = 2 * length + 2 * width + 2 * (lLength2 || 3) + 2 * (lWidth2 || 2) - 2 * Math.min(width, lWidth2 || 2);
-      wallArea = perimeterLength * avgDepth;
+      wallArea = perimeterLength * depth;
       break;
 
     case 'prostokatny-schodki-zewnetrzne':
@@ -57,9 +58,9 @@ export function calculatePoolMetrics(
       // Rectangle with steps - slight area increase
       surfaceArea = length * width;
       bottomArea = surfaceArea;
-      volume = surfaceArea * avgDepth * 0.95; // Steps reduce effective volume
+      volume = surfaceArea * waterDepth * 0.95; // Steps reduce effective volume
       perimeterLength = 2 * (length + width) + 2; // Extra for steps
-      wallArea = 2 * length * avgDepth + 2 * width * avgDepth + 3; // Extra for step walls
+      wallArea = 2 * length * depth + 2 * width * depth + 3; // Extra for step walls
       break;
 
     case 'prostokatny':
@@ -67,15 +68,18 @@ export function calculatePoolMetrics(
       // Standard rectangle
       surfaceArea = length * width;
       bottomArea = surfaceArea;
-      volume = surfaceArea * avgDepth;
+      volume = surfaceArea * waterDepth;
       perimeterLength = 2 * (length + width);
-      wallArea = 2 * length * avgDepth + 2 * width * avgDepth;
+      wallArea = 2 * length * depth + 2 * width * depth;
       break;
   }
   
-  // Required flow rate based on pool type (DIN standards)
-  const cycleTime = cycleTimeByType[poolType];
-  const requiredFlow = volume / cycleTime;
+  // NEW DIN formula for filtration flow rate:
+  // (0.37 × volume) / nominal_load + (6 × attractions)
+  // Attractions only apply to public pools (hotelowy)
+  const nominalLoad = nominalLoadByType[poolType];
+  const effectiveAttractions = poolType === 'hotelowy' ? attractions : 0;
+  const requiredFlow = (0.37 * volume) / nominalLoad + (6 * effectiveAttractions);
   
   return {
     volume,
@@ -84,7 +88,7 @@ export function calculatePoolMetrics(
     wallArea,
     bottomArea,
     requiredFlow,
-    cycleTime,
+    waterDepth,
   };
 }
 
@@ -114,12 +118,14 @@ export function calculateFoilOptimization(
   foilType: 'tradycyjna' | 'strukturalna',
   irregularSurchargePercent: number = 20
 ): FoilOptimizationResult {
-  const { length, width, depthShallow, depthDeep, isIrregular } = dimensions;
-  const avgDepth = (depthShallow + depthDeep) / 2;
+  const { length, width, depth, isIrregular } = dimensions;
   
-  // Total foil area needed
+  // Total foil area needed - strips go along the LONGER side
+  const longerSide = Math.max(length, width);
+  const shorterSide = Math.min(length, width);
+  
   const bottomArea = length * width;
-  const wallArea = 2 * (length * avgDepth) + 2 * (width * avgDepth);
+  const wallArea = 2 * (length * depth) + 2 * (width * depth);
   const baseArea = bottomArea + wallArea;
   const baseAreaWithMargin = baseArea * 1.1; // 10% seam allowance
   

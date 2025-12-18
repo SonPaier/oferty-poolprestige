@@ -12,7 +12,7 @@ import {
   Info,
   Waves
 } from 'lucide-react';
-import { PoolType, PoolShape, poolTypeLabels, poolShapeLabels, cycleTimeByType } from '@/types/configurator';
+import { PoolType, PoolShape, PoolOverflowType, poolTypeLabels, poolShapeLabels, overflowTypeLabels, nominalLoadByType } from '@/types/configurator';
 import { calculatePoolMetrics, calculateFoilOptimization } from '@/lib/calculations';
 import { formatPrice } from '@/lib/calculations';
 
@@ -91,6 +91,7 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
   };
 
   const isLShape = dimensions.shape === 'litera-l';
+  const isPublicPool = poolType === 'hotelowy';
 
   return (
     <div className="animate-slide-up">
@@ -148,7 +149,36 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
                   >
                     <span className="font-medium">{poolTypeLabels[type]}</span>
                     <span className="text-xs text-muted-foreground mt-1">
-                      Cykl: {cycleTimeByType[type]}h
+                      Obciążenie: {nominalLoadByType[type]}
+                    </span>
+                  </Label>
+                </div>
+              ))}
+            </RadioGroup>
+          </div>
+
+          {/* Pool Overflow Type (Skimmer / Gutter) */}
+          <div>
+            <Label className="text-base font-medium mb-4 block">Typ przelewu</Label>
+            <RadioGroup
+              value={dimensions.overflowType}
+              onValueChange={(value) => updateDimension('overflowType', value as PoolOverflowType)}
+              className="grid grid-cols-2 gap-3"
+            >
+              {(Object.keys(overflowTypeLabels) as PoolOverflowType[]).map((type) => (
+                <div key={type} className="relative">
+                  <RadioGroupItem
+                    value={type}
+                    id={`overflow-${type}`}
+                    className="peer sr-only"
+                  />
+                  <Label
+                    htmlFor={`overflow-${type}`}
+                    className="flex flex-col items-center justify-center p-4 rounded-lg border border-border bg-muted/30 cursor-pointer transition-all peer-data-[state=checked]:border-primary peer-data-[state=checked]:bg-primary/10 hover:bg-muted/50"
+                  >
+                    <span className="font-medium">{overflowTypeLabels[type]}</span>
+                    <span className="text-xs text-muted-foreground mt-1">
+                      {type === 'skimmerowy' ? 'Woda -10cm od krawędzi' : 'Woda = głębokość niecki'}
                     </span>
                   </Label>
                 </div>
@@ -220,32 +250,41 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
             )}
 
             <div className="space-y-2">
-              <Label htmlFor="depthShallow">Głębokość płytka (m)</Label>
+              <Label htmlFor="depth">Głębokość niecki (m)</Label>
               <Input
-                id="depthShallow"
-                type="number"
-                step="0.1"
-                min="0.5"
-                max="3"
-                value={dimensions.depthShallow}
-                onChange={(e) => updateDimension('depthShallow', parseFloat(e.target.value) || 0)}
-                className="input-field"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="depthDeep">Głębokość głęboka (m)</Label>
-              <Input
-                id="depthDeep"
+                id="depth"
                 type="number"
                 step="0.1"
                 min="0.5"
                 max="5"
-                value={dimensions.depthDeep}
-                onChange={(e) => updateDimension('depthDeep', parseFloat(e.target.value) || 0)}
+                value={dimensions.depth}
+                onChange={(e) => updateDimension('depth', parseFloat(e.target.value) || 0)}
                 className="input-field"
               />
+              <p className="text-xs text-muted-foreground">
+                Głębokość wody: {calculations?.waterDepth?.toFixed(2) || (dimensions.depth - (dimensions.overflowType === 'skimmerowy' ? 0.1 : 0)).toFixed(2)} m
+              </p>
             </div>
+
+            {/* Attractions - only for public pools */}
+            {isPublicPool && (
+              <div className="space-y-2">
+                <Label htmlFor="attractions">Ilość atrakcji</Label>
+                <Input
+                  id="attractions"
+                  type="number"
+                  step="1"
+                  min="0"
+                  max="20"
+                  value={dimensions.attractions}
+                  onChange={(e) => updateDimension('attractions', parseInt(e.target.value) || 0)}
+                  className="input-field"
+                />
+                <p className="text-xs text-muted-foreground">
+                  +{6 * dimensions.attractions} m³/h do filtracji
+                </p>
+              </div>
+            )}
           </div>
 
           <div className="flex items-center justify-between p-4 rounded-lg bg-muted/30 border border-border">
@@ -300,18 +339,27 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
                   <span className="text-muted-foreground">Obwód</span>
                   <span className="font-medium">{calculations.perimeterLength.toFixed(1)} m</span>
                 </div>
+                <div className="flex justify-between p-3 rounded-lg bg-muted/30">
+                  <span className="text-muted-foreground">Głębokość wody</span>
+                  <span className="font-medium">{calculations.waterDepth.toFixed(2)} m</span>
+                </div>
+                <div className="flex justify-between p-3 rounded-lg bg-muted/30">
+                  <span className="text-muted-foreground">Typ przelewu</span>
+                  <span className="font-medium">{overflowTypeLabels[dimensions.overflowType]}</span>
+                </div>
               </div>
 
               <div className="p-4 rounded-lg bg-accent/10 border border-accent/20">
                 <div className="flex items-start gap-2">
                   <Info className="w-4 h-4 text-accent mt-0.5" />
                   <div>
-                    <p className="text-sm font-medium text-accent">Wymagana wydajność filtracji</p>
+                    <p className="text-sm font-medium text-accent">Wydajność filtracji (DIN)</p>
                     <p className="text-2xl font-bold mt-1">
                       {calculations.requiredFlow.toFixed(1)} <span className="text-sm font-normal">m³/h</span>
                     </p>
                     <p className="text-xs text-muted-foreground mt-1">
-                      Cykl wymiany wody: {calculations.cycleTime}h ({poolTypeLabels[poolType]})
+                      Formuła: (0.37 × {calculations.volume.toFixed(1)}) / {nominalLoadByType[poolType]}
+                      {isPublicPool && dimensions.attractions > 0 && ` + (6 × ${dimensions.attractions})`}
                     </p>
                   </div>
                 </div>

@@ -2,14 +2,23 @@ import { Product } from '@/data/products';
 
 export type PoolType = 'prywatny' | 'polprywatny' | 'hotelowy';
 export type PoolShape = 'prostokatny' | 'owalny' | 'litera-l' | 'prostokatny-schodki-zewnetrzne' | 'prostokatny-schodki-narozne';
+export type PoolOverflowType = 'skimmerowy' | 'rynnowy';
+
+// Nominal load values for DIN filtration formula
+export const nominalLoadByType: Record<PoolType, number> = {
+  prywatny: 1,
+  polprywatny: 0.8,
+  hotelowy: 0.5,
+};
 
 export interface PoolDimensions {
   shape: PoolShape;
   length: number;
   width: number;
-  depthShallow: number;
-  depthDeep: number;
+  depth: number; // Single depth (głębokość niecki)
   isIrregular: boolean;
+  overflowType: PoolOverflowType;
+  attractions: number; // Number of attractions (for public pools)
   // Additional dimensions for L-shape
   lLength2?: number; // Second arm length
   lWidth2?: number;  // Second arm width
@@ -21,8 +30,8 @@ export interface PoolCalculations {
   perimeterLength: number;
   wallArea: number;
   bottomArea: number;
-  requiredFlow: number; // m3/h
-  cycleTime: number; // hours
+  requiredFlow: number; // m3/h - wydajność filtracji wg DIN
+  waterDepth: number; // głębokość wody (depth - 10cm for skimmer, = depth for gutter)
 }
 
 export interface FoilCalculation {
@@ -141,9 +150,8 @@ export const poolShapeLabels: Record<PoolShape, string> = {
   'prostokatny-schodki-narozne': 'Prostokątny ze schodkami narożnymi',
 };
 
-// Cycle times in hours based on pool type (DIN standards)
-export const cycleTimeByType: Record<PoolType, number> = {
-  prywatny: 4, // 4 hours
-  polprywatny: 2, // 2 hours  
-  hotelowy: 1.5, // 1.5 hours
+// Overflow type labels
+export const overflowTypeLabels: Record<PoolOverflowType, string> = {
+  skimmerowy: 'Skimmerowy',
+  rynnowy: 'Rynnowy (przelewowy)',
 };
