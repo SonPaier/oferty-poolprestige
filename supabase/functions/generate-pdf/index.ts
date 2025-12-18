@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { encode as encodeBase64 } from "https://deno.land/std@0.168.0/encoding/base64.ts";
 import { jsPDF } from "https://esm.sh/jspdf@2.5.1";
 
 const corsHeaders = {
@@ -7,6 +8,32 @@ const corsHeaders = {
 };
 
 const VAT_RATE = 0.08;
+
+// Font with full Polish diacritics support
+let fontFamily: "helvetica" | "NotoSans" = "helvetica";
+let notoSansRegularBase64 = "";
+let notoSansBoldBase64 = "";
+
+try {
+  const regularBytes = await Deno.readFile(new URL("./NotoSans-Regular.ttf", import.meta.url));
+  const boldBytes = await Deno.readFile(new URL("./NotoSans-Bold.ttf", import.meta.url));
+
+  const regularBuffer = regularBytes.buffer.slice(
+    regularBytes.byteOffset,
+    regularBytes.byteOffset + regularBytes.byteLength,
+  );
+  const boldBuffer = boldBytes.buffer.slice(
+    boldBytes.byteOffset,
+    boldBytes.byteOffset + boldBytes.byteLength,
+  );
+
+  notoSansRegularBase64 = encodeBase64(regularBuffer);
+  notoSansBoldBase64 = encodeBase64(boldBuffer);
+  fontFamily = "NotoSans";
+  console.log("Noto Sans font loaded for Polish characters");
+} catch (e) {
+  console.warn("Could not load embedded font, falling back to Helvetica:", e);
+}
 
 interface OfferItem {
   product: {
@@ -92,6 +119,19 @@ serve(async (req) => {
     console.log("Generating PDF for offer:", data.offerNumber);
 
     const doc = new jsPDF();
+
+    // Register font that supports Polish characters (ą ć ę ł ń ó ś ź ż)
+    if (fontFamily === "NotoSans" && notoSansRegularBase64) {
+      doc.addFileToVFS("NotoSans-Regular.ttf", notoSansRegularBase64);
+      doc.addFont("NotoSans-Regular.ttf", "NotoSans", "normal");
+
+      if (notoSansBoldBase64) {
+        doc.addFileToVFS("NotoSans-Bold.ttf", notoSansBoldBase64);
+        doc.addFont("NotoSans-Bold.ttf", "NotoSans", "bold");
+      }
+
+      doc.setFont("NotoSans", "normal");
+    }
     const pageWidth = doc.internal.pageSize.getWidth();
     const pageHeight = doc.internal.pageSize.getHeight();
     const margin = 15;
@@ -112,7 +152,7 @@ serve(async (req) => {
       options?: { size?: number; style?: string; color?: [number, number, number]; align?: "left" | "center" | "right" }
     ) => {
       doc.setFontSize(options?.size || 10);
-      doc.setFont("helvetica", options?.style || "normal");
+      doc.setFont(fontFamily, options?.style || "normal");
       const color = options?.color || darkText;
       doc.setTextColor(color[0], color[1], color[2]);
       
@@ -219,7 +259,7 @@ serve(async (req) => {
 
     const poolTypeLabels: Record<string, string> = {
       prywatny: "Prywatny",
-      polprywatny: "Polprywatny",
+      polprywatny: "Półprywatny",
       hotelowy: "Hotelowy / Publiczny",
     };
 
@@ -228,13 +268,13 @@ serve(async (req) => {
     const params = [
       { label: "Typ basenu", value: poolTypeLabels[data.poolParams.type] || data.poolParams.type },
       { label: "Wymiary", value: `${data.poolParams.length} x ${data.poolParams.width} m` },
-      { label: "Glebokosc", value: `${data.poolParams.depthShallow} - ${data.poolParams.depthDeep} m` },
-      { label: "Objetosc", value: `${formatNumber(data.poolParams.volume)} m³` },
-      { label: "Wydajnosc filtracji", value: `${formatNumber(data.poolParams.requiredFlow)} m³/h` },
+      { label: "Głębokość", value: `${data.poolParams.depthShallow} - ${data.poolParams.depthDeep} m` },
+      { label: "Objętość", value: `${formatNumber(data.poolParams.volume)} m³` },
+      { label: "Wydajność filtracji", value: `${formatNumber(data.poolParams.requiredFlow)} m³/h` },
     ];
 
     if (data.poolParams.isIrregular) {
-      params.push({ label: "Ksztalt nieregularny", value: `+${data.poolParams.irregularSurcharge}%` });
+      params.push({ label: "Kształt nieregularny", value: `+${data.poolParams.irregularSurcharge}%` });
     }
 
     params.forEach((param, i) => {
@@ -253,10 +293,10 @@ serve(async (req) => {
 
     // === SECTIONS WITH PRODUCTS ===
     const sectionNameMap: Record<string, string> = {
-      "Wykończenie basenu": "WYKONCZENIE BASENU",
+      "Wykończenie basenu": "WYKOŃCZENIE BASENU",
       "Uzbrojenie niecki": "UZBROJENIE NIECKI",
       "Filtracja": "FILTRACJA",
-      "Oświetlenie": "OSWIETLENIE",
+      "Oświetlenie": "OŚWIETLENIE",
       "Automatyka": "AUTOMATYKA",
     };
 
@@ -274,8 +314,8 @@ serve(async (req) => {
 
       // Table header
       addText("Produkt", margin, y, { size: 7, color: grayText });
-      addText("Ilosc", pageWidth - margin - 50, y, { size: 7, color: grayText });
-      addText("Wartosc", pageWidth - margin, y, { size: 7, color: grayText, align: "right" });
+      addText("Ilość", pageWidth - margin - 50, y, { size: 7, color: grayText });
+      addText("Wartość", pageWidth - margin, y, { size: 7, color: grayText, align: "right" });
       y += 4;
 
       for (const item of section.items) {
@@ -311,7 +351,7 @@ serve(async (req) => {
     addText(formatPrice(data.excavation.excavationTotal), pageWidth - margin, y, { size: 8, style: "bold", color: darkText, align: "right" });
     y += 6;
 
-    addText("Wywoz ziemi (ryczalt)", margin, y, { size: 8, color: darkText });
+    addText("Wywóz ziemi (ryczałt)", margin, y, { size: 8, color: darkText });
     addText(formatPrice(data.excavation.removalFixedPrice), pageWidth - margin, y, { size: 8, style: "bold", color: darkText, align: "right" });
     y += 12;
 
@@ -325,7 +365,7 @@ serve(async (req) => {
     const summaryCol2 = pageWidth - margin - 10;
     let summaryY = y + 8;
 
-    addText("Produkty i uslugi:", summaryCol1, summaryY, { size: 9, color: grayText });
+    addText("Produkty i usługi:", summaryCol1, summaryY, { size: 9, color: grayText });
     addText(formatPrice(data.totals.productsTotal), summaryCol2, summaryY, { size: 9, color: darkText, align: "right" });
     summaryY += 7;
 
@@ -355,9 +395,9 @@ serve(async (req) => {
     // === FOOTER ===
     checkPageBreak(25);
     
-    addText("Oferta wazna 30 dni od daty wystawienia.", margin, y, { size: 7, color: grayText });
+    addText("Oferta ważna 30 dni od daty wystawienia.", margin, y, { size: 7, color: grayText });
     y += 4;
-    addText("Ceny nie zawieraja kosztow transportu i montazu, chyba ze zaznaczono inaczej.", margin, y, { size: 7, color: grayText });
+    addText("Ceny nie zawierają kosztów transportu i montażu, chyba że zaznaczono inaczej.", margin, y, { size: 7, color: grayText });
     y += 8;
     
     addLine(y);
