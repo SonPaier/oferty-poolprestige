@@ -15,7 +15,8 @@ const steps: Step[] = [
   { id: 5, label: 'Filtracja', shortLabel: 'Filtr' },
   { id: 6, label: 'Oświetlenie', shortLabel: 'Światło' },
   { id: 7, label: 'Automatyka', shortLabel: 'Auto' },
-  { id: 8, label: 'Podsumowanie', shortLabel: 'Oferta' },
+  { id: 8, label: 'Roboty ziemne', shortLabel: 'Wykop' },
+  { id: 9, label: 'Podsumowanie', shortLabel: 'Oferta' },
 ];
 
 interface StepNavigationProps {
@@ -27,7 +28,7 @@ interface StepNavigationProps {
 export function StepNavigation({ currentStep, onStepClick, completedSteps = [] }: StepNavigationProps) {
   return (
     <div className="glass-card p-4 mb-6">
-      <div className="flex items-center justify-between overflow-x-auto pb-2 gap-2">
+      <div className="flex items-center justify-between overflow-x-auto pb-2 gap-1">
         {steps.map((step, index) => {
           const isActive = currentStep === step.id;
           const isCompleted = completedSteps.includes(step.id) || step.id < currentStep;
@@ -39,41 +40,41 @@ export function StepNavigation({ currentStep, onStepClick, completedSteps = [] }
                 onClick={() => isClickable && onStepClick(step.id)}
                 disabled={!isClickable}
                 className={cn(
-                  "flex flex-col items-center gap-2 transition-all duration-300 group",
+                  "flex flex-col items-center gap-1.5 transition-all duration-300 group",
                   isClickable ? "cursor-pointer" : "cursor-not-allowed opacity-50"
                 )}
               >
                 <div
                   className={cn(
-                    "step-indicator",
-                    isActive && "active",
-                    isCompleted && !isActive && "completed",
-                    !isActive && !isCompleted && "inactive"
+                    "w-8 h-8 lg:w-10 lg:h-10 rounded-full flex items-center justify-center text-xs lg:text-sm font-semibold transition-all duration-300",
+                    isActive && "bg-primary text-primary-foreground shadow-[0_0_20px_hsl(190_80%_50%/0.4)]",
+                    isCompleted && !isActive && "bg-success text-success-foreground",
+                    !isActive && !isCompleted && "bg-muted text-muted-foreground"
                   )}
                 >
                   {isCompleted && !isActive ? (
-                    <Check className="w-5 h-5" />
+                    <Check className="w-4 h-4" />
                   ) : (
                     step.id
                   )}
                 </div>
                 <span
                   className={cn(
-                    "text-xs font-medium transition-colors whitespace-nowrap",
+                    "text-[10px] lg:text-xs font-medium transition-colors whitespace-nowrap",
                     isActive && "text-primary",
                     isCompleted && !isActive && "text-success",
                     !isActive && !isCompleted && "text-muted-foreground"
                   )}
                 >
-                  <span className="hidden lg:inline">{step.label}</span>
-                  <span className="lg:hidden">{step.shortLabel}</span>
+                  <span className="hidden xl:inline">{step.label}</span>
+                  <span className="xl:hidden">{step.shortLabel}</span>
                 </span>
               </button>
               
               {index < steps.length - 1 && (
                 <div
                   className={cn(
-                    "w-8 lg:w-16 h-0.5 mx-2 transition-colors",
+                    "w-4 lg:w-8 xl:w-12 h-0.5 mx-1 transition-colors",
                     step.id < currentStep ? "bg-success" : "bg-border"
                   )}
                 />
