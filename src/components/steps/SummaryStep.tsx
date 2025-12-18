@@ -11,17 +11,24 @@ import {
   Filter, 
   Lightbulb, 
   Cpu,
-  Trash2
+  Trash2,
+  Shovel,
+  Save,
+  Copy
 } from 'lucide-react';
 import { getPriceInPLN } from '@/data/products';
 import { formatPrice } from '@/lib/calculations';
 import { OfferItem, ConfiguratorSection } from '@/types/configurator';
+import { ExcavationData, ExcavationSettings, calculateExcavation, generateOfferNumber, saveOffer, SavedOffer } from '@/types/offers';
 import { toast } from 'sonner';
 
 interface SummaryStepProps {
   onBack: () => void;
   onReset: () => void;
+  excavationSettings: ExcavationSettings;
 }
+
+const VAT_RATE = 0.08; // 8% VAT
 
 const sectionIcons: Record<string, React.ReactNode> = {
   wykonczenie: <Palette className="w-4 h-4" />,
@@ -43,9 +50,11 @@ const sectionLabels: Record<string, string> = {
   dodatki: 'Dodatki',
 };
 
-export function SummaryStep({ onBack, onReset }: SummaryStepProps) {
+export function SummaryStep({ onBack, onReset, excavationSettings }: SummaryStepProps) {
   const { state, dispatch, companySettings } = useConfigurator();
   const { customerData, dimensions, calculations, sections, poolType, foilCalculation } = state;
+
+  const excavation = calculateExcavation(dimensions, excavationSettings);
 
   const removeItem = (sectionKey: keyof typeof sections, itemId: string) => {
     dispatch({
@@ -61,12 +70,42 @@ export function SummaryStep({ onBack, onReset }: SummaryStepProps) {
     }, 0);
   };
 
-  const grandTotal = Object.values(sections).reduce(
+  const productsTotal = Object.values(sections).reduce(
     (sum, section) => sum + calculateSectionTotal(section.items),
     0
   );
 
+  const excavationTotal = excavation.excavationTotal + excavation.removalFixedPrice;
+  const grandTotalNet = productsTotal + excavationTotal;
+  const vatAmount = grandTotalNet * VAT_RATE;
+  const grandTotalGross = grandTotalNet + vatAmount;
+
+  const handleSaveOffer = () => {
+    const offer: SavedOffer = {
+      id: crypto.randomUUID(),
+      offerNumber: generateOfferNumber(),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      customerData,
+      poolType,
+      dimensions,
+      calculations,
+      sections: Object.fromEntries(
+        Object.entries(sections).map(([key, section]) => [key, { items: section.items }])
+      ),
+      excavation,
+      totalNet: grandTotalNet,
+      totalGross: grandTotalGross,
+    };
+
+    saveOffer(offer);
+    toast.success('Oferta została zapisana', {
+      description: `Numer: ${offer.offerNumber}`,
+    });
+  };
+
   const handleGeneratePDF = () => {
+    handleSaveOffer();
     toast.success('Generowanie PDF...', {
       description: 'Oferta zostanie pobrana za chwilę.',
     });
@@ -179,6 +218,28 @@ export function SummaryStep({ onBack, onReset }: SummaryStepProps) {
               </p>
             )}
           </div>
+
+          {/* Excavation summary */}
+          <div className="glass-card p-4">
+            <h4 className="font-medium flex items-center gap-2 mb-3">
+              <Shovel className="w-4 h-4 text-primary" />
+              Roboty ziemne
+            </h4>
+            <div className="space-y-2 text-sm">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Wykop ({excavation.excavationVolume.toFixed(1)} m³)</span>
+                <span>{formatPrice(excavation.excavationTotal)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Wywóz ziemi (ryczałt)</span>
+                <span>{formatPrice(excavation.removalFixedPrice)}</span>
+              </div>
+              <div className="flex justify-between font-medium pt-2 border-t border-border">
+                <span>Razem</span>
+                <span className="text-primary">{formatPrice(excavationTotal)}</span>
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* Middle: Sections */}
@@ -189,38 +250,59 @@ export function SummaryStep({ onBack, onReset }: SummaryStepProps) {
 
           {/* Grand total */}
           <div className="glass-card p-6 bg-primary/5 border-primary/30">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">Wartość oferty netto</p>
-                <p className="text-3xl font-bold text-primary">
-                  {formatPrice(grandTotal)}
-                </p>
+            <div className="space-y-3">
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Produkty i usługi</span>
+                <span>{formatPrice(productsTotal)}</span>
               </div>
-              <div className="text-right text-sm text-muted-foreground">
-                <p>Brutto (23% VAT)</p>
-                <p className="text-lg font-semibold text-foreground">
-                  {formatPrice(grandTotal * 1.23)}
-                </p>
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Roboty ziemne</span>
+                <span>{formatPrice(excavationTotal)}</span>
+              </div>
+              <div className="border-t border-border pt-3">
+                <div className="flex justify-between">
+                  <span className="font-medium">Razem netto</span>
+                  <span className="text-xl font-bold">{formatPrice(grandTotalNet)}</span>
+                </div>
+                <div className="flex justify-between text-sm text-muted-foreground mt-1">
+                  <span>+ VAT 8%</span>
+                  <span>{formatPrice(vatAmount)}</span>
+                </div>
+                <div className="flex justify-between mt-2 pt-2 border-t border-border">
+                  <span className="font-bold">Razem brutto</span>
+                  <span className="text-2xl font-bold text-primary">
+                    {formatPrice(grandTotalGross)}
+                  </span>
+                </div>
               </div>
             </div>
           </div>
         </div>
       </div>
 
-      <div className="flex justify-between mt-6">
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={onBack}>
-            <ArrowLeft className="w-4 h-4 mr-2" />
-            Wstecz
-          </Button>
-          <Button variant="outline" onClick={onReset} className="text-destructive hover:text-destructive">
-            Nowa oferta
-          </Button>
+      {/* Actions */}
+      <div className="glass-card p-4 mt-6">
+        <div className="flex flex-wrap justify-between gap-4">
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={onBack}>
+              <ArrowLeft className="w-4 h-4 mr-2" />
+              Wstecz
+            </Button>
+            <Button variant="outline" onClick={onReset} className="text-destructive hover:text-destructive">
+              Nowa oferta
+            </Button>
+          </div>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={handleSaveOffer}>
+              <Save className="w-4 h-4 mr-2" />
+              Zapisz ofertę
+            </Button>
+            <Button onClick={handleGeneratePDF} className="btn-primary">
+              <Download className="w-4 h-4 mr-2" />
+              Generuj PDF
+            </Button>
+          </div>
         </div>
-        <Button onClick={handleGeneratePDF} className="btn-primary px-8">
-          <Download className="w-4 h-4 mr-2" />
-          Generuj PDF
-        </Button>
       </div>
     </div>
   );
