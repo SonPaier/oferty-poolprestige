@@ -10,7 +10,7 @@ interface HeaderProps {
 
 export function Header({ onSettingsClick, onNewOffer, onHistoryClick }: HeaderProps) {
   return (
-    <header className="glass-card border-b border-border/30 sticky top-0 z-50">
+    <header className="bg-header border-b border-header/80 sticky top-0 z-50 shadow-lg">
       <div className="container mx-auto px-4 lg:px-6 py-3 lg:py-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3 lg:gap-4">
@@ -20,8 +20,8 @@ export function Header({ onSettingsClick, onNewOffer, onHistoryClick }: HeaderPr
               className="h-8 lg:h-10 w-auto object-contain"
             />
             <div className="hidden sm:block">
-              <h1 className="text-base lg:text-lg font-semibold text-foreground">Konfigurator Basenów</h1>
-              <p className="text-xs text-muted-foreground">Profesjonalne wyceny i oferty</p>
+              <h1 className="text-base lg:text-lg font-semibold text-header-foreground">Konfigurator Basenów</h1>
+              <p className="text-xs text-header-foreground/70">Profesjonalne wyceny i oferty</p>
             </div>
           </div>
           
@@ -30,7 +30,7 @@ export function Header({ onSettingsClick, onNewOffer, onHistoryClick }: HeaderPr
               variant="ghost"
               size="sm"
               onClick={onHistoryClick}
-              className="text-muted-foreground hover:text-foreground hover:bg-muted/50"
+              className="text-header-foreground/80 hover:text-header-foreground hover:bg-header-foreground/10"
             >
               <History className="w-4 h-4 lg:mr-2" />
               <span className="hidden lg:inline">Historia</span>
@@ -40,7 +40,7 @@ export function Header({ onSettingsClick, onNewOffer, onHistoryClick }: HeaderPr
               variant="ghost"
               size="sm"
               onClick={onNewOffer}
-              className="text-muted-foreground hover:text-foreground hover:bg-muted/50"
+              className="text-header-foreground/80 hover:text-header-foreground hover:bg-header-foreground/10"
             >
               <FileText className="w-4 h-4 lg:mr-2" />
               <span className="hidden lg:inline">Nowa oferta</span>
@@ -50,7 +50,7 @@ export function Header({ onSettingsClick, onNewOffer, onHistoryClick }: HeaderPr
               variant="ghost"
               size="sm"
               onClick={onSettingsClick}
-              className="text-muted-foreground hover:text-foreground hover:bg-muted/50"
+              className="text-header-foreground/80 hover:text-header-foreground hover:bg-header-foreground/10"
             >
               <Settings className="w-4 h-4 lg:mr-2" />
               <span className="hidden lg:inline">Ustawienia</span>

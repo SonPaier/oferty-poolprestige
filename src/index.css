@@ -47,6 +47,10 @@
     --input: 210 25% 85%;
     --ring: 190 80% 42%;
 
+    /* Header/topbar ocean color */
+    --header: 200 50% 20%;
+    --header-foreground: 0 0% 100%;
+
     --radius: 0.75rem;
 
     /* Gradient tokens */
