@@ -9,14 +9,16 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
+import { Textarea } from '@/components/ui/textarea';
 import { 
   Settings as SettingsIcon, 
   Building, 
   Shovel,
-  Save
+  Save,
+  Mail
 } from 'lucide-react';
-import { CompanySettings } from '@/types/configurator';
-import { ExcavationSettings, defaultExcavationSettings } from '@/types/offers';
+import { CompanySettings, defaultEmailTemplate } from '@/types/configurator';
+import { ExcavationSettings } from '@/types/offers';
 import { toast } from 'sonner';
 
 interface SettingsDialogProps {
@@ -38,9 +40,12 @@ export function SettingsDialog({
 }: SettingsDialogProps) {
   const [company, setCompany] = useState(companySettings);
   const [excavation, setExcavation] = useState(excavationSettings);
+  const [emailTemplate, setEmailTemplate] = useState(
+    companySettings.emailTemplate || defaultEmailTemplate
+  );
 
   const handleSave = () => {
-    onSaveCompanySettings(company);
+    onSaveCompanySettings({ ...company, emailTemplate });
     onSaveExcavationSettings(excavation);
     toast.success('Ustawienia zostały zapisane');
     onClose();
@@ -218,6 +223,62 @@ export function SettingsDialog({
                 />
                 <p className="text-xs text-muted-foreground">
                   Dodatkowa głębokość wykopu
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <Separator />
+
+          {/* Email Template Settings */}
+          <div>
+            <h3 className="font-medium flex items-center gap-2 mb-4">
+              <Mail className="w-4 h-4 text-primary" />
+              Szablon wiadomości email
+            </h3>
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="emailGreeting">Powitanie</Label>
+                <Input
+                  id="emailGreeting"
+                  value={emailTemplate.greeting}
+                  onChange={(e) => setEmailTemplate({ ...emailTemplate, greeting: e.target.value })}
+                  className="input-field"
+                  placeholder="Dzień dobry,"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="emailBody">Treść wiadomości</Label>
+                <Textarea
+                  id="emailBody"
+                  value={emailTemplate.body}
+                  onChange={(e) => setEmailTemplate({ ...emailTemplate, body: e.target.value })}
+                  className="input-field min-h-[80px]"
+                  placeholder="W odpowiedzi na Pana zapytanie ofertowe..."
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="emailSignature">Podpis</Label>
+                <Textarea
+                  id="emailSignature"
+                  value={emailTemplate.signature}
+                  onChange={(e) => setEmailTemplate({ ...emailTemplate, signature: e.target.value })}
+                  className="input-field min-h-[60px]"
+                  placeholder="pozdrawiam,&#10;Imię Nazwisko"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="emailCc">Kopia (CC) - email biura</Label>
+                <Input
+                  id="emailCc"
+                  type="email"
+                  value={emailTemplate.ccEmail}
+                  onChange={(e) => setEmailTemplate({ ...emailTemplate, ccEmail: e.target.value })}
+                  className="input-field"
+                  placeholder="biuro@poolprestige.pl"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Kopia każdej wysłanej oferty trafi na ten adres
                 </p>
               </div>
             </div>

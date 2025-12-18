@@ -14,7 +14,8 @@ import {
   Trash2,
   Shovel,
   Save,
-  Loader2
+  Loader2,
+  Mail
 } from 'lucide-react';
 import { getPriceInPLN } from '@/data/products';
 import { formatPrice } from '@/lib/calculations';
@@ -56,6 +57,7 @@ export function SummaryStep({ onBack, onReset, excavationSettings }: SummaryStep
   const { state, dispatch, companySettings } = useConfigurator();
   const { customerData, dimensions, calculations, sections, poolType, foilCalculation } = state;
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
+  const [isSendingEmail, setIsSendingEmail] = useState(false);
 
   const excavation = calculateExcavation(dimensions, excavationSettings);
 
@@ -189,6 +191,111 @@ export function SummaryStep({ onBack, onReset, excavationSettings }: SummaryStep
       toast.error('Błąd połączenia z serwerem');
     } finally {
       setIsGeneratingPDF(false);
+    }
+  };
+
+  const handleSendEmail = async () => {
+    if (!customerData.email) {
+      toast.error('Brak adresu email klienta', {
+        description: 'Uzupełnij email w danych klienta',
+      });
+      return;
+    }
+
+    const offerNumber = handleSaveOffer();
+    setIsSendingEmail(true);
+
+    try {
+      // First generate PDF
+      const pdfData = {
+        offerNumber,
+        companySettings,
+        customerData,
+        poolParams: {
+          type: poolType,
+          length: dimensions.length,
+          width: dimensions.width,
+          depthShallow: dimensions.depthShallow,
+          depthDeep: dimensions.depthDeep,
+          volume: calculations?.volume || 0,
+          requiredFlow: calculations?.requiredFlow || 0,
+          isIrregular: dimensions.isIrregular,
+          irregularSurcharge: companySettings.irregularSurchargePercent,
+        },
+        sections: Object.entries(sections)
+          .filter(([_, section]) => section.items.length > 0)
+          .map(([key, section]) => ({
+            name: sectionLabels[key] || key,
+            items: section.items.map(item => ({
+              product: {
+                name: item.product.name,
+                symbol: item.product.symbol,
+              },
+              quantity: item.quantity,
+              unitPrice: item.customPrice || getPriceInPLN(item.product),
+            })),
+          })),
+        excavation: {
+          volume: excavation.excavationVolume,
+          pricePerM3: excavation.excavationPricePerM3,
+          excavationTotal: excavation.excavationTotal,
+          removalFixedPrice: excavation.removalFixedPrice,
+        },
+        totals: {
+          productsTotal,
+          excavationTotal,
+          grandTotalNet,
+          vatAmount,
+          grandTotalGross,
+        },
+      };
+
+      const { data: pdfResult, error: pdfError } = await supabase.functions.invoke('generate-pdf', {
+        body: pdfData,
+      });
+
+      if (pdfError) {
+        console.error('PDF generation error:', pdfError);
+        toast.error('Błąd generowania PDF');
+        return;
+      }
+
+      // Build email content from template
+      const template = companySettings.emailTemplate;
+      const emailBody = `${template.greeting}\n\n${template.body}\n\n${template.signature}`;
+
+      // Send email
+      const { data: emailResult, error: emailError } = await supabase.functions.invoke('send-offer-email', {
+        body: {
+          to: customerData.email,
+          cc: template.ccEmail,
+          subject: `Oferta ${offerNumber} - Pool Prestige`,
+          body: emailBody,
+          pdfBase64: pdfResult?.pdf,
+          pdfFilename: `Oferta_${offerNumber.replace(/\//g, '-')}.pdf`,
+        },
+      });
+
+      if (emailError) {
+        console.error('Email error:', emailError);
+        toast.error('Błąd wysyłki email');
+        return;
+      }
+
+      if (emailResult?.mock) {
+        toast.success('Email wysłany (tryb testowy)', {
+          description: `Do: ${customerData.email}. Skonfiguruj RESEND_API_KEY dla prawdziwej wysyłki.`,
+        });
+      } else {
+        toast.success('Email wysłany!', {
+          description: `Oferta została wysłana do ${customerData.email}`,
+        });
+      }
+    } catch (err) {
+      console.error('Email error:', err);
+      toast.error('Błąd połączenia z serwerem');
+    } finally {
+      setIsSendingEmail(false);
     }
   };
 
@@ -372,12 +479,12 @@ export function SummaryStep({ onBack, onReset, excavationSettings }: SummaryStep
               Nowa oferta
             </Button>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <Button variant="outline" onClick={() => handleSaveOffer()}>
               <Save className="w-4 h-4 mr-2" />
               Zapisz ofertę
             </Button>
-            <Button onClick={handleGeneratePDF} className="btn-primary" disabled={isGeneratingPDF}>
+            <Button onClick={handleGeneratePDF} variant="outline" disabled={isGeneratingPDF}>
               {isGeneratingPDF ? (
                 <>
                   <Loader2 className="w-4 h-4 mr-2 animate-spin" />
@@ -386,7 +493,20 @@ export function SummaryStep({ onBack, onReset, excavationSettings }: SummaryStep
               ) : (
                 <>
                   <Download className="w-4 h-4 mr-2" />
-                  Generuj PDF
+                  Pobierz PDF
+                </>
+              )}
+            </Button>
+            <Button onClick={handleSendEmail} className="btn-primary" disabled={isSendingEmail || !customerData.email}>
+              {isSendingEmail ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Wysyłam...
+                </>
+              ) : (
+                <>
+                  <Mail className="w-4 h-4 mr-2" />
+                  Wyślij email
                 </>
               )}
             </Button>
