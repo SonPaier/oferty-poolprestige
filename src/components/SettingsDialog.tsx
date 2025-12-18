@@ -15,7 +15,8 @@ import {
   Building, 
   Shovel,
   Save,
-  Mail
+  Mail,
+  FileText
 } from 'lucide-react';
 import { CompanySettings, defaultEmailTemplate } from '@/types/configurator';
 import { ExcavationSettings } from '@/types/offers';
@@ -43,9 +44,20 @@ export function SettingsDialog({
   const [emailTemplate, setEmailTemplate] = useState(
     companySettings.emailTemplate || defaultEmailTemplate
   );
+  const [notesTemplate, setNotesTemplate] = useState(
+    companySettings.notesTemplate || 'Oferta ważna 30 dni od daty wystawienia.'
+  );
+  const [paymentTermsTemplate, setPaymentTermsTemplate] = useState(
+    companySettings.paymentTermsTemplate || 'Zaliczka 30% przy zamówieniu, pozostałe 70% przed montażem.'
+  );
 
   const handleSave = () => {
-    onSaveCompanySettings({ ...company, emailTemplate });
+    onSaveCompanySettings({ 
+      ...company, 
+      emailTemplate,
+      notesTemplate,
+      paymentTermsTemplate,
+    });
     onSaveExcavationSettings(excavation);
     toast.success('Ustawienia zostały zapisane');
     onClose();
@@ -299,6 +311,38 @@ export function SettingsDialog({
                 <p className="text-xs text-muted-foreground">
                   Kopia każdej wysłanej oferty trafi na ten adres
                 </p>
+              </div>
+            </div>
+          </div>
+
+          <Separator />
+
+          {/* Notes and Payment Terms Templates */}
+          <div>
+            <h3 className="font-medium flex items-center gap-2 mb-4">
+              <FileText className="w-4 h-4 text-primary" />
+              Szablony uwag i warunków płatności
+            </h3>
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="notesTemplate">Szablon uwag</Label>
+                <Textarea
+                  id="notesTemplate"
+                  value={notesTemplate}
+                  onChange={(e) => setNotesTemplate(e.target.value)}
+                  className="input-field min-h-[80px]"
+                  placeholder="Oferta ważna 30 dni od daty wystawienia."
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="paymentTermsTemplate">Szablon warunków płatności</Label>
+                <Textarea
+                  id="paymentTermsTemplate"
+                  value={paymentTermsTemplate}
+                  onChange={(e) => setPaymentTermsTemplate(e.target.value)}
+                  className="input-field min-h-[80px]"
+                  placeholder="Zaliczka 30% przy zamówieniu, pozostałe 70% przed montażem."
+                />
               </div>
             </div>
           </div>
