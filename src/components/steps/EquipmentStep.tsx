@@ -39,9 +39,9 @@ export function EquipmentStep({ onNext, onBack }: EquipmentStepProps) {
     calculateHydraulics(calculations.volume, calculations.requiredFlow) : 
     { nozzles: 2, drains: 1, skimmers: 1 };
 
-  // Override: drains default to 1, skimmers only for gutter (rynnowy) pools
+  // Override: drains default to 1, skimmers only for skimmer pools
   const defaultDrains = 1;
-  const defaultSkimmers = isSkimmerPool ? 0 : hydraulics.skimmers;
+  const defaultSkimmers = isSkimmerPool ? hydraulics.skimmers : 0;
 
   const [selectedItems, setSelectedItems] = useState<Record<string, { product: Product; quantity: number }>>({});
   
@@ -182,7 +182,7 @@ export function EquipmentStep({ onNext, onBack }: EquipmentStepProps) {
             </p>
             <p className="text-xs text-muted-foreground mt-1">
               Typ przelewu: <span className="font-medium">{isSkimmerPool ? 'Skimmerowy' : 'Rynnowy'}</span>
-              {isSkimmerPool && ' (skimmery niedostępne)'}
+              {!isSkimmerPool && ' (skimmery niedostępne)'}
             </p>
           </div>
         </div>
@@ -195,8 +195,8 @@ export function EquipmentStep({ onNext, onBack }: EquipmentStepProps) {
           skimmers, 
           'skimmers',
           undefined,
-          isSkimmerPool,
-          'Skimmery dostępne tylko dla basenów rynnowych'
+          !isSkimmerPool,
+          'Skimmery dostępne tylko dla basenów skimmerowych'
         )}
         {renderProductGroup('Odpływy denne', drains, 'drains')}
         {renderProductGroup('Dysze denne', bottomNozzles, 'bottomNozzles')}
