@@ -4,10 +4,12 @@ import { Button } from '@/components/ui/button';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
 import { ProductCard } from '@/components/ProductCard';
-import { ArrowLeft, Palette, Info } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { ArrowLeft, Palette, Info, Calculator } from 'lucide-react';
 import { products, Product, getPriceInPLN } from '@/data/products';
 import { formatPrice, calculateFoilOptimization } from '@/lib/calculations';
 import { OfferItem } from '@/types/configurator';
+import { poolShapeLabels } from '@/types/configurator';
 
 interface FoilStepProps {
   onNext: () => void;
@@ -116,7 +118,7 @@ export function FoilStep({ onNext, onBack }: FoilStepProps) {
             <div className="mt-6 p-4 rounded-lg bg-accent/10 border border-accent/20">
               <div className="flex items-start gap-2">
                 <Info className="w-4 h-4 text-accent mt-0.5" />
-                <div>
+                <div className="flex-1">
                   <p className="text-sm font-medium">Zapotrzebowanie</p>
                   <p className="text-xl font-bold mt-1">
                     {foilCalculation.totalArea.toFixed(1)} m²
@@ -130,6 +132,92 @@ export function FoilStep({ onNext, onBack }: FoilStepProps) {
                       </p>
                     )}
                   </div>
+                  
+                  <Dialog>
+                    <DialogTrigger asChild>
+                      <Button variant="outline" size="sm" className="mt-3 w-full">
+                        <Calculator className="w-4 h-4 mr-2" />
+                        Zobacz kalkulacje
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent className="max-w-lg">
+                      <DialogHeader>
+                        <DialogTitle>Kalkulacja folii basenowej</DialogTitle>
+                      </DialogHeader>
+                      <div className="space-y-4 text-sm">
+                        {/* Pool dimensions */}
+                        <div className="p-3 rounded-lg bg-muted/50">
+                          <h4 className="font-medium mb-2">Wymiary basenu</h4>
+                          <div className="grid grid-cols-2 gap-2 text-muted-foreground">
+                            <p>Długość: <span className="text-foreground font-medium">{dimensions.length} m</span></p>
+                            <p>Szerokość: <span className="text-foreground font-medium">{dimensions.width} m</span></p>
+                            <p>Głębokość płytka: <span className="text-foreground font-medium">{dimensions.depthShallow} m</span></p>
+                            <p>Głębokość głęboka: <span className="text-foreground font-medium">{dimensions.depthDeep} m</span></p>
+                            <p>Kształt: <span className="text-foreground font-medium">{poolShapeLabels[dimensions.shape]}</span></p>
+                          </div>
+                        </div>
+
+                        {/* Surface calculation */}
+                        {(() => {
+                          const avgDepth = (dimensions.depthShallow + dimensions.depthDeep) / 2;
+                          const bottomArea = dimensions.length * dimensions.width;
+                          const wallsLength = 2 * dimensions.length * avgDepth;
+                          const wallsWidth = 2 * dimensions.width * avgDepth;
+                          const totalBase = bottomArea + wallsLength + wallsWidth;
+                          
+                          return (
+                            <div className="p-3 rounded-lg bg-muted/50">
+                              <h4 className="font-medium mb-2">Obliczenie powierzchni</h4>
+                              <div className="space-y-1 text-muted-foreground">
+                                <p>Dno basenu: <span className="text-foreground font-medium">{bottomArea.toFixed(2)} m²</span></p>
+                                <p>Ściany boczne (dł.): <span className="text-foreground font-medium">2 × {dimensions.length} × {avgDepth.toFixed(2)} = {wallsLength.toFixed(2)} m²</span></p>
+                                <p>Ściany boczne (szer.): <span className="text-foreground font-medium">2 × {dimensions.width} × {avgDepth.toFixed(2)} = {wallsWidth.toFixed(2)} m²</span></p>
+                                <p className="text-xs italic">* Średnia głębokość: ({dimensions.depthShallow} + {dimensions.depthDeep}) / 2 = {avgDepth.toFixed(2)} m</p>
+                                <div className="border-t border-border mt-2 pt-2">
+                                  <p className="font-medium text-foreground">
+                                    Suma podstawowa: {totalBase.toFixed(2)} m²
+                                  </p>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })()}
+
+                        {/* Waste and surcharge */}
+                        <div className="p-3 rounded-lg bg-muted/50">
+                          <h4 className="font-medium mb-2">Naddatki i odpady</h4>
+                          <div className="space-y-1 text-muted-foreground">
+                            <p>Naddatek na spawy (~10%): <span className="text-foreground font-medium">+ {(foilCalculation.totalArea * 0.1 / 1.1).toFixed(2)} m²</span></p>
+                            {foilCalculation.irregularSurcharge > 0 && (
+                              <p>Nieregularny kształt (+{foilCalculation.irregularSurcharge}%): <span className="text-foreground font-medium">+ {(foilCalculation.totalArea * foilCalculation.irregularSurcharge / 100 / (1 + foilCalculation.irregularSurcharge / 100)).toFixed(2)} m²</span></p>
+                            )}
+                            <p>Szacowany odpad: <span className="text-foreground font-medium">~{foilCalculation.wastePercentage.toFixed(1)}%</span></p>
+                          </div>
+                        </div>
+
+                        {/* Roll calculation */}
+                        <div className="p-3 rounded-lg bg-primary/10 border border-primary/20">
+                          <h4 className="font-medium mb-2">Potrzebne rolki</h4>
+                          <div className="space-y-2">
+                            <div className="flex justify-between items-center">
+                              <span className="text-muted-foreground">Rolki 1,65m × 25m (41,25 m²):</span>
+                              <span className="font-bold text-primary">{foilCalculation.rolls165} szt.</span>
+                            </div>
+                            <div className="flex justify-between items-center">
+                              <span className="text-muted-foreground">Rolki 2,05m × 25m (51,25 m²):</span>
+                              <span className="font-bold text-primary">{foilCalculation.rolls205} szt.</span>
+                            </div>
+                            <div className="border-t border-border mt-2 pt-2">
+                              <div className="flex justify-between items-center">
+                                <span className="font-medium">Całkowita powierzchnia:</span>
+                                <span className="font-bold text-lg">{foilCalculation.totalArea.toFixed(1)} m²</span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </DialogContent>
+                  </Dialog>
                 </div>
               </div>
             </div>
