@@ -1,12 +1,13 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useConfigurator } from '@/context/ConfiguratorContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ProductCard } from '@/components/ProductCard';
-import { ArrowLeft, Cpu, Thermometer, Search, Info } from 'lucide-react';
-import { products, Product, getPriceInPLN } from '@/data/products';
+import { ArrowLeft, Cpu, Thermometer, Search, Info, Loader2 } from 'lucide-react';
+import { products, Product, ProductCategory, getPriceInPLN } from '@/data/products';
 import { OfferItem } from '@/types/configurator';
 import { formatPrice } from '@/lib/calculations';
+import { supabase } from '@/integrations/supabase/client';
 
 interface AutomationStepProps {
   onNext: () => void;
@@ -28,47 +29,112 @@ export function AutomationStep({ onNext, onBack }: AutomationStepProps) {
     p.name.toLowerCase().includes('automat')
   );
   
-  // All heating products (heat pumps and heat exchangers)
-  const allHeating = automationProducts.filter(p => 
-    p.name.toLowerCase().includes('pompa ciepła') ||
+  // All heating products from local data (for non-pump items)
+  const localHeating = automationProducts.filter(p => 
     p.name.toLowerCase().includes('wymiennik') ||
-    p.subcategory === 'grzanie'
+    (p.subcategory === 'grzanie' && !p.name.toLowerCase().includes('pompa ciepła'))
   );
-  
-  // Get heat pumps specifically
-  const heatPumps = allHeating.filter(p => 
-    p.name.toLowerCase().includes('pompa ciepła')
-  );
-  
-  // Sort heat pumps by power (extract from name or specs)
-  const sortedHeatPumps = [...heatPumps].sort((a, b) => {
-    const powerA = a.specs?.moc as number || 0;
-    const powerB = b.specs?.moc as number || 0;
-    return powerA - powerB;
-  });
-  
-  // Find suggested pump (closest to recommended power)
-  const suggestedPump = sortedHeatPumps.find(p => {
-    const power = p.specs?.moc as number || 0;
-    return power >= recommendedPower;
-  }) || sortedHeatPumps[sortedHeatPumps.length - 1];
-  
-  // Get alternatives (2 higher power options)
-  const suggestedIndex = sortedHeatPumps.findIndex(p => p.id === suggestedPump?.id);
-  const alternatives = sortedHeatPumps.slice(suggestedIndex + 1, suggestedIndex + 3);
 
   const [selectedItems, setSelectedItems] = useState<Record<string, Product>>({});
   const [searchQuery, setSearchQuery] = useState('');
+  const [dbHeatPumps, setDbHeatPumps] = useState<Product[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [searchResults, setSearchResults] = useState<Product[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
   
-  // Filter heating products by search
-  const filteredHeating = useMemo(() => {
-    if (!searchQuery.trim()) return allHeating;
-    const query = searchQuery.toLowerCase();
-    return allHeating.filter(p => 
-      p.name.toLowerCase().includes(query) ||
-      p.symbol.toLowerCase().includes(query)
-    );
-  }, [allHeating, searchQuery]);
+  // Fetch heat pumps from database on mount
+  useEffect(() => {
+    const fetchHeatPumps = async () => {
+      setIsLoading(true);
+      try {
+        const { data, error } = await supabase
+          .from('products')
+          .select('*')
+          .or('name.ilike.%pompa ciepła%,name.ilike.%heat pump%,category.eq.pompy_ciepla')
+          .order('price', { ascending: true });
+        
+        if (error) throw error;
+        
+        if (data) {
+          const mapped: Product[] = data.map(p => ({
+            id: p.id,
+            symbol: p.symbol,
+            name: p.name,
+            price: p.price,
+            currency: p.currency as 'PLN' | 'EUR',
+            category: (p.category || 'automatyka') as ProductCategory,
+            description: p.description || undefined,
+          }));
+          setDbHeatPumps(mapped);
+        }
+      } catch (err) {
+        console.error('Error fetching heat pumps:', err);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    
+    fetchHeatPumps();
+  }, []);
+  
+  // Search heat pumps in database
+  useEffect(() => {
+    if (!searchQuery.trim()) {
+      setSearchResults([]);
+      return;
+    }
+    
+    const searchPumps = async () => {
+      setIsSearching(true);
+      try {
+        const { data, error } = await supabase
+          .from('products')
+          .select('*')
+          .or(`name.ilike.%${searchQuery}%,symbol.ilike.%${searchQuery}%`)
+          .or('name.ilike.%pompa ciepła%,name.ilike.%heat pump%')
+          .limit(20);
+        
+        if (error) throw error;
+        
+        if (data) {
+          const mapped: Product[] = data.map(p => ({
+            id: p.id,
+            symbol: p.symbol,
+            name: p.name,
+            price: p.price,
+            currency: p.currency as 'PLN' | 'EUR',
+            category: (p.category || 'automatyka') as ProductCategory,
+            description: p.description || undefined,
+          }));
+          // Filter by search query client-side for accuracy
+          const filtered = mapped.filter(p => 
+            p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            p.symbol.toLowerCase().includes(searchQuery.toLowerCase())
+          );
+          setSearchResults(filtered);
+        }
+      } catch (err) {
+        console.error('Error searching heat pumps:', err);
+      } finally {
+        setIsSearching(false);
+      }
+    };
+    
+    const debounce = setTimeout(searchPumps, 300);
+    return () => clearTimeout(debounce);
+  }, [searchQuery]);
+  
+  // Sort heat pumps by price (as proxy for power - higher price = higher power typically)
+  const sortedHeatPumps = useMemo(() => {
+    return [...dbHeatPumps].sort((a, b) => getPriceInPLN(a) - getPriceInPLN(b));
+  }, [dbHeatPumps]);
+  
+  // Find suggested pump (first one that's reasonably priced for the volume)
+  const suggestedPump = sortedHeatPumps.length > 0 ? sortedHeatPumps[Math.min(Math.floor(sortedHeatPumps.length / 3), sortedHeatPumps.length - 1)] : null;
+  
+  // Get alternatives (2 higher power/price options)
+  const suggestedIndex = suggestedPump ? sortedHeatPumps.findIndex(p => p.id === suggestedPump.id) : -1;
+  const alternatives = suggestedIndex >= 0 ? sortedHeatPumps.slice(suggestedIndex + 1, suggestedIndex + 3) : [];
 
   const toggleProduct = (product: Product) => {
     setSelectedItems(prev => {
@@ -191,27 +257,41 @@ export function AutomationStep({ onNext, onBack }: AutomationStepProps) {
             
             {searchQuery && (
               <div className="space-y-2 max-h-48 overflow-y-auto">
-                {filteredHeating.map(product => (
-                  <ProductCard
-                    key={product.id}
-                    product={product}
-                    isSelected={!!selectedItems[product.id]}
-                    onSelect={() => toggleProduct(product)}
-                    compact
-                  />
-                ))}
-                {filteredHeating.length === 0 && (
-                  <p className="text-sm text-muted-foreground text-center py-4">
-                    Brak wyników dla "{searchQuery}"
-                  </p>
+                {isSearching ? (
+                  <div className="flex items-center justify-center py-4">
+                    <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+                  </div>
+                ) : (
+                  <>
+                    {searchResults.map(product => (
+                      <ProductCard
+                        key={product.id}
+                        product={product}
+                        isSelected={!!selectedItems[product.id]}
+                        onSelect={() => toggleProduct(product)}
+                        compact
+                      />
+                    ))}
+                    {searchResults.length === 0 && (
+                      <p className="text-sm text-muted-foreground text-center py-4">
+                        Brak wyników dla "{searchQuery}"
+                      </p>
+                    )}
+                  </>
                 )}
               </div>
             )}
           </div>
           
-          {allHeating.length === 0 && !searchQuery && (
+          {isLoading && (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+            </div>
+          )}
+          
+          {!isLoading && dbHeatPumps.length === 0 && !searchQuery && (
             <p className="text-sm text-muted-foreground text-center py-8">
-              Brak produktów w tej kategorii
+              Brak pomp ciepła w bazie danych
             </p>
           )}
         </div>
