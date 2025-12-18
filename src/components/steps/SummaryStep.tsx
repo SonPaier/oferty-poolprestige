@@ -23,7 +23,8 @@ import { OfferItem, ConfiguratorSection } from '@/types/configurator';
 import { ExcavationSettings, calculateExcavation, generateOfferNumber, saveOffer, SavedOffer } from '@/types/offers';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import logoImage from '@/assets/logo.png';
 
 interface SummaryStepProps {
   onBack: () => void;
@@ -58,6 +59,25 @@ export function SummaryStep({ onBack, onReset, excavationSettings }: SummaryStep
   const { customerData, dimensions, calculations, sections, poolType, foilCalculation } = state;
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
   const [isSendingEmail, setIsSendingEmail] = useState(false);
+  const [logoBase64, setLogoBase64] = useState<string | null>(null);
+
+  // Convert logo to base64 on mount
+  useEffect(() => {
+    const convertLogoToBase64 = async () => {
+      try {
+        const response = await fetch(logoImage);
+        const blob = await response.blob();
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          setLogoBase64(reader.result as string);
+        };
+        reader.readAsDataURL(blob);
+      } catch (err) {
+        console.error('Failed to convert logo to base64:', err);
+      }
+    };
+    convertLogoToBase64();
+  }, []);
 
   const excavation = calculateExcavation(dimensions, excavationSettings);
 
@@ -120,7 +140,10 @@ export function SummaryStep({ onBack, onReset, excavationSettings }: SummaryStep
       // Prepare data for backend
       const pdfData = {
         offerNumber,
-        companySettings,
+        companySettings: {
+          ...companySettings,
+          logoBase64: logoBase64 || undefined,
+        },
         customerData,
         poolParams: {
           type: poolType,
@@ -209,7 +232,10 @@ export function SummaryStep({ onBack, onReset, excavationSettings }: SummaryStep
       // First generate PDF
       const pdfData = {
         offerNumber,
-        companySettings,
+        companySettings: {
+          ...companySettings,
+          logoBase64: logoBase64 || undefined,
+        },
         customerData,
         poolParams: {
           type: poolType,
