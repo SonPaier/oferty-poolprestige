@@ -1,13 +1,18 @@
 import { Product } from '@/data/products';
 
 export type PoolType = 'prywatny' | 'polprywatny' | 'hotelowy';
+export type PoolShape = 'prostokatny' | 'owalny' | 'litera-l' | 'prostokatny-schodki-zewnetrzne' | 'prostokatny-schodki-narozne';
 
 export interface PoolDimensions {
+  shape: PoolShape;
   length: number;
   width: number;
   depthShallow: number;
   depthDeep: number;
   isIrregular: boolean;
+  // Additional dimensions for L-shape
+  lLength2?: number; // Second arm length
+  lWidth2?: number;  // Second arm width
 }
 
 export interface PoolCalculations {
@@ -126,6 +131,14 @@ export const poolTypeLabels: Record<PoolType, string> = {
   prywatny: 'Prywatny',
   polprywatny: 'Półprywatny',
   hotelowy: 'Hotelowy / Publiczny',
+};
+
+export const poolShapeLabels: Record<PoolShape, string> = {
+  prostokatny: 'Prostokątny',
+  owalny: 'Owalny',
+  'litera-l': 'Litera L',
+  'prostokatny-schodki-zewnetrzne': 'Prostokątny ze schodkami zewn.',
+  'prostokatny-schodki-narozne': 'Prostokątny ze schodkami narożnymi',
 };
 
 // Cycle times in hours based on pool type (DIN standards)

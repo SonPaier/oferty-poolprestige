@@ -26,6 +26,7 @@ type ConfiguratorAction =
   | { type: 'RESET' };
 
 const initialDimensions: PoolDimensions = {
+  shape: 'prostokatny',
   length: 8,
   width: 4,
   depthShallow: 1.2,
