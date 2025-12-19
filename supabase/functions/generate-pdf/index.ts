@@ -249,25 +249,27 @@ serve(async (req) => {
     };
 
     // === HEADER ===
-    // Header background (matching topbar style)
-    const headerHeight = 70;
+    // Header background (matching topbar style) - increased height with more padding
+    const headerHeight = 85;
     drawRect(0, pageHeight - headerHeight, pageWidth, headerHeight, primaryColor);
     
-    // Logo - full height of header
+    // Logo - centered vertically in header
     let logoWidth = 0;
     if (data.companySettings.logoBase64) {
       try {
         const logoData = data.companySettings.logoBase64.split(",")[1] || data.companySettings.logoBase64;
         const logoBytes = Uint8Array.from(atob(logoData), c => c.charCodeAt(0));
         const logoImage = await pdfDoc.embedPng(logoBytes);
-        const logoMaxHeight = (headerHeight - 10) * 0.5; // 50% smaller
+        const logoMaxHeight = (headerHeight - 20) * 0.5; // 50% of available space
         const scale = logoMaxHeight / logoImage.height;
         const scaledWidth = logoImage.width * scale;
         const scaledHeight = logoImage.height * scale;
         logoWidth = scaledWidth + 15;
+        // Center logo vertically in header
+        const logoY = pageHeight - headerHeight + (headerHeight - scaledHeight) / 2;
         page.drawImage(logoImage, { 
           x: margin, 
-          y: pageHeight - headerHeight + 5, 
+          y: logoY, 
           width: scaledWidth, 
           height: scaledHeight 
         });
@@ -276,20 +278,22 @@ serve(async (req) => {
       }
     }
 
-    // Company info (white text on blue background)
+    // Company info (white text on blue background) - centered vertically
     const headerX = margin + logoWidth;
-    drawText(data.companySettings.name.toUpperCase(), headerX, pageHeight - 25, { size: 14, font: fontBold, color: rgb(1, 1, 1) });
-    drawText(`${data.companySettings.address}, ${data.companySettings.postalCode} ${data.companySettings.city}`, headerX, pageHeight - 40, { size: 8, color: rgb(0.9, 0.9, 0.9) });
-    drawText(`Tel: ${data.companySettings.phone} | Email: ${data.companySettings.email}`, headerX, pageHeight - 52, { size: 8, color: rgb(0.9, 0.9, 0.9) });
-    drawText(`NIP: ${data.companySettings.nip} | ${data.companySettings.website}`, headerX, pageHeight - 64, { size: 8, color: rgb(0.9, 0.9, 0.9) });
+    const textBlockHeight = 50; // approximate height of all text lines
+    const textStartY = pageHeight - (headerHeight - textBlockHeight) / 2;
+    drawText(data.companySettings.name.toUpperCase(), headerX, textStartY - 5, { size: 14, font: fontBold, color: rgb(1, 1, 1) });
+    drawText(`${data.companySettings.address}, ${data.companySettings.postalCode} ${data.companySettings.city}`, headerX, textStartY - 20, { size: 8, color: rgb(0.9, 0.9, 0.9) });
+    drawText(`Tel: ${data.companySettings.phone} | Email: ${data.companySettings.email}`, headerX, textStartY - 32, { size: 8, color: rgb(0.9, 0.9, 0.9) });
+    drawText(`NIP: ${data.companySettings.nip} | ${data.companySettings.website}`, headerX, textStartY - 44, { size: 8, color: rgb(0.9, 0.9, 0.9) });
 
-    // Offer info (in header, right corner - white text)
+    // Offer info (in header, right corner - white text) - centered vertically
     const currentDate = new Date().toLocaleDateString("pl-PL", { year: "numeric", month: "long", day: "numeric" });
-    drawTextRight("OFERTA", pageWidth - margin, pageHeight - 20, { size: 9, color: rgb(0.8, 0.9, 1) });
-    drawTextRight(data.offerNumber, pageWidth - margin, pageHeight - 35, { size: 12, font: fontBold, color: rgb(1, 1, 1) });
-    drawTextRight(currentDate, pageWidth - margin, pageHeight - 50, { size: 8, color: rgb(0.8, 0.9, 1) });
+    drawTextRight("OFERTA", pageWidth - margin, textStartY - 5, { size: 9, color: rgb(0.8, 0.9, 1) });
+    drawTextRight(data.offerNumber, pageWidth - margin, textStartY - 20, { size: 12, font: fontBold, color: rgb(1, 1, 1) });
+    drawTextRight(currentDate, pageWidth - margin, textStartY - 35, { size: 8, color: rgb(0.8, 0.9, 1) });
 
-    y = pageHeight - 90;
+    y = pageHeight - headerHeight - 20;
     drawLine(y, primaryColor);
     y -= 25;
 
