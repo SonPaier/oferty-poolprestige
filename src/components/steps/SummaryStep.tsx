@@ -27,7 +27,8 @@ import {
   Mail,
   Percent,
   Edit2,
-  Package
+  Package,
+  Plus
 } from 'lucide-react';
 import { getPriceInPLN, products } from '@/data/products';
 import { formatPrice } from '@/lib/calculations';
@@ -68,6 +69,7 @@ interface InneItem {
   quantity: number;
   unitPrice: number;
   discount: number;
+  isCustom?: boolean;
 }
 
 const sectionIcons: Record<string, React.ReactNode> = {
@@ -142,9 +144,45 @@ export function SummaryStep({ onBack, onReset, excavationSettings }: SummaryStep
         quantity,
         unitPrice,
         discount: 100,
+        isCustom: false,
       };
     });
   });
+
+  // State for adding new custom item
+  const [newCustomItem, setNewCustomItem] = useState({
+    name: '',
+    unitPrice: 0,
+    quantity: 1,
+    unit: 'szt',
+  });
+  const [isAddingCustomItem, setIsAddingCustomItem] = useState(false);
+
+  const addCustomItem = () => {
+    if (!newCustomItem.name.trim() || newCustomItem.unitPrice <= 0) {
+      toast.error('Uzupełnij nazwę i cenę pozycji');
+      return;
+    }
+
+    const customItem: InneItem = {
+      id: `custom-${Date.now()}`,
+      name: newCustomItem.name.trim(),
+      unit: newCustomItem.unit,
+      quantity: newCustomItem.quantity,
+      unitPrice: newCustomItem.unitPrice,
+      discount: 100,
+      isCustom: true,
+    };
+
+    setInneItems(prev => [...prev, customItem]);
+    setNewCustomItem({ name: '', unitPrice: 0, quantity: 1, unit: 'szt' });
+    setIsAddingCustomItem(false);
+    toast.success('Dodano własną pozycję');
+  };
+
+  const removeInneItem = (itemId: string) => {
+    setInneItems(prev => prev.filter(item => item.id !== itemId));
+  };
 
   // Update INNE items when pool dimensions change
   useEffect(() => {
@@ -766,30 +804,132 @@ export function SummaryStep({ onBack, onReset, excavationSettings }: SummaryStep
                 <Package className="w-4 h-4 text-primary" />
                 Inne
               </h4>
-              <span className="text-sm font-semibold text-primary">
-                {formatPrice(inneTotal)}
-              </span>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setIsAddingCustomItem(true)}
+                  className="h-7 text-xs"
+                >
+                  <Plus className="w-3 h-3 mr-1" />
+                  Dodaj pozycję
+                </Button>
+                <span className="text-sm font-semibold text-primary">
+                  {formatPrice(inneTotal)}
+                </span>
+              </div>
             </div>
             
             <div className="space-y-2">
+              {/* Add custom item form */}
+              {isAddingCustomItem && (
+                <div className="p-3 rounded bg-primary/10 border border-primary/30 space-y-3">
+                  <div className="flex items-center gap-2">
+                    <Input
+                      placeholder="Nazwa pozycji"
+                      value={newCustomItem.name}
+                      onChange={(e) => setNewCustomItem(prev => ({ ...prev, name: e.target.value }))}
+                      className="flex-1 h-8 text-sm input-field"
+                    />
+                  </div>
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs text-muted-foreground">Ilość:</span>
+                      <Input
+                        type="number"
+                        min={1}
+                        value={newCustomItem.quantity}
+                        onChange={(e) => setNewCustomItem(prev => ({ ...prev, quantity: parseFloat(e.target.value) || 1 }))}
+                        className="w-16 h-7 text-xs input-field"
+                      />
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs text-muted-foreground">Jednostka:</span>
+                      <Select
+                        value={newCustomItem.unit}
+                        onValueChange={(val) => setNewCustomItem(prev => ({ ...prev, unit: val }))}
+                      >
+                        <SelectTrigger className="w-20 h-7 text-xs input-field">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="szt">szt</SelectItem>
+                          <SelectItem value="usł">usł</SelectItem>
+                          <SelectItem value="m²">m²</SelectItem>
+                          <SelectItem value="m">m</SelectItem>
+                          <SelectItem value="kpl">kpl</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs text-muted-foreground">Cena:</span>
+                      <Input
+                        type="number"
+                        min={0}
+                        step={10}
+                        value={newCustomItem.unitPrice}
+                        onChange={(e) => setNewCustomItem(prev => ({ ...prev, unitPrice: parseFloat(e.target.value) || 0 }))}
+                        className="w-24 h-7 text-xs input-field"
+                      />
+                      <span className="text-xs text-muted-foreground">PLN</span>
+                    </div>
+                  </div>
+                  <div className="flex justify-end gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setIsAddingCustomItem(false);
+                        setNewCustomItem({ name: '', unitPrice: 0, quantity: 1, unit: 'szt' });
+                      }}
+                      className="h-7 text-xs"
+                    >
+                      Anuluj
+                    </Button>
+                    <Button
+                      size="sm"
+                      onClick={addCustomItem}
+                      className="h-7 text-xs"
+                    >
+                      Dodaj
+                    </Button>
+                  </div>
+                </div>
+              )}
+              
               {inneItems.map((item, index) => {
                 const itemTotal = item.unitPrice * item.quantity * (item.discount / 100);
                 
                 return (
                   <div 
                     key={item.id}
-                    className="p-3 rounded bg-muted/30 text-sm space-y-2"
+                    className={`p-3 rounded text-sm space-y-2 ${item.isCustom ? 'bg-primary/5 border border-primary/20' : 'bg-muted/30'}`}
                   >
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex-1 min-w-0">
-                        <p className="font-medium">{item.name}</p>
+                        <p className="font-medium">
+                          {item.name}
+                          {item.isCustom && (
+                            <span className="ml-2 text-xs text-primary">(własna pozycja)</span>
+                          )}
+                        </p>
                         <p className="text-xs text-muted-foreground">
                           {item.quantity} {item.unit} × {formatPrice(item.unitPrice)}
                         </p>
                       </div>
-                      <span className="font-medium whitespace-nowrap">
-                        {formatPrice(itemTotal)}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium whitespace-nowrap">
+                          {formatPrice(itemTotal)}
+                        </span>
+                        {item.isCustom && (
+                          <button
+                            onClick={() => removeInneItem(item.id)}
+                            className="p-1 hover:bg-destructive/20 rounded text-muted-foreground hover:text-destructive transition-colors"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        )}
+                      </div>
                     </div>
                     
                     {/* Editable fields */}
