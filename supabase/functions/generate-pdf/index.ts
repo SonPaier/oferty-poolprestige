@@ -260,7 +260,7 @@ serve(async (req) => {
         const logoData = data.companySettings.logoBase64.split(",")[1] || data.companySettings.logoBase64;
         const logoBytes = Uint8Array.from(atob(logoData), c => c.charCodeAt(0));
         const logoImage = await pdfDoc.embedPng(logoBytes);
-        const logoMaxHeight = headerHeight - 10; // 5px padding top/bottom
+        const logoMaxHeight = (headerHeight - 10) * 0.5; // 50% smaller
         const scale = logoMaxHeight / logoImage.height;
         const scaledWidth = logoImage.width * scale;
         const scaledHeight = logoImage.height * scale;
