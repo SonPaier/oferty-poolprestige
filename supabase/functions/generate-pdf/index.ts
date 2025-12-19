@@ -249,35 +249,41 @@ serve(async (req) => {
     };
 
     // === HEADER ===
+    // Header background (matching topbar style)
+    drawRect(0, pageHeight - 70, pageWidth, 70, primaryColor);
+    
     // Logo
+    let logoWidth = 0;
     if (data.companySettings.logoBase64) {
       try {
         const logoData = data.companySettings.logoBase64.split(",")[1] || data.companySettings.logoBase64;
         const logoBytes = Uint8Array.from(atob(logoData), c => c.charCodeAt(0));
         const logoImage = await pdfDoc.embedPng(logoBytes);
-        const logoDims = logoImage.scale(0.15);
-        page.drawImage(logoImage, { x: margin, y: y - logoDims.height, width: logoDims.width, height: logoDims.height });
+        const logoDims = logoImage.scale(0.25); // Bigger logo
+        logoWidth = logoDims.width + 15;
+        page.drawImage(logoImage, { x: margin, y: pageHeight - 55, width: logoDims.width, height: logoDims.height });
       } catch (e) {
         console.log("Could not add logo:", e);
       }
     }
 
-    // Company info
-    const headerX = margin + (data.companySettings.logoBase64 ? 80 : 0);
-    drawText(data.companySettings.name.toUpperCase(), headerX, y - 5, { size: 16, font: fontBold, color: primaryColor });
-    drawText(`${data.companySettings.address}, ${data.companySettings.postalCode} ${data.companySettings.city}`, headerX, y - 20, { size: 9, color: grayText });
-    drawText(`Tel: ${data.companySettings.phone} | Email: ${data.companySettings.email}`, headerX, y - 32, { size: 9, color: grayText });
-    drawText(`NIP: ${data.companySettings.nip} | ${data.companySettings.website}`, headerX, y - 44, { size: 9, color: grayText });
+    // Company info (white text on blue background)
+    const headerX = margin + logoWidth;
+    drawText(data.companySettings.name.toUpperCase(), headerX, pageHeight - 25, { size: 14, font: fontBold, color: rgb(1, 1, 1) });
+    drawText(`${data.companySettings.address}, ${data.companySettings.postalCode} ${data.companySettings.city}`, headerX, pageHeight - 40, { size: 8, color: rgb(0.9, 0.9, 0.9) });
+    drawText(`Tel: ${data.companySettings.phone} | Email: ${data.companySettings.email}`, headerX, pageHeight - 52, { size: 8, color: rgb(0.9, 0.9, 0.9) });
+    drawText(`NIP: ${data.companySettings.nip} | ${data.companySettings.website}`, headerX, pageHeight - 64, { size: 8, color: rgb(0.9, 0.9, 0.9) });
 
-    // Offer box
-    const offerBoxWidth = 120;
+    // Offer box (positioned below header)
+    y = pageHeight - 90;
+    const offerBoxWidth = 140;
     const offerBoxX = pageWidth - margin - offerBoxWidth;
-    drawRect(offerBoxX, y - 50, offerBoxWidth, 50, lightGray);
-    drawText("OFERTA", offerBoxX + 45, y - 18, { size: 9, color: grayText });
-    drawText(data.offerNumber, offerBoxX + 20, y - 32, { size: 11, font: fontBold, color: primaryColor });
+    drawRect(offerBoxX, y - 45, offerBoxWidth, 50, lightGray);
+    drawText("OFERTA", offerBoxX + 50, y - 15, { size: 9, color: grayText });
+    drawText(data.offerNumber, offerBoxX + 15, y - 30, { size: 11, font: fontBold, color: primaryColor });
     
     const currentDate = new Date().toLocaleDateString("pl-PL", { year: "numeric", month: "long", day: "numeric" });
-    drawText(currentDate, offerBoxX + 25, y - 45, { size: 8, color: grayText });
+    drawText(currentDate, offerBoxX + 25, y - 42, { size: 8, color: grayText });
 
     y -= 60;
     drawLine(y, primaryColor);
@@ -390,10 +396,11 @@ serve(async (req) => {
         drawText(item.product.name, colProduct, y, { size: 9, color: darkText, maxWidth: maxNameWidth });
         
         const discount = item.discount ?? 100;
+        const actualDiscount = 100 - discount; // Convert: 95% means 5% discount displayed
         const itemTotal = item.unitPrice * item.quantity * (discount / 100);
         
         drawText(`${item.quantity} szt.`, colQty, y, { size: 9, color: grayText });
-        drawText(`${discount}%`, colDiscount, y, { size: 9, color: discount < 100 ? accentColor : grayText });
+        drawText(`${actualDiscount}%`, colDiscount, y, { size: 9, color: actualDiscount > 0 ? accentColor : grayText });
         drawTextRight(formatPrice(itemTotal), colValue, y, { size: 9, font: fontBold, color: darkText });
 
         y -= 16;
@@ -429,10 +436,11 @@ serve(async (req) => {
         const maxNameWidth = colQty - colProduct - 20;
         drawText(item.name, colProduct, y, { size: 9, color: darkText, maxWidth: maxNameWidth });
         
+        const actualDiscount = 100 - item.discount; // Convert: 95% means 5% discount displayed
         const itemTotal = item.unitPrice * item.quantity * (item.discount / 100);
         
         drawText(`${item.quantity} ${item.unit}`, colQty, y, { size: 9, color: grayText });
-        drawText(`${item.discount}%`, colDiscount, y, { size: 9, color: item.discount < 100 ? accentColor : grayText });
+        drawText(`${actualDiscount}%`, colDiscount, y, { size: 9, color: actualDiscount > 0 ? accentColor : grayText });
         drawTextRight(formatPrice(itemTotal), colValue, y, { size: 9, font: fontBold, color: darkText });
 
         y -= 16;
