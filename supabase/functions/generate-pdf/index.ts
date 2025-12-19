@@ -98,19 +98,41 @@ const formatNumber = (num: number, decimals: number = 1): string => {
   return num.toFixed(decimals).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
 };
 
-// Load and cache fonts (local files bundled with this function)
+// Load and cache fonts.
+// Note: some deployments may not bundle binary assets next to index.ts, so we fall back to remote download.
 let cachedFont: Uint8Array | null = null;
 let cachedFontBold: Uint8Array | null = null;
 
+const REMOTE_FONT_REGULAR =
+  "https://cdn.jsdelivr.net/npm/@fontsource/noto-sans@5.0.0/files/noto-sans-latin-ext-400-normal.ttf";
+const REMOTE_FONT_BOLD =
+  "https://cdn.jsdelivr.net/npm/@fontsource/noto-sans@5.0.0/files/noto-sans-latin-ext-700-normal.ttf";
+
+async function readLocalFont(path: string) {
+  try {
+    const url = new URL(path, import.meta.url);
+    return await Deno.readFile(url);
+  } catch (e) {
+    console.warn(`Local font not available (${path}) – falling back to remote`, e);
+    return null;
+  }
+}
+
+async function fetchFont(url: string) {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Font download failed: ${res.status} ${res.statusText}`);
+  return new Uint8Array(await res.arrayBuffer());
+}
+
 async function loadFonts() {
   if (!cachedFont) {
-    console.log("Loading Noto Sans font (local TTF)...");
-    cachedFont = await Deno.readFile(new URL("./NotoSans-Regular.ttf", import.meta.url));
+    console.log("Loading Noto Sans Regular...");
+    cachedFont = (await readLocalFont("./NotoSans-Regular.ttf")) ?? (await fetchFont(REMOTE_FONT_REGULAR));
     console.log("Noto Sans Regular loaded");
   }
   if (!cachedFontBold) {
-    console.log("Loading Noto Sans Bold font (local TTF)...");
-    cachedFontBold = await Deno.readFile(new URL("./NotoSans-Bold.ttf", import.meta.url));
+    console.log("Loading Noto Sans Bold...");
+    cachedFontBold = (await readLocalFont("./NotoSans-Bold.ttf")) ?? (await fetchFont(REMOTE_FONT_BOLD));
     console.log("Noto Sans Bold loaded");
   }
   return { regular: cachedFont, bold: cachedFontBold };
@@ -125,8 +147,14 @@ serve(async (req) => {
     const data: PDFRequest = await req.json();
     console.log("Generating PDF for offer:", data.offerNumber);
 
-    // Load fonts
-    const fonts = await loadFonts();
+    // Load fonts (fallback to standard fonts if anything goes wrong)
+    let fonts: { regular: Uint8Array; bold: Uint8Array } | null = null;
+    try {
+      fonts = await loadFonts();
+    } catch (e) {
+      console.warn("Font load failed – using Helvetica:", e);
+      fonts = null;
+    }
 
     // Create PDF document
     const pdfDoc = await PDFDocument.create();
@@ -135,6 +163,7 @@ serve(async (req) => {
     // Embed fonts
     let fontRegular, fontBold;
     try {
+      if (!fonts) throw new Error("Fonts not available");
       fontRegular = await pdfDoc.embedFont(fonts.regular, { subset: true });
       fontBold = await pdfDoc.embedFont(fonts.bold, { subset: true });
       console.log("Custom fonts embedded successfully");
