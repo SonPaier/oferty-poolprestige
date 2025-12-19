@@ -283,18 +283,13 @@ serve(async (req) => {
     drawText(`Tel: ${data.companySettings.phone} | Email: ${data.companySettings.email}`, headerX, pageHeight - 52, { size: 8, color: rgb(0.9, 0.9, 0.9) });
     drawText(`NIP: ${data.companySettings.nip} | ${data.companySettings.website}`, headerX, pageHeight - 64, { size: 8, color: rgb(0.9, 0.9, 0.9) });
 
-    // Offer box (positioned below header)
-    y = pageHeight - 90;
-    const offerBoxWidth = 140;
-    const offerBoxX = pageWidth - margin - offerBoxWidth;
-    drawRect(offerBoxX, y - 45, offerBoxWidth, 50, lightGray);
-    drawText("OFERTA", offerBoxX + 50, y - 15, { size: 9, color: grayText });
-    drawText(data.offerNumber, offerBoxX + 15, y - 30, { size: 11, font: fontBold, color: primaryColor });
-    
+    // Offer info (in header, right corner - white text)
     const currentDate = new Date().toLocaleDateString("pl-PL", { year: "numeric", month: "long", day: "numeric" });
-    drawText(currentDate, offerBoxX + 25, y - 42, { size: 8, color: grayText });
+    drawTextRight("OFERTA", pageWidth - margin, pageHeight - 20, { size: 9, color: rgb(0.8, 0.9, 1) });
+    drawTextRight(data.offerNumber, pageWidth - margin, pageHeight - 35, { size: 12, font: fontBold, color: rgb(1, 1, 1) });
+    drawTextRight(currentDate, pageWidth - margin, pageHeight - 50, { size: 8, color: rgb(0.8, 0.9, 1) });
 
-    y -= 60;
+    y = pageHeight - 90;
     drawLine(y, primaryColor);
     y -= 25;
 
