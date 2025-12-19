@@ -250,18 +250,27 @@ serve(async (req) => {
 
     // === HEADER ===
     // Header background (matching topbar style)
-    drawRect(0, pageHeight - 70, pageWidth, 70, primaryColor);
+    const headerHeight = 70;
+    drawRect(0, pageHeight - headerHeight, pageWidth, headerHeight, primaryColor);
     
-    // Logo
+    // Logo - full height of header
     let logoWidth = 0;
     if (data.companySettings.logoBase64) {
       try {
         const logoData = data.companySettings.logoBase64.split(",")[1] || data.companySettings.logoBase64;
         const logoBytes = Uint8Array.from(atob(logoData), c => c.charCodeAt(0));
         const logoImage = await pdfDoc.embedPng(logoBytes);
-        const logoDims = logoImage.scale(0.25); // Bigger logo
-        logoWidth = logoDims.width + 15;
-        page.drawImage(logoImage, { x: margin, y: pageHeight - 55, width: logoDims.width, height: logoDims.height });
+        const logoMaxHeight = headerHeight - 10; // 5px padding top/bottom
+        const scale = logoMaxHeight / logoImage.height;
+        const scaledWidth = logoImage.width * scale;
+        const scaledHeight = logoImage.height * scale;
+        logoWidth = scaledWidth + 15;
+        page.drawImage(logoImage, { 
+          x: margin, 
+          y: pageHeight - headerHeight + 5, 
+          width: scaledWidth, 
+          height: scaledHeight 
+        });
       } catch (e) {
         console.log("Could not add logo:", e);
       }
@@ -400,7 +409,9 @@ serve(async (req) => {
         const itemTotal = item.unitPrice * item.quantity * (discount / 100);
         
         drawText(`${item.quantity} szt.`, colQty, y, { size: 9, color: grayText });
-        drawText(`${actualDiscount}%`, colDiscount, y, { size: 9, color: actualDiscount > 0 ? accentColor : grayText });
+        if (actualDiscount > 0) {
+          drawText(`${actualDiscount}%`, colDiscount, y, { size: 9, color: accentColor });
+        }
         drawTextRight(formatPrice(itemTotal), colValue, y, { size: 9, font: fontBold, color: darkText });
 
         y -= 16;
@@ -440,7 +451,9 @@ serve(async (req) => {
         const itemTotal = item.unitPrice * item.quantity * (item.discount / 100);
         
         drawText(`${item.quantity} ${item.unit}`, colQty, y, { size: 9, color: grayText });
-        drawText(`${actualDiscount}%`, colDiscount, y, { size: 9, color: actualDiscount > 0 ? accentColor : grayText });
+        if (actualDiscount > 0) {
+          drawText(`${actualDiscount}%`, colDiscount, y, { size: 9, color: accentColor });
+        }
         drawTextRight(formatPrice(itemTotal), colValue, y, { size: 9, font: fontBold, color: darkText });
 
         y -= 16;
