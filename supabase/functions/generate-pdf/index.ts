@@ -104,9 +104,9 @@ let cachedFont: Uint8Array | null = null;
 let cachedFontBold: Uint8Array | null = null;
 
 const REMOTE_FONT_REGULAR =
-  "https://cdn.jsdelivr.net/npm/@fontsource/noto-sans@5.0.0/files/noto-sans-latin-ext-400-normal.ttf";
+  "https://raw.githubusercontent.com/googlefonts/noto-fonts/main/hinted/ttf/NotoSans/NotoSans-Regular.ttf";
 const REMOTE_FONT_BOLD =
-  "https://cdn.jsdelivr.net/npm/@fontsource/noto-sans@5.0.0/files/noto-sans-latin-ext-700-normal.ttf";
+  "https://raw.githubusercontent.com/googlefonts/noto-fonts/main/hinted/ttf/NotoSans/NotoSans-Bold.ttf";
 
 async function readLocalFont(path: string) {
   try {
