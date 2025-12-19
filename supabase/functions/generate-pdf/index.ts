@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { encode as encodeBase64 } from "https://deno.land/std@0.168.0/encoding/base64.ts";
 import { PDFDocument, rgb, StandardFonts } from "https://esm.sh/pdf-lib@1.17.1";
 import fontkit from "https://esm.sh/@pdf-lib/fontkit@1.1.1";
 
@@ -97,26 +98,19 @@ const formatNumber = (num: number, decimals: number = 1): string => {
   return num.toFixed(decimals).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
 };
 
-// Fetch and cache fonts (remote files)
+// Load and cache fonts (local files bundled with this function)
 let cachedFont: Uint8Array | null = null;
 let cachedFontBold: Uint8Array | null = null;
 
 async function loadFonts() {
   if (!cachedFont) {
-    console.log("Loading Noto Sans font (remote TTF)...");
-    const regularResponse = await fetch(
-      "https://cdn.jsdelivr.net/npm/@fontsource/noto-sans@5.0.0/files/noto-sans-latin-ext-400-normal.ttf",
-    );
-    if (!regularResponse.ok) throw new Error(`Font download failed: ${regularResponse.status}`);
-    cachedFont = new Uint8Array(await regularResponse.arrayBuffer());
+    console.log("Loading Noto Sans font (local TTF)...");
+    cachedFont = await Deno.readFile(new URL("./NotoSans-Regular.ttf", import.meta.url));
     console.log("Noto Sans Regular loaded");
   }
   if (!cachedFontBold) {
-    const boldResponse = await fetch(
-      "https://cdn.jsdelivr.net/npm/@fontsource/noto-sans@5.0.0/files/noto-sans-latin-ext-700-normal.ttf",
-    );
-    if (!boldResponse.ok) throw new Error(`Font download failed: ${boldResponse.status}`);
-    cachedFontBold = new Uint8Array(await boldResponse.arrayBuffer());
+    console.log("Loading Noto Sans Bold font (local TTF)...");
+    cachedFontBold = await Deno.readFile(new URL("./NotoSans-Bold.ttf", import.meta.url));
     console.log("Noto Sans Bold loaded");
   }
   return { regular: cachedFont, bold: cachedFontBold };
@@ -571,22 +565,23 @@ serve(async (req) => {
     const footerWidth = getTextWidth(footerText, fontRegular, 9);
     drawText(footerText, (pageWidth - footerWidth) / 2, y, { size: 9, color: primaryColor });
 
-    // Generate PDF (binary response to avoid CPU limits from base64/JSON)
+    // Generate PDF and return as base64 JSON (works reliably with functions.invoke)
     const pdfBytes = await pdfDoc.save();
+    const pdfBase64 = encodeBase64(
+      pdfBytes.buffer.slice(pdfBytes.byteOffset, pdfBytes.byteOffset + pdfBytes.byteLength) as ArrayBuffer,
+    );
 
     const safeOffer = (data.offerNumber || "oferta").replace(/[^0-9A-Za-z._-]+/g, "-");
     const safeCustomer = (data.customerData?.contactPerson || "klient").replace(/[^0-9A-Za-z._-]+/g, "-");
     const filename = `Oferta_${safeOffer}_${safeCustomer}.pdf`;
 
-    console.log("PDF generated successfully with Polish characters");
+    console.log("PDF generated successfully");
 
-    return new Response(pdfBytes as any, {
+    return new Response(JSON.stringify({ pdfBase64, filename }), {
       status: 200,
       headers: {
         ...corsHeaders,
-        "Content-Type": "application/pdf",
-        "Content-Disposition": `attachment; filename="${filename}"`,
-        "Access-Control-Expose-Headers": "Content-Disposition",
+        "Content-Type": "application/json",
       },
     });
   } catch (error) {
