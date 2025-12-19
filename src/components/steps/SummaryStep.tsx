@@ -314,13 +314,14 @@ export function SummaryStep({ onBack, onReset, excavationSettings }: SummaryStep
     return offerNumber;
   };
 
-  const blobToDataUrl = (blob: Blob) =>
-    new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onloadend = () => resolve(String(reader.result));
-      reader.onerror = () => reject(reader.error);
-      reader.readAsDataURL(blob);
-    });
+  const normalizeBase64 = (input: string) => (input.includes(',') ? input.split(',')[1] : input);
+
+  const base64ToBlob = (base64: string, contentType: string) => {
+    const bytes = atob(normalizeBase64(base64));
+    const arr = new Uint8Array(bytes.length);
+    for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
+    return new Blob([arr], { type: contentType });
+  };
 
   const handleGeneratePDF = async () => {
     const offerNumber = handleSaveOffer();
@@ -388,7 +389,6 @@ export function SummaryStep({ onBack, onReset, excavationSettings }: SummaryStep
 
       const { data, error } = await supabase.functions.invoke('generate-pdf', {
         body: pdfData,
-        responseType: 'blob',
       });
 
       if (error) {
@@ -399,19 +399,22 @@ export function SummaryStep({ onBack, onReset, excavationSettings }: SummaryStep
         return;
       }
 
-      if (!data) {
+      const pdfBase64 = (data as any)?.pdfBase64 as string | undefined;
+      const filename = (data as any)?.filename as string | undefined;
+
+      if (!pdfBase64) {
         toast.error('Błąd generowania PDF', {
-          description: 'Brak danych z serwera',
+          description: 'Brak danych PDF z serwera',
         });
         return;
       }
 
-      const pdfBlob = data instanceof Blob ? data : new Blob([data as any], { type: 'application/pdf' });
+      const pdfBlob = base64ToBlob(pdfBase64, 'application/pdf');
       const url = URL.createObjectURL(pdfBlob);
 
       const link = document.createElement('a');
       link.href = url;
-      link.download = `Oferta_${offerNumber.replace(/\//g, '-')}_${customerData.contactPerson.replace(/\s+/g, '_')}.pdf`;
+      link.download = filename || `Oferta_${offerNumber.replace(/\//g, '-')}_${customerData.contactPerson.replace(/\s+/g, '_')}.pdf`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -501,7 +504,6 @@ export function SummaryStep({ onBack, onReset, excavationSettings }: SummaryStep
 
       const { data: pdfResult, error: pdfError } = await supabase.functions.invoke('generate-pdf', {
         body: pdfData,
-        responseType: 'blob',
       });
 
       if (pdfError) {
@@ -510,15 +512,16 @@ export function SummaryStep({ onBack, onReset, excavationSettings }: SummaryStep
         return;
       }
 
-      if (!pdfResult) {
-        toast.error('Błąd generowania PDF', { description: 'Brak danych z serwera' });
+      const pdfBase64Raw = (pdfResult as any)?.pdfBase64 as string | undefined;
+
+      if (!pdfBase64Raw) {
+        toast.error('Błąd generowania PDF', { description: 'Brak danych PDF z serwera' });
         return;
       }
 
-      const pdfBlob = pdfResult instanceof Blob
-        ? pdfResult
-        : new Blob([pdfResult as any], { type: 'application/pdf' });
-      const pdfBase64 = await blobToDataUrl(pdfBlob);
+      const pdfBase64 = pdfBase64Raw.startsWith('data:')
+        ? pdfBase64Raw
+        : `data:application/pdf;base64,${pdfBase64Raw}`;
 
       const template = companySettings.emailTemplate;
       const emailBody = `${template.greeting}\n\n${template.body}\n\n${template.signature}`;
