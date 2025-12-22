@@ -1,8 +1,9 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getOfferByShareUid } from '@/lib/offerDb';
+import { getSettingsFromDb } from '@/lib/settingsDb';
 import { SavedOffer } from '@/types/offers';
-import { OfferItem, poolTypeLabels, PoolType, PoolCalculations } from '@/types/configurator';
+import { OfferItem, poolTypeLabels, PoolType, PoolCalculations, CompanySettings } from '@/types/configurator';
 import { formatPrice, calculatePoolMetrics } from '@/lib/calculations';
 import { getPriceInPLN } from '@/data/products';
 import { useAuth } from '@/context/AuthContext';
@@ -204,36 +205,95 @@ export default function OfferView() {
     
     setIsGeneratingPDF(true);
     try {
+      // Load company settings from database
+      const settings = await getSettingsFromDb();
+      const companySettings = settings?.companySettings;
+      
+      if (!companySettings) {
+        toast.error('Brak ustawień firmy', {
+          description: 'Skonfiguruj ustawienia firmy w panelu administracyjnym',
+        });
+        return;
+      }
+      
+      // Load logo as base64
+      let logoBase64: string | undefined;
+      try {
+        const response = await fetch(logo);
+        const blob = await response.blob();
+        logoBase64 = await new Promise<string>((resolve) => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve(reader.result as string);
+          reader.readAsDataURL(blob);
+        });
+      } catch (e) {
+        console.warn('Could not load logo:', e);
+      }
+      
       const vatRate = 0.23;
       
-      // Prepare sections for PDF
-      const sectionsForPdf: Record<string, { name: string; items: any[] }> = {};
+      // Calculate pool metrics from offer data
+      const poolParams = {
+        type: poolTypeLabels[offer.poolType as PoolType] || offer.poolType,
+        length: offer.dimensions?.length || 8,
+        width: offer.dimensions?.width || 4,
+        depth: offer.dimensions?.depth || 1.5,
+        volume: offer.calculations?.volume || (offer.dimensions?.length || 8) * (offer.dimensions?.width || 4) * (offer.dimensions?.depth || 1.5),
+        requiredFlow: offer.calculations?.requiredFlow || 0,
+        isIrregular: offer.dimensions?.isIrregular || false,
+        irregularSurcharge: companySettings.irregularSurchargePercent || 0,
+        overflowType: offer.dimensions?.overflowType,
+      };
+      
+      // Prepare sections for PDF in the format expected by edge function
+      const sectionsForPdf: Array<{ name: string; items: Array<{
+        product: { name: string; symbol: string };
+        quantity: number;
+        unitPrice: number;
+        discount: number;
+      }> }> = [];
       
       Object.entries(offer.sections).forEach(([key, section]) => {
         if (key === 'opcje') return;
         
         const sectionData = section as { name?: string; items?: any[] };
         const items = sectionData.items || [];
-        sectionsForPdf[key] = {
+        if (items.length === 0) return;
+        
+        sectionsForPdf.push({
           name: sectionData.name || sectionLabels[key] || key,
           items: items.map((item: any, idx: number) => {
             const displayItem = toDisplayItem(item, idx);
             return {
-              name: displayItem.name,
-              symbol: displayItem.symbol || '',
+              product: {
+                name: displayItem.name,
+                symbol: displayItem.symbol || '',
+              },
               quantity: displayItem.quantity,
-              unit: displayItem.unit,
               unitPrice: displayItem.unitPrice,
               discount: displayItem.discount,
-              totalPrice: displayItem.unitPrice * displayItem.quantity * (displayItem.discount / 100),
             };
           }),
-        };
+        });
       });
+      
+      // Prepare inne items
+      const inneSection = (offer.sections as any)?.inne;
+      const inneItems = inneSection?.items?.map((item: any) => ({
+        name: item.name || '',
+        unit: item.unit || 'szt',
+        quantity: item.quantity || 1,
+        unitPrice: item.unitPrice || 0,
+        discount: item.discount || 100,
+      })) || [];
       
       const pdfData = {
         offerNumber: offer.offerNumber,
-        customer: {
+        companySettings: {
+          ...companySettings,
+          logoBase64: logoBase64 || undefined,
+        },
+        customerData: {
           companyName: offer.customerData.companyName || '',
           contactPerson: offer.customerData.contactPerson,
           email: offer.customerData.email || '',
@@ -243,14 +303,19 @@ export default function OfferView() {
           postalCode: offer.customerData.postalCode || '',
           nip: offer.customerData.nip || '',
         },
-        pool: {
-          type: poolTypeLabels[offer.poolType as PoolType] || offer.poolType,
-          dimensions: offer.dimensions,
-          calculations: offer.calculations,
-        },
-        excavation: offer.excavation,
+        poolParams,
         sections: sectionsForPdf,
+        inneItems,
+        excavation: {
+          volume: offer.excavation?.excavationVolume || 0,
+          pricePerM3: offer.excavation?.excavationPricePerM3 || 0,
+          excavationTotal: offer.excavation?.excavationTotal || 0,
+          removalFixedPrice: offer.excavation?.removalFixedPrice || 0,
+        },
         totals: {
+          productsTotal: calculatedTotals.net - (offer.excavation?.excavationTotal || 0) - (offer.excavation?.removalFixedPrice || 0),
+          inneTotal: 0,
+          excavationTotal: (offer.excavation?.excavationTotal || 0) + (offer.excavation?.removalFixedPrice || 0),
           grandTotalNet: calculatedTotals.net,
           vatRate: vatRate * 100,
           vatAmount: calculatedTotals.net * vatRate,
