@@ -6,6 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { 
@@ -16,10 +17,27 @@ import {
   Waves,
   Pencil,
   Box,
-  Calculator
+  Calculator,
+  Footprints,
+  Baby
 } from 'lucide-react';
 import { Pool3DVisualization } from '@/components/Pool3DVisualization';
-import { PoolType, PoolShape, PoolOverflowType, poolTypeLabels, poolShapeLabels, overflowTypeLabels, nominalLoadByType, CustomPoolVertex } from '@/types/configurator';
+import { 
+  PoolType, 
+  PoolShape, 
+  PoolOverflowType, 
+  poolTypeLabels, 
+  poolShapeLabels, 
+  overflowTypeLabels, 
+  nominalLoadByType, 
+  CustomPoolVertex,
+  StairsConfig,
+  WadingPoolConfig,
+  StairsSide,
+  StairsPosition,
+  stairsSideLabels,
+  stairsPositionLabels
+} from '@/types/configurator';
 import { calculatePoolMetrics, calculateFoilOptimization } from '@/lib/calculations';
 import { CustomPoolDrawer } from '@/components/CustomPoolDrawer';
 
@@ -102,12 +120,48 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
     dispatch({ type: 'SET_FOIL_CALCULATION', payload: foilCalc });
   }, [dimensions, poolType, state.foilType, companySettings.irregularSurchargePercent]);
 
-  const updateDimension = (field: keyof typeof dimensions, value: number | boolean | string) => {
+  const updateDimension = (field: keyof typeof dimensions, value: any) => {
     dispatch({
       type: 'SET_DIMENSIONS',
       payload: { ...dimensions, [field]: value },
     });
   };
+
+  // Calculate step count from depth
+  const calculateStepCount = (poolDepth: number, stepHeight: number = 0.29) => {
+    return Math.ceil(poolDepth / stepHeight);
+  };
+
+  // Update stairs config
+  const updateStairs = (updates: Partial<StairsConfig>) => {
+    const newStairs = { ...dimensions.stairs, ...updates };
+    // Auto-calculate stepCount when enabling or when depth changes
+    if (updates.enabled || !newStairs.stepCount) {
+      newStairs.stepCount = calculateStepCount(dimensions.depth, newStairs.stepHeight);
+    }
+    dispatch({
+      type: 'SET_DIMENSIONS',
+      payload: { ...dimensions, stairs: newStairs },
+    });
+  };
+
+  // Update wading pool config
+  const updateWadingPool = (updates: Partial<WadingPoolConfig>) => {
+    dispatch({
+      type: 'SET_DIMENSIONS',
+      payload: { ...dimensions, wadingPool: { ...dimensions.wadingPool, ...updates } },
+    });
+  };
+
+  // Recalculate step count when depth changes
+  useEffect(() => {
+    if (dimensions.stairs?.enabled) {
+      const newStepCount = calculateStepCount(dimensions.depth, dimensions.stairs.stepHeight);
+      if (newStepCount !== dimensions.stairs.stepCount) {
+        updateStairs({ stepCount: newStepCount });
+      }
+    }
+  }, [dimensions.depth, dimensions.stairs?.stepHeight]);
 
   const isLShape = dimensions.shape === 'litera-l';
   const isCustomShape = dimensions.shape === 'wlasny';
@@ -196,6 +250,199 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
                 </div>
               </div>
             )}
+
+            {/* Stairs Configuration */}
+            <div className="mt-4 p-4 rounded-lg bg-muted/30 border border-border">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-3">
+                  <Footprints className="w-5 h-5 text-primary" />
+                  <div>
+                    <Label htmlFor="stairsEnabled" className="font-medium">Schodki</Label>
+                    <p className="text-xs text-muted-foreground">
+                      {dimensions.stairs?.enabled 
+                        ? `${dimensions.stairs.stepCount} stopni × ${(dimensions.stairs.stepHeight * 100).toFixed(0)}cm`
+                        : 'Dodaj schodki do basenu'
+                      }
+                    </p>
+                  </div>
+                </div>
+                <Switch
+                  id="stairsEnabled"
+                  checked={dimensions.stairs?.enabled || false}
+                  onCheckedChange={(checked) => updateStairs({ enabled: checked })}
+                />
+              </div>
+              
+              {dimensions.stairs?.enabled && (
+                <div className="grid grid-cols-2 gap-3 mt-3 pt-3 border-t border-border">
+                  <div className="space-y-2">
+                    <Label className="text-sm">Pozycja</Label>
+                    <Select
+                      value={dimensions.stairs.position}
+                      onValueChange={(value: StairsPosition) => updateStairs({ position: value })}
+                    >
+                      <SelectTrigger className="h-9">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {(Object.keys(stairsPositionLabels) as StairsPosition[]).map((pos) => (
+                          <SelectItem key={pos} value={pos}>{stairsPositionLabels[pos]}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <Label className="text-sm">Bok basenu</Label>
+                    <Select
+                      value={dimensions.stairs.side}
+                      onValueChange={(value: StairsSide) => updateStairs({ side: value })}
+                    >
+                      <SelectTrigger className="h-9">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {(Object.keys(stairsSideLabels) as StairsSide[]).map((side) => (
+                          <SelectItem key={side} value={side}>{stairsSideLabels[side]}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <Label className="text-sm">Szerokość schodków</Label>
+                    <Select
+                      value={dimensions.stairs.width === 'full' ? 'full' : 'custom'}
+                      onValueChange={(value) => updateStairs({ width: value === 'full' ? 'full' : 1.5 })}
+                    >
+                      <SelectTrigger className="h-9">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="full">Pełna szerokość</SelectItem>
+                        <SelectItem value="custom">Własna szerokość</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  
+                  {dimensions.stairs.width !== 'full' && (
+                    <div className="space-y-2">
+                      <Label className="text-sm">Szerokość (m)</Label>
+                      <Input
+                        type="number"
+                        step="0.1"
+                        min="0.5"
+                        max="5"
+                        value={typeof dimensions.stairs.width === 'number' ? dimensions.stairs.width : 1.5}
+                        onChange={(e) => updateStairs({ width: parseFloat(e.target.value) || 1.5 })}
+                        className="h-9"
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Wading Pool Configuration */}
+            <div className="mt-3 p-4 rounded-lg bg-muted/30 border border-border">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-3">
+                  <Baby className="w-5 h-5 text-primary" />
+                  <div>
+                    <Label htmlFor="wadingPoolEnabled" className="font-medium">Brodzik dla dzieci</Label>
+                    <p className="text-xs text-muted-foreground">
+                      {dimensions.wadingPool?.enabled 
+                        ? `${dimensions.wadingPool.width}×${dimensions.wadingPool.length}m, głęb. ${dimensions.wadingPool.depth}m`
+                        : 'Płytka strefa dla dzieci'
+                      }
+                    </p>
+                  </div>
+                </div>
+                <Switch
+                  id="wadingPoolEnabled"
+                  checked={dimensions.wadingPool?.enabled || false}
+                  onCheckedChange={(checked) => updateWadingPool({ enabled: checked })}
+                />
+              </div>
+              
+              {dimensions.wadingPool?.enabled && (
+                <div className="grid grid-cols-2 gap-3 mt-3 pt-3 border-t border-border">
+                  <div className="space-y-2">
+                    <Label className="text-sm">Pozycja</Label>
+                    <Select
+                      value={dimensions.wadingPool.position}
+                      onValueChange={(value: StairsPosition) => updateWadingPool({ position: value })}
+                    >
+                      <SelectTrigger className="h-9">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {(Object.keys(stairsPositionLabels) as StairsPosition[]).map((pos) => (
+                          <SelectItem key={pos} value={pos}>{stairsPositionLabels[pos]}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <Label className="text-sm">Bok basenu</Label>
+                    <Select
+                      value={dimensions.wadingPool.side}
+                      onValueChange={(value: StairsSide) => updateWadingPool({ side: value })}
+                    >
+                      <SelectTrigger className="h-9">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {(Object.keys(stairsSideLabels) as StairsSide[]).map((side) => (
+                          <SelectItem key={side} value={side}>{stairsSideLabels[side]}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <Label className="text-sm">Szerokość (m)</Label>
+                    <Input
+                      type="number"
+                      step="0.1"
+                      min="1"
+                      max="10"
+                      value={dimensions.wadingPool.width}
+                      onChange={(e) => updateWadingPool({ width: parseFloat(e.target.value) || 2 })}
+                      className="h-9"
+                    />
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <Label className="text-sm">Długość (m)</Label>
+                    <Input
+                      type="number"
+                      step="0.1"
+                      min="0.5"
+                      max="5"
+                      value={dimensions.wadingPool.length}
+                      onChange={(e) => updateWadingPool({ length: parseFloat(e.target.value) || 1.5 })}
+                      className="h-9"
+                    />
+                  </div>
+                  
+                  <div className="space-y-2 col-span-2">
+                    <Label className="text-sm">Głębokość brodzika (m)</Label>
+                    <Input
+                      type="number"
+                      step="0.05"
+                      min="0.2"
+                      max="0.8"
+                      value={dimensions.wadingPool.depth}
+                      onChange={(e) => updateWadingPool({ depth: parseFloat(e.target.value) || 0.4 })}
+                      className="h-9"
+                    />
+                    <p className="text-xs text-muted-foreground">Typowo 0.3-0.6m dla dzieci</p>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Pool Type */}
