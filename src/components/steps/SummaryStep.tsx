@@ -372,6 +372,7 @@ export function SummaryStep({ onBack, onReset, excavationSettings, companySettin
       excavation,
       totalNet: grandTotalNet,
       totalGross: grandTotalGross,
+      status: 'sent',
     };
 
     // Save to localStorage (backup)

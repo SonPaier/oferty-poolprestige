@@ -1,7 +1,8 @@
 import { supabase } from '@/integrations/supabase/client';
-import { SavedOffer, ExcavationData } from '@/types/offers';
+import { SavedOffer, ExcavationData, OfferStatus } from '@/types/offers';
 import { CustomerData, PoolDimensions, PoolType, PoolCalculations, OfferItem } from '@/types/configurator';
 import { Json } from '@/integrations/supabase/types';
+
 // Generate unique share UID with timestamp and random string
 export function generateShareUid(): string {
   const timestamp = Date.now().toString(36);
@@ -24,6 +25,7 @@ export interface DbOffer {
   excavation: ExcavationData;
   total_net: number;
   total_gross: number;
+  status: OfferStatus;
 }
 
 // Convert DB format to SavedOffer format
@@ -42,11 +44,12 @@ export function dbToSavedOffer(dbOffer: DbOffer): SavedOffer & { shareUid: strin
     excavation: dbOffer.excavation as ExcavationData,
     totalNet: dbOffer.total_net,
     totalGross: dbOffer.total_gross,
+    status: (dbOffer.status as OfferStatus) || 'queue',
   };
 }
 
 // Save offer to database
-export async function saveOfferToDb(offer: SavedOffer): Promise<{ shareUid: string; id: string } | null> {
+export async function saveOfferToDb(offer: SavedOffer, status: OfferStatus = 'sent'): Promise<{ shareUid: string; id: string } | null> {
   const shareUid = generateShareUid();
   
   const { data, error } = await supabase
@@ -62,6 +65,7 @@ export async function saveOfferToDb(offer: SavedOffer): Promise<{ shareUid: stri
       excavation: offer.excavation as unknown as Json,
       total_net: offer.totalNet,
       total_gross: offer.totalGross,
+      status: status,
     })
     .select('id, share_uid')
     .single();
@@ -72,6 +76,72 @@ export async function saveOfferToDb(offer: SavedOffer): Promise<{ shareUid: stri
   }
 
   return { shareUid: data.share_uid, id: data.id };
+}
+
+// Update offer status
+export async function updateOfferStatus(id: string, status: OfferStatus): Promise<boolean> {
+  const { error } = await supabase
+    .from('offers')
+    .update({ status })
+    .eq('id', id);
+
+  if (error) {
+    console.error('Error updating offer status:', error);
+    return false;
+  }
+
+  return true;
+}
+
+// Get offers by status
+export async function getOffersByStatus(status: OfferStatus): Promise<(SavedOffer & { shareUid: string })[]> {
+  const { data, error } = await supabase
+    .from('offers')
+    .select('*')
+    .eq('status', status)
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    console.error('Error fetching offers by status:', error);
+    return [];
+  }
+
+  return (data || []).map((row) => dbToSavedOffer(row as unknown as DbOffer));
+}
+
+// Get queue offers (queue + draft statuses)
+export async function getQueueOffers(): Promise<(SavedOffer & { shareUid: string })[]> {
+  const { data, error } = await supabase
+    .from('offers')
+    .select('*')
+    .in('status', ['queue', 'draft'])
+    .order('created_at', { ascending: true });
+
+  if (error) {
+    console.error('Error fetching queue offers:', error);
+    return [];
+  }
+
+  return (data || []).map((row) => dbToSavedOffer(row as unknown as DbOffer));
+}
+
+// Get overdue offers count (older than 3 days in queue or draft)
+export async function getOverdueOffersCount(): Promise<number> {
+  const threeDaysAgo = new Date();
+  threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
+  
+  const { data, error } = await supabase
+    .from('offers')
+    .select('id')
+    .in('status', ['queue', 'draft'])
+    .lt('created_at', threeDaysAgo.toISOString());
+
+  if (error) {
+    console.error('Error fetching overdue offers count:', error);
+    return 0;
+  }
+
+  return data?.length || 0;
 }
 
 // Update existing offer

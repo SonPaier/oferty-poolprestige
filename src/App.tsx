@@ -11,6 +11,7 @@ import Login from "./pages/Login";
 import ImportProducts from "./pages/ImportProducts";
 import OfferView from "./pages/OfferView";
 import OfferHistory from "./pages/OfferHistory";
+import OfferQueue from "./pages/OfferQueue";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -34,6 +35,11 @@ const App = () => (
               <Route path="/historia" element={
                 <ProtectedRoute>
                   <OfferHistory />
+                </ProtectedRoute>
+              } />
+              <Route path="/kolejka" element={
+                <ProtectedRoute>
+                  <OfferQueue />
                 </ProtectedRoute>
               } />
               <Route path="/import-products" element={
