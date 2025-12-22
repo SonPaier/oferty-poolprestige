@@ -10,7 +10,7 @@ export function useOfferSave() {
   const { excavationSettings } = useSettings();
   const [isSaving, setIsSaving] = useState(false);
 
-  const saveCurrentOffer = useCallback(async (status: 'queue' | 'draft' | 'sent' = 'draft'): Promise<{ success: boolean; offerId?: string; shareUid?: string }> => {
+  const saveCurrentOffer = useCallback(async (status: 'queue' | 'draft' | 'sent' = 'draft'): Promise<{ success: boolean; offerId?: string; shareUid?: string; offerNumber?: string }> => {
     if (isSaving) {
       return { success: false };
     }
@@ -91,7 +91,7 @@ export function useOfferSave() {
           toast.success('Oferta została zapisana', {
             description: `Numer: ${offerNumber}`,
           });
-          return { success: true, offerId: dbResult.id, shareUid: dbResult.shareUid };
+          return { success: true, offerId: dbResult.id, shareUid: dbResult.shareUid, offerNumber };
         } else {
           toast.warning('Oferta zapisana lokalnie', {
             description: 'Błąd zapisu do bazy danych',

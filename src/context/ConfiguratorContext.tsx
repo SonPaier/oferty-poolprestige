@@ -30,6 +30,7 @@ type ConfiguratorAction =
   | { type: 'SET_FOIL_CALCULATION'; payload: ConfiguratorState['foilCalculation'] }
   | { type: 'SET_SECTION'; payload: { section: keyof ConfiguratorState['sections']; data: ConfiguratorSection } }
   | { type: 'LOAD_OFFER'; payload: { offer: SavedOffer & { shareUid: string } } }
+  | { type: 'SET_EDIT_MODE'; payload: EditModeInfo }
   | { type: 'CLEAR_EDIT_MODE' }
   | { type: 'RESET' };
 
@@ -202,6 +203,12 @@ function configuratorReducer(state: ExtendedConfiguratorState, action: Configura
         },
       };
     }
+    
+    case 'SET_EDIT_MODE':
+      return {
+        ...state,
+        editMode: action.payload,
+      };
     
     case 'CLEAR_EDIT_MODE':
       return {

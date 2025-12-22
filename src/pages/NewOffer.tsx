@@ -221,6 +221,19 @@ function ConfiguratorContent() {
     if (result.success) {
       setHasUnsavedChanges(false);
       clearDraft();
+      
+      // If this was a new offer, switch to edit mode so subsequent saves update the same offer
+      if (!state.editMode.isEditing && result.offerId) {
+        dispatch({
+          type: 'SET_EDIT_MODE',
+          payload: {
+            isEditing: true,
+            offerId: result.offerId,
+            offerNumber: result.offerNumber || null,
+            shareUid: result.shareUid || null,
+          }
+        });
+      }
     }
   };
 
