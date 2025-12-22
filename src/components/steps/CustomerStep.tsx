@@ -109,6 +109,21 @@ export function CustomerStep({ onNext }: CustomerStepProps) {
         Dane klienta
       </div>
 
+      {/* Saved Source Email Display */}
+      {customerData.sourceEmail && (
+        <div className="glass-card p-4 mb-6 border-l-4 border-l-primary/50">
+          <div className="flex items-center gap-2 mb-3">
+            <Mail className="w-5 h-5 text-primary" />
+            <h3 className="font-medium">Treść zapytania</h3>
+          </div>
+          <div className="bg-muted/50 rounded-md p-3 max-h-[150px] overflow-y-auto">
+            <pre className="text-sm whitespace-pre-wrap font-sans text-muted-foreground">
+              {customerData.sourceEmail}
+            </pre>
+          </div>
+        </div>
+      )}
+
       {/* AI Extraction Input */}
       <div className="glass-card p-4 mb-6">
         <div className="flex items-center gap-2 mb-3">
