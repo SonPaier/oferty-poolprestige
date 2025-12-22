@@ -74,6 +74,7 @@ const sectionLabels: Record<string, string> = {
   lighting: 'Oświetlenie',
   additions: 'Dodatki',
   automation: 'Automatyka',
+  automatyka: 'Automatyka',
   inne: 'Inne',
   wykonczenie: 'Wykończenie',
   uzbrojenie: 'Uzbrojenie',
