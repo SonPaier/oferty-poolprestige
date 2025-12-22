@@ -100,28 +100,24 @@ function PoolMesh({ dimensions, solid = false }: { dimensions: PoolDimensions; s
   const actualDeepDepth = hasSlope && depthDeep ? depthDeep : depth;
   const shape2D = useMemo(() => getPoolShape(dimensions), [dimensions]);
   
-  // Materials
+  // Materials - nice blue like SketchUp reference
   const wallMaterial = useMemo(() => 
     new THREE.MeshStandardMaterial({
-      color: solid ? '#0284c7' : '#0ea5e9',
-      transparent: !solid,
-      opacity: solid ? 1 : 0.35,
+      color: '#5b9bd5', // Nice medium blue
       side: THREE.DoubleSide,
-    }), [solid]);
+    }), []);
 
   const bottomMaterial = useMemo(() => 
     new THREE.MeshStandardMaterial({
-      color: solid ? '#0369a1' : '#0284c7',
-      transparent: !solid,
-      opacity: solid ? 1 : 0.6,
+      color: '#5b9bd5', // Same blue for bottom
       side: THREE.DoubleSide,
-    }), [solid]);
+    }), []);
 
-  // Concrete shell material (outer walls + bottom thickness)
+  // Concrete shell material (outer walls) - white like reference
   const concreteMaterial = useMemo(() => 
     new THREE.MeshStandardMaterial({
-      color: '#d4d4d4',
-      roughness: 0.8,
+      color: '#ffffff',
+      roughness: 0.6,
       side: THREE.DoubleSide,
     }), []);
 
@@ -431,10 +427,17 @@ function StairsMesh({ dimensions, stairs }: { dimensions: PoolDimensions; stairs
   const halfL = (length || 8) / 2;
   const halfW = (width || 4) / 2;
   
-  const concreteMaterial = useMemo(() => 
+  // White for stair tops like reference
+  const stepTopMaterial = useMemo(() => 
     new THREE.MeshStandardMaterial({
-      color: '#e5e7eb',
-      roughness: 0.8,
+      color: '#ffffff',
+      roughness: 0.6,
+    }), []);
+  
+  // Blue for stair front faces
+  const stepFrontMaterial = useMemo(() => 
+    new THREE.MeshStandardMaterial({
+      color: '#5b9bd5',
     }), []);
 
   const isLShape = shape === 'litera-l';
@@ -505,15 +508,23 @@ function StairsMesh({ dimensions, stairs }: { dimensions: PoolDimensions; stairs
         }
       }
       
+      // Create step with white top and blue sides
       stepsArr.push(
-        <mesh key={i} position={[posX, posY, posZ]} material={concreteMaterial}>
-          <boxGeometry args={[sizeX, sizeY, thisStepHeight]} />
-        </mesh>
+        <group key={i} position={[posX, posY, posZ]}>
+          {/* Main step body with blue sides */}
+          <mesh material={stepFrontMaterial}>
+            <boxGeometry args={[sizeX, sizeY, thisStepHeight]} />
+          </mesh>
+          {/* White top surface overlay */}
+          <mesh position={[0, 0, thisStepHeight / 2 - 0.01]} material={stepTopMaterial}>
+            <boxGeometry args={[sizeX, sizeY, 0.02]} />
+          </mesh>
+        </group>
       );
     }
     
     return stepsArr;
-  }, [stepHeight, stepDepth, actualStairsWidth, corner, direction, position, baseX, baseY, poolDepth, concreteMaterial]);
+  }, [stepHeight, stepDepth, actualStairsWidth, corner, direction, position, baseX, baseY, poolDepth, stepTopMaterial, stepFrontMaterial]);
 
   return <group>{steps}</group>;
 }
@@ -539,22 +550,20 @@ function WadingPoolMesh({ dimensions, wadingPool }: { dimensions: PoolDimensions
   
   const waterMaterial = useMemo(() => 
     new THREE.MeshStandardMaterial({
-      color: '#7dd3fc',
+      color: '#5b9bd5',
       transparent: true,
-      opacity: 0.5,
+      opacity: 0.7,
     }), []);
 
   const wallMaterial = useMemo(() => 
     new THREE.MeshStandardMaterial({
-      color: '#0ea5e9',
-      transparent: true,
-      opacity: 0.6,
+      color: '#5b9bd5',
     }), []);
 
   const concreteMaterial = useMemo(() => 
     new THREE.MeshStandardMaterial({
-      color: '#d4d4d4',
-      roughness: 0.8,
+      color: '#ffffff',
+      roughness: 0.6,
     }), []);
 
   const cornerConfig = useMemo(() => {
@@ -986,8 +995,8 @@ export function Pool3DVisualization({
 
   return (
     <div 
-      className="relative w-full rounded-lg border border-border bg-gradient-to-b from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 overflow-hidden"
-      style={{ height }}
+      className="relative w-full rounded-lg border border-border overflow-hidden"
+      style={{ height, backgroundColor: '#a8c8a0' }}
     >
       <Suspense fallback={<LoadingFallback />}>
         <Canvas
