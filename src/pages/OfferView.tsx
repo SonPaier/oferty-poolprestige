@@ -1,10 +1,11 @@
 import { useState, useEffect, useMemo } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { getOfferByShareUid } from '@/lib/offerDb';
 import { SavedOffer } from '@/types/offers';
 import { OfferItem, poolTypeLabels, PoolType, PoolCalculations } from '@/types/configurator';
 import { formatPrice, calculatePoolMetrics } from '@/lib/calculations';
 import { getPriceInPLN } from '@/data/products';
+import { useAuth } from '@/context/AuthContext';
 import logo from '@/assets/logo.png';
 import { 
   ChevronDown, 
@@ -16,8 +17,11 @@ import {
   User,
   Building2,
   Loader2,
-  MapPin
+  MapPin,
+  Pencil,
+  Copy
 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
@@ -118,6 +122,8 @@ function toDisplayItem(item: OfferItem | InneItemData, index: number): DisplayIt
 
 export default function OfferView() {
   const { shareUid } = useParams<{ shareUid: string }>();
+  const navigate = useNavigate();
+  const { isAuthenticated } = useAuth();
   const [offer, setOffer] = useState<OfferWithShareUid | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -612,7 +618,7 @@ export default function OfferView() {
       {/* Fixed Footer with Total */}
       <footer className="fixed bottom-0 left-0 right-0 bg-background/95 backdrop-blur-sm border-t border-border">
         <div className="container mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-4">
             <div>
               <p className="text-sm text-muted-foreground">Suma netto</p>
               <p className="text-lg font-semibold">{formatPrice(calculatedTotals.net)}</p>
@@ -621,6 +627,32 @@ export default function OfferView() {
               <p className="text-sm text-muted-foreground">VAT 23%</p>
               <p className="text-lg font-medium">{formatPrice(calculatedTotals.gross - calculatedTotals.net)}</p>
             </div>
+            
+            {/* Admin actions */}
+            {isAuthenticated && offer && (
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => navigate(`/nowa-oferta?edit=${offer.id}`)}
+                >
+                  <Pencil className="w-4 h-4 mr-2" />
+                  Edytuj
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    // TODO: Implement duplicate - for now just navigate to new offer
+                    navigate('/nowa-oferta');
+                  }}
+                >
+                  <Copy className="w-4 h-4 mr-2" />
+                  Duplikuj
+                </Button>
+              </div>
+            )}
+            
             <div className="text-right">
               <p className="text-sm text-muted-foreground">Suma brutto</p>
               <p className="text-2xl font-bold text-primary">{formatPrice(calculatedTotals.gross)}</p>

@@ -59,6 +59,14 @@ export interface FilterCalculation {
   suggestedFilter?: Product;
 }
 
+export interface AttachmentInfo {
+  name: string;
+  type: string;
+  size: number;
+  url: string;
+  path: string;
+}
+
 export interface CustomerData {
   companyName: string;
   contactPerson: string;
@@ -69,6 +77,7 @@ export interface CustomerData {
   postalCode: string;
   nip?: string;
   sourceEmail?: string; // Original email content used for this offer
+  attachments?: AttachmentInfo[]; // Uploaded attachments
 }
 
 export interface OfferItem {

@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useConfigurator } from '@/context/ConfiguratorContext';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -51,6 +51,25 @@ export function CustomerStep({ onNext }: CustomerStepProps) {
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Load attachments from customerData when editing existing offer
+  useEffect(() => {
+    if (customerData.attachments && customerData.attachments.length > 0 && uploadedFiles.length === 0) {
+      setUploadedFiles(customerData.attachments as UploadedFile[]);
+    }
+  }, [customerData.attachments]);
+
+  // Save attachments to customerData whenever they change
+  useEffect(() => {
+    if (uploadedFiles.length > 0 || (customerData.attachments && customerData.attachments.length > 0)) {
+      if (JSON.stringify(uploadedFiles) !== JSON.stringify(customerData.attachments)) {
+        dispatch({
+          type: 'SET_CUSTOMER_DATA',
+          payload: { ...customerData, attachments: uploadedFiles },
+        });
+      }
+    }
+  }, [uploadedFiles]);
 
   const updateField = (field: keyof typeof customerData, value: string) => {
     dispatch({

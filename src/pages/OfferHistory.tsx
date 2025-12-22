@@ -528,7 +528,7 @@ export default function OfferHistory() {
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => navigate(`/?edit=${offer.id}`)}
+                      onClick={() => navigate(`/nowa-oferta?edit=${offer.id}`)}
                       className="text-primary hover:text-primary"
                       title="Edytuj ofertę"
                     >
