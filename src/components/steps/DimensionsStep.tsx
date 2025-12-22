@@ -262,7 +262,7 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
                     <Label htmlFor="stairsEnabled" className="font-medium">Schodki</Label>
                     <p className="text-xs text-muted-foreground">
                       {dimensions.stairs?.enabled 
-                        ? `${dimensions.stairs.stepCount} stopni × ${(dimensions.stairs.stepHeight * 100).toFixed(0)}cm`
+                        ? `${dimensions.stairs.stepCount || 5} stopni × ${((dimensions.stairs.stepHeight || 0.29) * 100).toFixed(0)}cm`
                         : 'Dodaj schodki do basenu'
                       }
                     </p>
@@ -353,7 +353,7 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
                     <Label htmlFor="wadingPoolEnabled" className="font-medium">Brodzik dla dzieci</Label>
                     <p className="text-xs text-muted-foreground">
                       {dimensions.wadingPool?.enabled 
-                        ? `${dimensions.wadingPool.width}×${dimensions.wadingPool.length}m, głęb. ${dimensions.wadingPool.depth}m`
+                        ? `${dimensions.wadingPool.width || 2}×${dimensions.wadingPool.length || 1.5}m, głęb. ${dimensions.wadingPool.depth || 0.4}m`
                         : 'Płytka strefa w narożniku basenu'
                       }
                     </p>
