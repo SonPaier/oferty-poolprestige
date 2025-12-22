@@ -113,10 +113,11 @@ function PoolMesh({ dimensions, solid = false }: { dimensions: PoolDimensions; s
       side: THREE.DoubleSide,
     }), []);
 
-  // Concrete shell material (outer walls) - pure white, not affected by lighting
+  // Concrete shell material (outer walls) - white with lighting
   const concreteMaterial = useMemo(() => 
-    new THREE.MeshBasicMaterial({
+    new THREE.MeshStandardMaterial({
       color: '#ffffff',
+      roughness: 0.6,
       side: THREE.DoubleSide,
     }), []);
 
