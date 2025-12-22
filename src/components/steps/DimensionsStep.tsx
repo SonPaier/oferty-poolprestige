@@ -181,7 +181,8 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
     area: number, 
     perimeter: number,
     stairsVertices?: CustomPoolVertex[],
-    wadingPoolVertices?: CustomPoolVertex[]
+    wadingPoolVertices?: CustomPoolVertex[],
+    stairsRotation?: number
   ) => {
     dispatch({
       type: 'SET_DIMENSIONS',
@@ -193,6 +194,7 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
         customPerimeter: perimeter,
         customStairsVertices: stairsVertices,
         customWadingPoolVertices: wadingPoolVertices,
+        customStairsRotation: stairsRotation,
         isIrregular: true,
         // If custom stairs/wading pool drawn, enable them
         stairs: stairsVertices && stairsVertices.length >= 3 
@@ -223,6 +225,7 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
             initialPoolVertices={dimensions.customVertices}
             initialStairsVertices={dimensions.customStairsVertices}
             initialWadingPoolVertices={dimensions.customWadingPoolVertices}
+            initialStairsRotation={dimensions.customStairsRotation}
           />
         </DialogContent>
       </Dialog>

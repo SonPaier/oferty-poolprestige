@@ -1018,8 +1018,13 @@ function WaterSurface({ dimensions, waterDepth }: { dimensions: PoolDimensions; 
   );
 }
 
-// Custom stairs mesh (from drawn vertices)
-function CustomStairsMesh({ vertices, depth }: { vertices: CustomPoolVertex[]; depth: number }) {
+// Custom stairs mesh (from drawn vertices) - needs poolVertices to compute same center offset
+function CustomStairsMesh({ vertices, depth, poolVertices, rotation = 0 }: { 
+  vertices: CustomPoolVertex[]; 
+  depth: number;
+  poolVertices: CustomPoolVertex[];
+  rotation?: number; // 0, 90, 180, 270 degrees
+}) {
   const stepHeight = 0.29;
   const stepCount = Math.ceil(depth / stepHeight);
   
@@ -1028,79 +1033,143 @@ function CustomStairsMesh({ vertices, depth }: { vertices: CustomPoolVertex[]; d
   const stepFrontMaterial = useMemo(() => 
     new THREE.MeshStandardMaterial({ color: '#5b9bd5' }), []);
 
+  // Calculate pool center (same as getPoolShape uses for custom pools)
+  const poolCenter = useMemo(() => {
+    if (!poolVertices || poolVertices.length < 3) return { x: 0, y: 0 };
+    const minX = Math.min(...poolVertices.map(v => v.x));
+    const maxX = Math.max(...poolVertices.map(v => v.x));
+    const minY = Math.min(...poolVertices.map(v => v.y));
+    const maxY = Math.max(...poolVertices.map(v => v.y));
+    return { x: (minX + maxX) / 2, y: (minY + maxY) / 2 };
+  }, [poolVertices]);
+
+  // Transform stairs vertices to be relative to pool center (same transform as pool)
+  const transformedVertices = useMemo(() => 
+    vertices.map(v => ({ x: v.x - poolCenter.x, y: v.y - poolCenter.y })),
+  [vertices, poolCenter]);
+
   // Calculate centroid for positioning
   const centroid = useMemo(() => {
-    const cx = vertices.reduce((sum, v) => sum + v.x, 0) / vertices.length;
-    const cy = vertices.reduce((sum, v) => sum + v.y, 0) / vertices.length;
+    const cx = transformedVertices.reduce((sum, v) => sum + v.x, 0) / transformedVertices.length;
+    const cy = transformedVertices.reduce((sum, v) => sum + v.y, 0) / transformedVertices.length;
     return { x: cx, y: cy };
-  }, [vertices]);
+  }, [transformedVertices]);
 
   // Calculate bounding box for step sizing
   const bounds = useMemo(() => {
-    const xs = vertices.map(v => v.x);
-    const ys = vertices.map(v => v.y);
+    const xs = transformedVertices.map(v => v.x);
+    const ys = transformedVertices.map(v => v.y);
     return {
       minX: Math.min(...xs), maxX: Math.max(...xs),
       minY: Math.min(...ys), maxY: Math.max(...ys),
     };
-  }, [vertices]);
+  }, [transformedVertices]);
 
   const steps = useMemo(() => {
     const stepsArr: JSX.Element[] = [];
     const sizeX = bounds.maxX - bounds.minX;
     const sizeY = bounds.maxY - bounds.minY;
-    const stepDepthSize = Math.min(sizeX, sizeY) / stepCount;
+    
+    // Calculate step depth (how much each step moves into the pool)
+    // Rotation determines which direction the steps descend
+    // 0 = entry from top (Y+), descend toward Y-
+    // 90 = entry from left (X-), descend toward X+
+    // 180 = entry from bottom (Y-), descend toward Y+
+    // 270 = entry from right (X+), descend toward X-
+    
+    const stepDepthFactor = 0.9 / stepCount; // Each step takes ~equal share of depth
 
     for (let i = 0; i < stepCount; i++) {
       const stepTop = -i * stepHeight;
-      const stepBottom = -depth;
-      const thisStepHeight = Math.abs(stepTop - stepBottom);
+      const stepBottom = -(i + 1) * stepHeight;
+      const thisStepHeight = stepHeight;
       const posZ = (stepTop + stepBottom) / 2;
-      const scale = 1 - (i * 0.1);
+      
+      // Calculate offset based on rotation and step index
+      const progress = i / stepCount;
+      let offsetX = 0;
+      let offsetY = 0;
+      let currentSizeX = sizeX;
+      let currentSizeY = sizeY;
+      
+      switch (rotation) {
+        case 0: // Entry from top, descend toward Y-
+          offsetY = -progress * sizeY * 0.4;
+          currentSizeY = sizeY * (1 - progress * 0.8);
+          break;
+        case 90: // Entry from left, descend toward X+
+          offsetX = progress * sizeX * 0.4;
+          currentSizeX = sizeX * (1 - progress * 0.8);
+          break;
+        case 180: // Entry from bottom, descend toward Y+
+          offsetY = progress * sizeY * 0.4;
+          currentSizeY = sizeY * (1 - progress * 0.8);
+          break;
+        case 270: // Entry from right, descend toward X-
+          offsetX = -progress * sizeX * 0.4;
+          currentSizeX = sizeX * (1 - progress * 0.8);
+          break;
+      }
 
       stepsArr.push(
-        <group key={i} position={[centroid.x, centroid.y, posZ]}>
+        <group key={i} position={[centroid.x + offsetX, centroid.y + offsetY, posZ]}>
           <mesh material={stepFrontMaterial}>
-            <boxGeometry args={[sizeX * scale, sizeY * scale, thisStepHeight]} />
+            <boxGeometry args={[Math.max(0.1, currentSizeX), Math.max(0.1, currentSizeY), thisStepHeight]} />
           </mesh>
           <mesh position={[0, 0, thisStepHeight / 2 - 0.01]} material={stepTopMaterial}>
-            <boxGeometry args={[sizeX * scale, sizeY * scale, 0.02]} />
+            <boxGeometry args={[Math.max(0.1, currentSizeX), Math.max(0.1, currentSizeY), 0.02]} />
           </mesh>
         </group>
       );
     }
     return stepsArr;
-  }, [stepCount, stepHeight, depth, bounds, centroid, stepTopMaterial, stepFrontMaterial]);
+  }, [stepCount, stepHeight, depth, bounds, centroid, rotation, stepTopMaterial, stepFrontMaterial]);
 
   return <group>{steps}</group>;
 }
 
 // Custom wading pool mesh (from drawn vertices)
-function CustomWadingPoolMesh({ vertices, wadingDepth, poolDepth }: { 
+function CustomWadingPoolMesh({ vertices, wadingDepth, poolDepth, poolVertices }: { 
   vertices: CustomPoolVertex[]; 
   wadingDepth: number;
   poolDepth: number;
+  poolVertices: CustomPoolVertex[];
 }) {
   const waterMaterial = useMemo(() => 
     new THREE.MeshStandardMaterial({ color: '#5b9bd5', transparent: true, opacity: 0.7 }), []);
   const wallMaterial = useMemo(() => 
     new THREE.MeshStandardMaterial({ color: '#5b9bd5' }), []);
 
-  const shape2D = useMemo(() => vertices.map(v => new THREE.Vector2(v.x, v.y)), [vertices]);
+  // Calculate pool center (same as getPoolShape uses for custom pools)
+  const poolCenter = useMemo(() => {
+    if (!poolVertices || poolVertices.length < 3) return { x: 0, y: 0 };
+    const minX = Math.min(...poolVertices.map(v => v.x));
+    const maxX = Math.max(...poolVertices.map(v => v.x));
+    const minY = Math.min(...poolVertices.map(v => v.y));
+    const maxY = Math.max(...poolVertices.map(v => v.y));
+    return { x: (minX + maxX) / 2, y: (minY + maxY) / 2 };
+  }, [poolVertices]);
+
+  // Transform wading pool vertices to be relative to pool center
+  const transformedVertices = useMemo(() => 
+    vertices.map(v => ({ x: v.x - poolCenter.x, y: v.y - poolCenter.y })),
+  [vertices, poolCenter]);
+
+  const shape2D = useMemo(() => transformedVertices.map(v => new THREE.Vector2(v.x, v.y)), [transformedVertices]);
   const shapeObj = useMemo(() => new THREE.Shape(shape2D), [shape2D]);
   const floorGeo = useMemo(() => new THREE.ShapeGeometry(shapeObj), [shapeObj]);
 
   const centroid = useMemo(() => {
-    const cx = vertices.reduce((sum, v) => sum + v.x, 0) / vertices.length;
-    const cy = vertices.reduce((sum, v) => sum + v.y, 0) / vertices.length;
+    const cx = transformedVertices.reduce((sum, v) => sum + v.x, 0) / transformedVertices.length;
+    const cy = transformedVertices.reduce((sum, v) => sum + v.y, 0) / transformedVertices.length;
     return { x: cx, y: cy };
-  }, [vertices]);
+  }, [transformedVertices]);
 
   const bounds = useMemo(() => {
-    const xs = vertices.map(v => v.x);
-    const ys = vertices.map(v => v.y);
+    const xs = transformedVertices.map(v => v.x);
+    const ys = transformedVertices.map(v => v.y);
     return { sizeX: Math.max(...xs) - Math.min(...xs), sizeY: Math.max(...ys) - Math.min(...ys) };
-  }, [vertices]);
+  }, [transformedVertices]);
 
   return (
     <group>
@@ -1134,7 +1203,12 @@ function Scene({ dimensions, calculations, showFoilLayout, rollWidth }: Pool3DVi
         
         {/* Custom stairs from drawn vertices */}
         {hasCustomStairs && (
-          <CustomStairsMesh vertices={dimensions.customStairsVertices!} depth={dimensions.depth} />
+          <CustomStairsMesh 
+            vertices={dimensions.customStairsVertices!} 
+            depth={dimensions.depth} 
+            poolVertices={dimensions.customVertices || []}
+            rotation={dimensions.customStairsRotation || 0}
+          />
         )}
         
         {/* Regular stairs (for non-custom shapes) */}
@@ -1148,6 +1222,7 @@ function Scene({ dimensions, calculations, showFoilLayout, rollWidth }: Pool3DVi
             vertices={dimensions.customWadingPoolVertices!} 
             wadingDepth={dimensions.wadingPool?.depth || 0.4}
             poolDepth={dimensions.depth}
+            poolVertices={dimensions.customVertices || []}
           />
         )}
         
