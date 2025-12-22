@@ -9,6 +9,59 @@ export interface CustomPoolVertex {
   y: number;
 }
 
+export type StairsPosition = 'inside' | 'outside';
+export type StairsSide = 'left' | 'right' | 'front' | 'back';
+
+export interface StairsConfig {
+  enabled: boolean;
+  position: StairsPosition; // wewnątrz/zewnątrz basenu
+  side: StairsSide; // na którym boku
+  width: number | 'full'; // szerokość schodków lub 'full' = pełna szerokość boku
+  stepHeight: number; // wysokość stopnia (domyślnie 0.29m)
+  stepCount: number; // wyliczane z głębokości / stepHeight
+  stepDepth: number; // głębokość stopnia (domyślnie 0.29m)
+}
+
+export interface WadingPoolConfig {
+  enabled: boolean;
+  side: StairsSide; // na którym boku
+  width: number; // szerokość brodzika
+  length: number; // długość brodzika (w głąb basenu lub na zewnątrz)
+  depth: number; // głębokość brodzika (zazwyczaj 0.3-0.6m)
+  position: StairsPosition; // wewnątrz/zewnątrz basenu
+}
+
+export const defaultStairsConfig: StairsConfig = {
+  enabled: false,
+  position: 'inside',
+  side: 'left',
+  width: 'full',
+  stepHeight: 0.29,
+  stepCount: 4, // będzie przeliczone
+  stepDepth: 0.29,
+};
+
+export const defaultWadingPoolConfig: WadingPoolConfig = {
+  enabled: false,
+  side: 'left',
+  width: 2,
+  length: 1.5,
+  depth: 0.4,
+  position: 'inside',
+};
+
+export const stairsPositionLabels: Record<StairsPosition, string> = {
+  inside: 'Wewnątrz basenu',
+  outside: 'Na zewnątrz basenu',
+};
+
+export const stairsSideLabels: Record<StairsSide, string> = {
+  left: 'Lewy bok',
+  right: 'Prawy bok',
+  front: 'Przód',
+  back: 'Tył',
+};
+
 // Nominal load values for DIN filtration formula
 export const nominalLoadByType: Record<PoolType, number> = {
   prywatny: 1,
@@ -33,6 +86,10 @@ export interface PoolDimensions {
   customVertices?: CustomPoolVertex[];
   customArea?: number; // Pre-calculated area for custom shape
   customPerimeter?: number; // Pre-calculated perimeter for custom shape
+  // Stairs configuration
+  stairs: StairsConfig;
+  // Wading pool configuration
+  wadingPool: WadingPoolConfig;
 }
 
 export interface PoolCalculations {
