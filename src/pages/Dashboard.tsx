@@ -20,13 +20,21 @@ import {
   LogOut,
   AlertTriangle,
   Bell,
-  FileText
+  FileText,
+  User
 } from 'lucide-react';
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { format } from 'date-fns';
 import { pl } from 'date-fns/locale';
 import { toast } from 'sonner';
@@ -203,25 +211,30 @@ export default function Dashboard() {
                 </PopoverContent>
               </Popover>
               
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setShowSettings(true)}
-                className="text-header-foreground/80 hover:text-header-foreground hover:bg-header-foreground/10"
-              >
-                <Settings className="w-4 h-4 lg:mr-2" />
-                <span className="hidden lg:inline">Ustawienia</span>
-              </Button>
-              
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleLogout}
-                className="text-header-foreground/80 hover:text-header-foreground hover:bg-header-foreground/10"
-              >
-                <LogOut className="w-4 h-4 lg:mr-2" />
-                <span className="hidden lg:inline">Wyloguj</span>
-              </Button>
+              {/* Account Dropdown */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-header-foreground/80 hover:text-header-foreground hover:bg-header-foreground/10"
+                  >
+                    <User className="w-4 h-4 lg:mr-2" />
+                    <span className="hidden lg:inline">Konto</span>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-48 bg-popover">
+                  <DropdownMenuItem onClick={() => setShowSettings(true)} className="cursor-pointer">
+                    <Settings className="w-4 h-4 mr-2" />
+                    Ustawienia
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={handleLogout} className="cursor-pointer text-destructive focus:text-destructive">
+                    <LogOut className="w-4 h-4 mr-2" />
+                    Wyloguj
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </nav>
           </div>
         </div>
