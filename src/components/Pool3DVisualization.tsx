@@ -1070,6 +1070,12 @@ function CustomStairsMesh({ vertices, depth, poolVertices, rotation = 0 }: {
     const sizeX = bounds.maxX - bounds.minX;
     const sizeY = bounds.maxY - bounds.minY;
     
+    // Determine step depth based on which dimension the stairs extend along
+    // Default rotation (0): entry from Y+, stairs extend along Y axis
+    const isHorizontal = rotation === 90 || rotation === 270;
+    const stairsExtent = isHorizontal ? sizeX : sizeY;
+    const stepDepth = stairsExtent / stepCount;
+    
     // Steps go from top (z=0) down to pool depth
     // Each step: top surface is white, sides are blue
     // Step i has its TOP at z = -i * stepHeight
@@ -1081,33 +1087,32 @@ function CustomStairsMesh({ vertices, depth, poolVertices, rotation = 0 }: {
       const stepBodyHeight = depth - (i * stepHeight);
       const stepBodyCenterZ = stepTopZ - stepBodyHeight / 2;
       
-      // Calculate offset based on rotation and step index
-      // Steps shrink and move in direction of descent
-      const progress = i / Math.max(1, stepCount - 1);
+      // Calculate position based on rotation and step index
+      // The first step (i=0) is at the entry edge, last step is deepest
       let offsetX = 0;
       let offsetY = 0;
       let currentSizeX = sizeX;
       let currentSizeY = sizeY;
       
-      // Shrink factor for the narrower dimension based on step
-      const shrinkFactor = 1 - (progress * 0.7);
-      
+      // Position each step progressively deeper into the pool
+      // Apply 180° flip - previously steps were going wrong direction
       switch (rotation) {
-        case 0: // Entry from top (Y+), descend toward Y-
-          offsetY = -progress * sizeY * 0.35;
-          currentSizeY = sizeY * shrinkFactor;
+        case 0: // Entry from top (Y+), descend toward Y- (person walks from +Y toward -Y)
+          // First step near +Y edge, last step near -Y edge
+          offsetY = (sizeY / 2) - (stepDepth / 2) - (i * stepDepth);
+          currentSizeY = stepDepth;
           break;
-        case 90: // Entry from left (X-), descend toward X+
-          offsetX = progress * sizeX * 0.35;
-          currentSizeX = sizeX * shrinkFactor;
+        case 90: // Entry from right (X+), descend toward X- (person walks from +X toward -X)
+          offsetX = (sizeX / 2) - (stepDepth / 2) - (i * stepDepth);
+          currentSizeX = stepDepth;
           break;
-        case 180: // Entry from bottom (Y-), descend toward Y+
-          offsetY = progress * sizeY * 0.35;
-          currentSizeY = sizeY * shrinkFactor;
+        case 180: // Entry from bottom (Y-), descend toward Y+ (person walks from -Y toward +Y)
+          offsetY = -(sizeY / 2) + (stepDepth / 2) + (i * stepDepth);
+          currentSizeY = stepDepth;
           break;
-        case 270: // Entry from right (X+), descend toward X-
-          offsetX = -progress * sizeX * 0.35;
-          currentSizeX = sizeX * shrinkFactor;
+        case 270: // Entry from left (X-), descend toward X+ (person walks from -X toward +X)
+          offsetX = -(sizeX / 2) + (stepDepth / 2) + (i * stepDepth);
+          currentSizeX = stepDepth;
           break;
       }
 
@@ -1127,7 +1132,29 @@ function CustomStairsMesh({ vertices, depth, poolVertices, rotation = 0 }: {
     return stepsArr;
   }, [stepCount, stepHeight, depth, bounds, centroid, rotation, stepTopMaterial, stepFrontMaterial]);
 
-  return <group>{steps}</group>;
+  const sizeX = bounds.maxX - bounds.minX;
+  const sizeY = bounds.maxY - bounds.minY;
+
+  return (
+    <group>
+      {steps}
+      {/* Dimension lines for custom stairs */}
+      {/* Width dimension */}
+      <DimensionLine
+        start={[bounds.minX, bounds.minY - 0.3, 0.05]}
+        end={[bounds.maxX, bounds.minY - 0.3, 0.05]}
+        label={`${sizeX.toFixed(2)} m`}
+        color="#f97316"
+      />
+      {/* Length dimension */}
+      <DimensionLine
+        start={[bounds.maxX + 0.3, bounds.minY, 0.05]}
+        end={[bounds.maxX + 0.3, bounds.maxY, 0.05]}
+        label={`${sizeY.toFixed(2)} m`}
+        color="#f97316"
+      />
+    </group>
+  );
 }
 
 // Custom wading pool mesh (from drawn vertices)
@@ -1181,6 +1208,14 @@ function CustomWadingPoolMesh({ vertices, wadingDepth, poolDepth, poolVertices }
   // The raised platform height (from pool floor to wading floor)
   const platformHeight = poolDepth - wadingDepth;
 
+  // Calculate actual bounds for dimensions
+  const xs = transformedVertices.map(v => v.x);
+  const ys = transformedVertices.map(v => v.y);
+  const minX = Math.min(...xs);
+  const maxX = Math.max(...xs);
+  const minY = Math.min(...ys);
+  const maxY = Math.max(...ys);
+
   return (
     <group>
       {/* Platform/raised floor (the structure holding up the wading pool floor) */}
@@ -1193,6 +1228,37 @@ function CustomWadingPoolMesh({ vertices, wadingDepth, poolDepth, poolVertices }
       <mesh position={[centroid.x, centroid.y, floorZ + (wadingDepth * 0.4)]} material={waterMaterial}>
         <boxGeometry args={[bounds.sizeX * 0.95, bounds.sizeY * 0.95, wadingDepth * 0.8]} />
       </mesh>
+      {/* Dimension lines for wading pool */}
+      {/* Width dimension */}
+      <DimensionLine
+        start={[minX, minY - 0.3, floorZ + 0.05]}
+        end={[maxX, minY - 0.3, floorZ + 0.05]}
+        label={`${bounds.sizeX.toFixed(2)} m`}
+        color="#8b5cf6"
+      />
+      {/* Length dimension */}
+      <DimensionLine
+        start={[maxX + 0.3, minY, floorZ + 0.05]}
+        end={[maxX + 0.3, maxY, floorZ + 0.05]}
+        label={`${bounds.sizeY.toFixed(2)} m`}
+        color="#8b5cf6"
+      />
+      {/* Depth dimension */}
+      <group>
+        <Line
+          points={[
+            [minX - 0.3, minY, 0],
+            [minX - 0.3, minY, floorZ]
+          ]}
+          color="#8b5cf6"
+          lineWidth={1.5}
+        />
+        <Html position={[minX - 0.5, minY, floorZ / 2]} center>
+          <div className="bg-purple-50 px-2 py-0.5 rounded text-xs font-semibold text-purple-700 border border-purple-200 shadow-sm whitespace-nowrap">
+            {wadingDepth.toFixed(2)} m
+          </div>
+        </Html>
+      </group>
     </group>
   );
 }
@@ -1200,8 +1266,11 @@ function CustomWadingPoolMesh({ vertices, wadingDepth, poolDepth, poolVertices }
 // Main scene
 function Scene({ dimensions, calculations, showFoilLayout, rollWidth }: Pool3DVisualizationProps & { rollWidth: number }) {
   const isCustomShape = dimensions.shape === 'wlasny';
-  const hasCustomStairs = isCustomShape && dimensions.customStairsVertices && dimensions.customStairsVertices.length >= 3;
-  const hasCustomWadingPool = isCustomShape && dimensions.customWadingPoolVertices && dimensions.customWadingPoolVertices.length >= 3;
+  // Check for multiple custom stairs (array of arrays)
+  const customStairsArrays = dimensions.customStairsVertices || [];
+  const customWadingArrays = dimensions.customWadingPoolVertices || [];
+  const hasCustomStairs = isCustomShape && customStairsArrays.length > 0 && customStairsArrays.some(arr => arr.length >= 3);
+  const hasCustomWadingPool = isCustomShape && customWadingArrays.length > 0 && customWadingArrays.some(arr => arr.length >= 3);
 
   return (
     <>
@@ -1215,30 +1284,36 @@ function Scene({ dimensions, calculations, showFoilLayout, rollWidth }: Pool3DVi
         <PoolMesh dimensions={dimensions} solid={showFoilLayout} />
         <DimensionLines dimensions={dimensions} />
         
-        {/* Custom stairs from drawn vertices */}
-        {hasCustomStairs && (
-          <CustomStairsMesh 
-            vertices={dimensions.customStairsVertices!} 
-            depth={dimensions.depth} 
-            poolVertices={dimensions.customVertices || []}
-            rotation={dimensions.customStairsRotation || 0}
-          />
-        )}
+        {/* Custom stairs from drawn vertices - render all */}
+        {hasCustomStairs && customStairsArrays.map((stairsVerts, index) => (
+          stairsVerts.length >= 3 && (
+            <CustomStairsMesh 
+              key={`stairs-${index}`}
+              vertices={stairsVerts} 
+              depth={dimensions.depth} 
+              poolVertices={dimensions.customVertices || []}
+              rotation={dimensions.customStairsRotations?.[index] || 0}
+            />
+          )
+        ))}
         
         {/* Regular stairs (for non-custom shapes) */}
         {!hasCustomStairs && dimensions.stairs?.enabled && (
           <StairsMesh dimensions={dimensions} stairs={dimensions.stairs} />
         )}
         
-        {/* Custom wading pool from drawn vertices */}
-        {hasCustomWadingPool && (
-          <CustomWadingPoolMesh 
-            vertices={dimensions.customWadingPoolVertices!} 
-            wadingDepth={dimensions.wadingPool?.depth || 0.4}
-            poolDepth={dimensions.depth}
-            poolVertices={dimensions.customVertices || []}
-          />
-        )}
+        {/* Custom wading pools from drawn vertices - render all */}
+        {hasCustomWadingPool && customWadingArrays.map((wadingVerts, index) => (
+          wadingVerts.length >= 3 && (
+            <CustomWadingPoolMesh 
+              key={`wading-${index}`}
+              vertices={wadingVerts} 
+              wadingDepth={dimensions.wadingPool?.depth || 0.4}
+              poolDepth={dimensions.depth}
+              poolVertices={dimensions.customVertices || []}
+            />
+          )
+        ))}
         
         {/* Regular wading pool (for non-custom shapes) */}
         {!hasCustomWadingPool && dimensions.wadingPool?.enabled && (
