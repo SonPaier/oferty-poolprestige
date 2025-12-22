@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useConfigurator } from '@/context/ConfiguratorContext';
 import { Button } from '@/components/ui/button';
 import { ProductCard } from '@/components/ProductCard';
@@ -52,7 +52,8 @@ export function LightingStep({ onNext, onBack }: LightingStepProps) {
     );
   };
 
-  const handleNext = () => {
+  // Auto-save section when selections change
+  useEffect(() => {
     const items: OfferItem[] = [];
     
     if (selectedLamp) {
@@ -78,9 +79,7 @@ export function LightingStep({ onNext, onBack }: LightingStepProps) {
         data: { ...sections.oswietlenie, items },
       },
     });
-    
-    onNext();
-  };
+  }, [selectedLamp, selectedBulb]);
 
   return (
     <div className="animate-slide-up">
@@ -151,15 +150,6 @@ export function LightingStep({ onNext, onBack }: LightingStepProps) {
         </div>
       </div>
 
-      <div className="flex justify-between mt-6">
-        <Button variant="outline" onClick={onBack}>
-          <ArrowLeft className="w-4 h-4 mr-2" />
-          Wstecz
-        </Button>
-        <Button onClick={handleNext} className="btn-primary px-8">
-          Dalej: Automatyka
-        </Button>
-      </div>
     </div>
   );
 }

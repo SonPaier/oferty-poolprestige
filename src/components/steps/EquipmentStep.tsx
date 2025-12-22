@@ -79,7 +79,8 @@ export function EquipmentStep({ onNext, onBack }: EquipmentStepProps) {
     }));
   };
 
-  const handleNext = () => {
+  // Auto-save section when selections change
+  useEffect(() => {
     const items: OfferItem[] = Object.entries(selectedItems).map(([id, { product, quantity }]) => ({
       id: `equip-${id}`,
       product,
@@ -93,9 +94,7 @@ export function EquipmentStep({ onNext, onBack }: EquipmentStepProps) {
         data: { ...sections.uzbrojenie, items },
       },
     });
-    
-    onNext();
-  };
+  }, [selectedItems]);
 
   const renderProductGroup = (
     title: string, 
@@ -202,15 +201,6 @@ export function EquipmentStep({ onNext, onBack }: EquipmentStepProps) {
         {renderProductGroup('Dysze denne', bottomNozzles, 'bottomNozzles')}
       </div>
 
-      <div className="flex justify-between mt-6">
-        <Button variant="outline" onClick={onBack}>
-          <ArrowLeft className="w-4 h-4 mr-2" />
-          Wstecz
-        </Button>
-        <Button onClick={handleNext} className="btn-primary px-8">
-          Dalej: Filtracja
-        </Button>
-      </div>
     </div>
   );
 }

@@ -270,15 +270,6 @@ export function CustomerStep({ onNext }: CustomerStepProps) {
           </div>
         </div>
 
-        <div className="flex justify-end pt-4">
-          <Button 
-            onClick={onNext} 
-            disabled={!isValid}
-            className="btn-primary px-8"
-          >
-            Dalej: Wymiary basenu
-          </Button>
-        </div>
       </div>
     </div>
   );

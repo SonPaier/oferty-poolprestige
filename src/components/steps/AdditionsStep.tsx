@@ -351,17 +351,6 @@ export function AdditionsStep({ onNext, onBack }: AdditionsStepProps) {
         </Card>
       </div>
 
-      {/* Navigation */}
-      <div className="flex justify-between pt-4">
-        <Button variant="outline" onClick={onBack} className="gap-2">
-          <ArrowLeft className="w-4 h-4" />
-          Wstecz
-        </Button>
-        <Button onClick={onNext} className="gap-2">
-          Dalej
-          <ArrowRight className="w-4 h-4" />
-        </Button>
-      </div>
     </div>
   );
 }

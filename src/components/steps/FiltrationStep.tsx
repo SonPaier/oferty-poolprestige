@@ -37,7 +37,8 @@ export function FiltrationStep({ onNext, onBack }: FiltrationStepProps) {
   const [selectedMedia, setSelectedMedia] = useState<Product | null>(filterMedia[1] || null);
   const [mediaQuantity, setMediaQuantity] = useState(filterSelection.filterMediaKg / 25); // bags
 
-  const handleNext = () => {
+  // Auto-save section when selections change
+  useEffect(() => {
     const items: OfferItem[] = [];
     
     if (selectedPump) {
@@ -71,9 +72,7 @@ export function FiltrationStep({ onNext, onBack }: FiltrationStepProps) {
         data: { ...sections.filtracja, items },
       },
     });
-    
-    onNext();
-  };
+  }, [selectedPump, selectedFilter, selectedMedia, mediaQuantity]);
 
   // Build formula string for display
   const formulaBase = `(0,37 × ${volume.toFixed(1)}) / ${nominalLoad}`;
@@ -215,15 +214,6 @@ export function FiltrationStep({ onNext, onBack }: FiltrationStepProps) {
         </div>
       </div>
 
-      <div className="flex justify-between mt-6">
-        <Button variant="outline" onClick={onBack}>
-          <ArrowLeft className="w-4 h-4 mr-2" />
-          Wstecz
-        </Button>
-        <Button onClick={handleNext} className="btn-primary px-8">
-          Dalej: Oświetlenie
-        </Button>
-      </div>
     </div>
   );
 }
