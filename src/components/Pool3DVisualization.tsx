@@ -563,8 +563,8 @@ export function Pool3DVisualization({
       <Suspense fallback={<LoadingFallback />}>
         <Canvas
           camera={{
-            // Better initial angle - looking from front-right-top at 45° angle
-            position: [cameraDistance * 0.7, cameraDistance * 0.5, cameraDistance * 0.5],
+            // Natural top-down view - looking into the pool from above at an angle
+            position: [cameraDistance * 0.6, cameraDistance * 0.9, cameraDistance * 0.6],
             fov: 45,
             near: 0.1,
             far: 1000,
