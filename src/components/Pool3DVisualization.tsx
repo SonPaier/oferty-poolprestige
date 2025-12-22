@@ -1070,53 +1070,55 @@ function CustomStairsMesh({ vertices, depth, poolVertices, rotation = 0 }: {
     const sizeX = bounds.maxX - bounds.minX;
     const sizeY = bounds.maxY - bounds.minY;
     
-    // Calculate step depth (how much each step moves into the pool)
-    // Rotation determines which direction the steps descend
-    // 0 = entry from top (Y+), descend toward Y-
-    // 90 = entry from left (X-), descend toward X+
-    // 180 = entry from bottom (Y-), descend toward Y+
-    // 270 = entry from right (X+), descend toward X-
+    // Steps go from top (z=0) down to pool depth
+    // Each step: top surface is white, sides are blue
+    // Step i has its TOP at z = -i * stepHeight
     
-    const stepDepthFactor = 0.9 / stepCount; // Each step takes ~equal share of depth
-
     for (let i = 0; i < stepCount; i++) {
-      const stepTop = -i * stepHeight;
-      const stepBottom = -(i + 1) * stepHeight;
-      const thisStepHeight = stepHeight;
-      const posZ = (stepTop + stepBottom) / 2;
+      // This step's top surface is at this Z level
+      const stepTopZ = -i * stepHeight;
+      // The step body extends from stepTopZ down to the pool floor
+      const stepBodyHeight = depth - (i * stepHeight);
+      const stepBodyCenterZ = stepTopZ - stepBodyHeight / 2;
       
       // Calculate offset based on rotation and step index
-      const progress = i / stepCount;
+      // Steps shrink and move in direction of descent
+      const progress = i / Math.max(1, stepCount - 1);
       let offsetX = 0;
       let offsetY = 0;
       let currentSizeX = sizeX;
       let currentSizeY = sizeY;
       
+      // Shrink factor for the narrower dimension based on step
+      const shrinkFactor = 1 - (progress * 0.7);
+      
       switch (rotation) {
-        case 0: // Entry from top, descend toward Y-
-          offsetY = -progress * sizeY * 0.4;
-          currentSizeY = sizeY * (1 - progress * 0.8);
+        case 0: // Entry from top (Y+), descend toward Y-
+          offsetY = -progress * sizeY * 0.35;
+          currentSizeY = sizeY * shrinkFactor;
           break;
-        case 90: // Entry from left, descend toward X+
-          offsetX = progress * sizeX * 0.4;
-          currentSizeX = sizeX * (1 - progress * 0.8);
+        case 90: // Entry from left (X-), descend toward X+
+          offsetX = progress * sizeX * 0.35;
+          currentSizeX = sizeX * shrinkFactor;
           break;
-        case 180: // Entry from bottom, descend toward Y+
-          offsetY = progress * sizeY * 0.4;
-          currentSizeY = sizeY * (1 - progress * 0.8);
+        case 180: // Entry from bottom (Y-), descend toward Y+
+          offsetY = progress * sizeY * 0.35;
+          currentSizeY = sizeY * shrinkFactor;
           break;
-        case 270: // Entry from right, descend toward X-
-          offsetX = -progress * sizeX * 0.4;
-          currentSizeX = sizeX * (1 - progress * 0.8);
+        case 270: // Entry from right (X+), descend toward X-
+          offsetX = -progress * sizeX * 0.35;
+          currentSizeX = sizeX * shrinkFactor;
           break;
       }
 
       stepsArr.push(
-        <group key={i} position={[centroid.x + offsetX, centroid.y + offsetY, posZ]}>
+        <group key={i} position={[centroid.x + offsetX, centroid.y + offsetY, stepBodyCenterZ]}>
+          {/* Step body (blue) */}
           <mesh material={stepFrontMaterial}>
-            <boxGeometry args={[Math.max(0.1, currentSizeX), Math.max(0.1, currentSizeY), thisStepHeight]} />
+            <boxGeometry args={[Math.max(0.1, currentSizeX), Math.max(0.1, currentSizeY), stepBodyHeight]} />
           </mesh>
-          <mesh position={[0, 0, thisStepHeight / 2 - 0.01]} material={stepTopMaterial}>
+          {/* Step top surface (white) */}
+          <mesh position={[0, 0, stepBodyHeight / 2 - 0.01]} material={stepTopMaterial}>
             <boxGeometry args={[Math.max(0.1, currentSizeX), Math.max(0.1, currentSizeY), 0.02]} />
           </mesh>
         </group>
@@ -1136,7 +1138,9 @@ function CustomWadingPoolMesh({ vertices, wadingDepth, poolDepth, poolVertices }
   poolVertices: CustomPoolVertex[];
 }) {
   const waterMaterial = useMemo(() => 
-    new THREE.MeshStandardMaterial({ color: '#5b9bd5', transparent: true, opacity: 0.7 }), []);
+    new THREE.MeshStandardMaterial({ color: '#38bdf8', transparent: true, opacity: 0.5 }), []);
+  const floorMaterial = useMemo(() => 
+    new THREE.MeshStandardMaterial({ color: '#5b9bd5' }), []);
   const wallMaterial = useMemo(() => 
     new THREE.MeshStandardMaterial({ color: '#5b9bd5' }), []);
 
@@ -1171,13 +1175,23 @@ function CustomWadingPoolMesh({ vertices, wadingDepth, poolDepth, poolVertices }
     return { sizeX: Math.max(...xs) - Math.min(...xs), sizeY: Math.max(...ys) - Math.min(...ys) };
   }, [transformedVertices]);
 
+  // Wading pool floor is at wadingDepth from surface (shallow area)
+  // It should be an elevated platform inside the pool
+  const floorZ = -wadingDepth;
+  // The raised platform height (from pool floor to wading floor)
+  const platformHeight = poolDepth - wadingDepth;
+
   return (
     <group>
-      {/* Floor */}
-      <mesh position={[0, 0, -wadingDepth]} geometry={floorGeo} material={wallMaterial} />
-      {/* Water */}
-      <mesh position={[centroid.x, centroid.y, -wadingDepth / 2]} material={waterMaterial}>
-        <boxGeometry args={[bounds.sizeX * 0.95, bounds.sizeY * 0.95, wadingDepth - 0.02]} />
+      {/* Platform/raised floor (the structure holding up the wading pool floor) */}
+      <mesh position={[centroid.x, centroid.y, -poolDepth + platformHeight / 2]} material={wallMaterial}>
+        <boxGeometry args={[bounds.sizeX, bounds.sizeY, platformHeight]} />
+      </mesh>
+      {/* Floor surface (top of wading pool) */}
+      <mesh position={[0, 0, floorZ]} geometry={floorGeo} material={floorMaterial} />
+      {/* Water in wading pool */}
+      <mesh position={[centroid.x, centroid.y, floorZ + (wadingDepth * 0.4)]} material={waterMaterial}>
+        <boxGeometry args={[bounds.sizeX * 0.95, bounds.sizeY * 0.95, wadingDepth * 0.8]} />
       </mesh>
     </group>
   );
