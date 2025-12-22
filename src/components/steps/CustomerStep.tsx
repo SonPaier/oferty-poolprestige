@@ -146,8 +146,12 @@ export function CustomerStep({ onNext }: CustomerStepProps) {
   };
   
   const removeFile = async (path: string) => {
+    const file = uploadedFiles.find(f => f.path === path);
+    if (!confirm(`Czy na pewno chcesz usunąć plik "${file?.name}"?`)) return;
+    
     await supabase.storage.from('offer-attachments').remove([path]);
     setUploadedFiles(prev => prev.filter(f => f.path !== path));
+    toast.success('Plik usunięty');
   };
 
   const startEditFileName = (file: UploadedFile) => {
