@@ -419,11 +419,17 @@ function StairsMesh({ dimensions, stairs }: { dimensions: PoolDimensions; stairs
   if (!stairs.enabled) return null;
   
   const { shape, length, width, depth, lLength2 = 3, lWidth2 = 2 } = dimensions;
-  const { position, corner, direction, width: stairsWidth, stepHeight, stepDepth } = stairs;
+  // Provide defaults for all stairs properties to avoid NaN
+  const position = stairs.position || 'inside';
+  const corner = stairs.corner || 'back-left';
+  const direction = stairs.direction || 'along-width';
+  const stairsWidth = typeof stairs.width === 'number' && !isNaN(stairs.width) ? stairs.width : 1.5;
+  const stepHeight = typeof stairs.stepHeight === 'number' && !isNaN(stairs.stepHeight) && stairs.stepHeight > 0 ? stairs.stepHeight : 0.29;
+  const stepDepth = typeof stairs.stepDepth === 'number' && !isNaN(stairs.stepDepth) && stairs.stepDepth > 0 ? stairs.stepDepth : 0.29;
   
-  const poolDepth = depth;
-  const halfL = length / 2;
-  const halfW = width / 2;
+  const poolDepth = depth || 1.5;
+  const halfL = (length || 8) / 2;
+  const halfW = (width || 4) / 2;
   
   const concreteMaterial = useMemo(() => 
     new THREE.MeshStandardMaterial({
@@ -432,7 +438,7 @@ function StairsMesh({ dimensions, stairs }: { dimensions: PoolDimensions; stairs
     }), []);
 
   const isLShape = shape === 'litera-l';
-  const actualStairsWidth = typeof stairsWidth === 'number' ? stairsWidth : 1.5;
+  const actualStairsWidth = stairsWidth;
 
   // Calculate corner base position
   const getCornerPosition = () => {
@@ -518,12 +524,17 @@ function WadingPoolMesh({ dimensions, wadingPool }: { dimensions: PoolDimensions
   if (!wadingPool.enabled) return null;
   
   const { shape, length, width, depth, lLength2 = 3, lWidth2 = 2 } = dimensions;
-  const { corner, direction, width: wpWidth, length: wpLength, depth: wpDepth } = wadingPool;
+  // Provide defaults for all wading pool properties to avoid NaN/undefined
+  const corner = wadingPool.corner || 'back-left';
+  const direction = wadingPool.direction || 'along-width';
+  const wpWidth = typeof wadingPool.width === 'number' && !isNaN(wadingPool.width) ? wadingPool.width : 2;
+  const wpLength = typeof wadingPool.length === 'number' && !isNaN(wadingPool.length) ? wadingPool.length : 1.5;
+  const wpDepth = typeof wadingPool.depth === 'number' && !isNaN(wadingPool.depth) && wadingPool.depth > 0 ? wadingPool.depth : 0.4;
   
-  const halfL = length / 2;
-  const halfW = width / 2;
+  const halfL = (length || 8) / 2;
+  const halfW = (width || 4) / 2;
   
-  const poolDepth = depth;
+  const poolDepth = depth || 1.5;
   const internalWallHeight = poolDepth - wpDepth;
   
   const waterMaterial = useMemo(() => 
