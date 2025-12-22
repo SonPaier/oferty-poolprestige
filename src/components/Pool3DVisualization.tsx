@@ -262,7 +262,7 @@ function PoolMesh({ dimensions, solid = false }: { dimensions: PoolDimensions; s
       
       return { wallGeometry: wallGeo, bottomGeometry: bottomGeo, edges: edgePoints, shellGeometry: shellGeo };
     } else {
-      // For other shapes
+      // For other shapes (oval, L-shape, custom)
       const shapeObj = new THREE.Shape(shape2D);
       const bottomGeo = new THREE.ShapeGeometry(shapeObj);
       
@@ -293,20 +293,90 @@ function PoolMesh({ dimensions, solid = false }: { dimensions: PoolDimensions; s
       wallGeo.setIndex(wallIndices);
       wallGeo.computeVertexNormals();
       
+      // Create outer shell for non-rectangular shapes
+      // Offset each point outward by WALL_THICKNESS
+      const outerShape2D: THREE.Vector2[] = [];
+      for (let i = 0; i < numPoints; i++) {
+        const prev = shape2D[(i - 1 + numPoints) % numPoints];
+        const curr = shape2D[i];
+        const next = shape2D[(i + 1) % numPoints];
+        
+        // Calculate normal vectors for the two adjacent edges
+        const edge1 = new THREE.Vector2(curr.x - prev.x, curr.y - prev.y).normalize();
+        const edge2 = new THREE.Vector2(next.x - curr.x, next.y - curr.y).normalize();
+        
+        // Perpendicular vectors (pointing outward)
+        const normal1 = new THREE.Vector2(-edge1.y, edge1.x);
+        const normal2 = new THREE.Vector2(-edge2.y, edge2.x);
+        
+        // Average normal for the corner
+        const avgNormal = new THREE.Vector2(
+          (normal1.x + normal2.x) / 2,
+          (normal1.y + normal2.y) / 2
+        ).normalize();
+        
+        // Handle sharp corners by adjusting offset distance
+        const dot = normal1.dot(normal2);
+        const offsetMult = dot > 0.1 ? 1 / Math.max(0.5, Math.sqrt((1 + dot) / 2)) : 1.5;
+        
+        outerShape2D.push(new THREE.Vector2(
+          curr.x + avgNormal.x * WALL_THICKNESS * offsetMult,
+          curr.y + avgNormal.y * WALL_THICKNESS * offsetMult
+        ));
+      }
+      
+      // Create shell walls (outer walls)
+      const shellPositions: number[] = [];
+      const shellIndices: number[] = [];
+      const outerDepth = depth + WALL_THICKNESS;
+      
+      for (let i = 0; i < numPoints; i++) {
+        const curr = outerShape2D[i];
+        const next = outerShape2D[(i + 1) % numPoints];
+        
+        const baseIdx = i * 4;
+        shellPositions.push(
+          curr.x, curr.y, 0,
+          next.x, next.y, 0,
+          next.x, next.y, -outerDepth,
+          curr.x, curr.y, -outerDepth
+        );
+        
+        shellIndices.push(
+          baseIdx, baseIdx + 3, baseIdx + 2,
+          baseIdx, baseIdx + 2, baseIdx + 1
+        );
+      }
+      
+      const shellGeo = new THREE.BufferGeometry();
+      shellGeo.setAttribute('position', new THREE.Float32BufferAttribute(shellPositions, 3));
+      shellGeo.setIndex(shellIndices);
+      shellGeo.computeVertexNormals();
+      
       const edgePoints: [number, number, number][][] = [];
       
+      // Inner top rim
       for (let i = 0; i < numPoints; i++) {
         const curr = shape2D[i];
         const next = shape2D[(i + 1) % numPoints];
         edgePoints.push([[curr.x, curr.y, 0], [next.x, next.y, 0]]);
       }
       
+      // Outer top rim
+      for (let i = 0; i < numPoints; i++) {
+        const curr = outerShape2D[i];
+        const next = outerShape2D[(i + 1) % numPoints];
+        edgePoints.push([[curr.x, curr.y, 0], [next.x, next.y, 0]]);
+      }
+      
+      // Inner bottom rim
       for (let i = 0; i < numPoints; i++) {
         const curr = shape2D[i];
         const next = shape2D[(i + 1) % numPoints];
         edgePoints.push([[curr.x, curr.y, -depth], [next.x, next.y, -depth]]);
       }
       
+      // Vertical edges (inner)
       const verticalEdgeCount = Math.min(numPoints, 8);
       const step = Math.max(1, Math.floor(numPoints / verticalEdgeCount));
       for (let i = 0; i < numPoints; i += step) {
@@ -314,7 +384,7 @@ function PoolMesh({ dimensions, solid = false }: { dimensions: PoolDimensions; s
         edgePoints.push([[pt.x, pt.y, 0], [pt.x, pt.y, -depth]]);
       }
       
-      return { wallGeometry: wallGeo, bottomGeometry: bottomGeo, edges: edgePoints, shellGeometry: null };
+      return { wallGeometry: wallGeo, bottomGeometry: bottomGeo, edges: edgePoints, shellGeometry: shellGeo };
     }
   }, [shape, length, width, depth, actualDeepDepth, hasSlope, shape2D, isRectangular]);
 

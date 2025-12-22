@@ -8,3 +8,6 @@ verify_jwt = false
 
 [functions.send-offer-email]
 verify_jwt = false
+
+[functions.receive-offer-email]
+verify_jwt = false
