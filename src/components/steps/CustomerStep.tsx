@@ -1,12 +1,42 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useConfigurator } from '@/context/ConfiguratorContext';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { User, Building, Mail, Phone, MapPin, Sparkles, Loader2 } from 'lucide-react';
+import { User, Building, Mail, Phone, MapPin, Sparkles, Loader2, Paperclip, X, FileText, Image as ImageIcon, FileSpreadsheet } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+
+const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+const MAX_FILES = 5;
+const ALLOWED_TYPES = [
+  'image/jpeg', 'image/png', 'image/webp', 'image/gif',
+  'application/pdf',
+  'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'text/csv'
+];
+
+interface UploadedFile {
+  name: string;
+  type: string;
+  size: number;
+  url: string;
+  path: string;
+}
+
+const formatFileSize = (bytes: number) => {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+};
+
+const getFileIcon = (type: string) => {
+  if (type.startsWith('image/')) return <ImageIcon className="w-4 h-4" />;
+  if (type === 'application/pdf') return <FileText className="w-4 h-4" />;
+  if (type.includes('spreadsheet') || type.includes('excel') || type === 'text/csv') return <FileSpreadsheet className="w-4 h-4" />;
+  return <FileText className="w-4 h-4" />;
+};
 
 interface CustomerStepProps {
   onNext: () => void;
@@ -18,6 +48,9 @@ export function CustomerStep({ onNext }: CustomerStepProps) {
   
   const [emailInput, setEmailInput] = useState('');
   const [isExtracting, setIsExtracting] = useState(false);
+  const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
+  const [isUploading, setIsUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const updateField = (field: keyof typeof customerData, value: string) => {
     dispatch({
@@ -26,16 +59,94 @@ export function CustomerStep({ onNext }: CustomerStepProps) {
     });
   };
 
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    
+    if (uploadedFiles.length + files.length > MAX_FILES) {
+      toast.error(`Maksymalnie ${MAX_FILES} plików`);
+      return;
+    }
+    
+    const validFiles = files.filter(file => {
+      if (!ALLOWED_TYPES.includes(file.type)) {
+        toast.error(`Nieobsługiwany format: ${file.name}`);
+        return false;
+      }
+      if (file.size > MAX_FILE_SIZE) {
+        toast.error(`Plik za duży (max 10MB): ${file.name}`);
+        return false;
+      }
+      return true;
+    });
+    
+    if (validFiles.length === 0) return;
+    
+    setIsUploading(true);
+    const newFiles: UploadedFile[] = [];
+    
+    for (const file of validFiles) {
+      const fileName = `${Date.now()}-${file.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
+      
+      const { data, error } = await supabase.storage
+        .from('offer-attachments')
+        .upload(fileName, file);
+      
+      if (error) {
+        console.error('Upload error:', error);
+        toast.error(`Błąd uploadu: ${file.name}`);
+        continue;
+      }
+      
+      const { data: urlData } = supabase.storage
+        .from('offer-attachments')
+        .getPublicUrl(data.path);
+      
+      newFiles.push({
+        name: file.name,
+        type: file.type,
+        size: file.size,
+        url: urlData.publicUrl,
+        path: data.path
+      });
+    }
+    
+    setUploadedFiles(prev => [...prev, ...newFiles]);
+    setIsUploading(false);
+    
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+    
+    if (newFiles.length > 0) {
+      toast.success(`Dodano ${newFiles.length} plik(ów)`);
+    }
+  };
+  
+  const removeFile = async (path: string) => {
+    await supabase.storage.from('offer-attachments').remove([path]);
+    setUploadedFiles(prev => prev.filter(f => f.path !== path));
+  };
+
   const handleExtractFromEmail = async () => {
-    if (!emailInput.trim()) {
-      toast.error('Wklej treść maila lub wiadomości');
+    if (!emailInput.trim() && uploadedFiles.length === 0) {
+      toast.error('Wklej treść maila lub dodaj załączniki');
       return;
     }
 
     setIsExtracting(true);
     try {
+      // Prepare file info for AI
+      const fileInfo = uploadedFiles.map(f => ({
+        name: f.name,
+        type: f.type,
+        url: f.url
+      }));
+      
       const { data, error } = await supabase.functions.invoke('extract-from-email', {
-        body: { emailContent: emailInput },
+        body: { 
+          emailContent: emailInput,
+          attachments: fileInfo 
+        },
       });
 
       if (error) {
@@ -131,7 +242,7 @@ export function CustomerStep({ onNext }: CustomerStepProps) {
           <h3 className="font-medium">Automatyczne uzupełnianie z maila</h3>
         </div>
         <p className="text-sm text-muted-foreground mb-3">
-          Wklej treść maila od klienta, a AI wyekstrahuje dane kontaktowe i wymiary basenu.
+          Wklej treść maila od klienta i/lub dodaj załączniki (obrazki, PDF, Excel). AI wyekstrahuje dane kontaktowe i wymiary basenu.
         </p>
         <Textarea
           value={emailInput}
@@ -139,9 +250,67 @@ export function CustomerStep({ onNext }: CustomerStepProps) {
           placeholder="Wklej tutaj treść maila, wiadomości lub zapytania od klienta..."
           className="input-field min-h-[100px] mb-3"
         />
+        
+        {/* File upload section */}
+        <div className="mb-3">
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            accept={ALLOWED_TYPES.join(',')}
+            onChange={handleFileSelect}
+            className="hidden"
+          />
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={isUploading || uploadedFiles.length >= MAX_FILES}
+            className="mb-2"
+          >
+            {isUploading ? (
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+            ) : (
+              <Paperclip className="w-4 h-4 mr-2" />
+            )}
+            Dodaj załączniki
+          </Button>
+          <p className="text-xs text-muted-foreground">
+            Max {MAX_FILES} plików, do 10MB każdy (JPG, PNG, PDF, Excel, CSV)
+          </p>
+          
+          {/* Uploaded files list */}
+          {uploadedFiles.length > 0 && (
+            <div className="mt-3 space-y-2">
+              {uploadedFiles.map((file) => (
+                <div 
+                  key={file.path}
+                  className="flex items-center gap-2 p-2 bg-muted/50 rounded-md text-sm"
+                >
+                  {getFileIcon(file.type)}
+                  <span className="flex-1 truncate">{file.name}</span>
+                  <span className="text-muted-foreground text-xs">
+                    {formatFileSize(file.size)}
+                  </span>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6"
+                    onClick={() => removeFile(file.path)}
+                  >
+                    <X className="w-3 h-3" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+        
         <Button
           onClick={handleExtractFromEmail}
-          disabled={isExtracting || !emailInput.trim()}
+          disabled={isExtracting || (!emailInput.trim() && uploadedFiles.length === 0)}
           variant="secondary"
           className="w-full sm:w-auto"
         >
