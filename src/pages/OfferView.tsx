@@ -2,8 +2,8 @@ import { useState, useEffect, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import { getOfferByShareUid } from '@/lib/offerDb';
 import { SavedOffer } from '@/types/offers';
-import { OfferItem, poolTypeLabels, PoolType } from '@/types/configurator';
-import { formatPrice } from '@/lib/calculations';
+import { OfferItem, poolTypeLabels, PoolType, PoolCalculations } from '@/types/configurator';
+import { formatPrice, calculatePoolMetrics } from '@/lib/calculations';
 import { getPriceInPLN } from '@/data/products';
 import logo from '@/assets/logo.png';
 import { 
@@ -21,7 +21,7 @@ import {
 import { Checkbox } from '@/components/ui/checkbox';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-
+import { Pool3DVisualization } from '@/components/Pool3DVisualization';
 interface OfferWithShareUid extends SavedOffer {
   shareUid: string;
 }
@@ -400,6 +400,23 @@ export default function OfferView() {
                 </div>
               )}
             </div>
+          </CardContent>
+        </Card>
+
+        {/* Pool 3D Visualization */}
+        <Card className="mb-6">
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Ruler className="w-5 h-5 text-primary" />
+              Wizualizacja basenu
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Pool3DVisualization 
+              dimensions={offer.dimensions}
+              calculations={calculatePoolMetrics(offer.dimensions, offer.poolType as PoolType)}
+              height={300}
+            />
           </CardContent>
         </Card>
 
