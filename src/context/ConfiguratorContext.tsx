@@ -44,6 +44,23 @@ const initialDimensions: PoolDimensions = {
   isIrregular: false,
   overflowType: 'skimmerowy',
   attractions: 0,
+  stairs: {
+    enabled: false,
+    position: 'inside',
+    side: 'left',
+    width: 'full',
+    stepHeight: 0.29,
+    stepCount: 5,
+    stepDepth: 0.29,
+  },
+  wadingPool: {
+    enabled: false,
+    side: 'left',
+    width: 2,
+    length: 1.5,
+    depth: 0.4,
+    position: 'inside',
+  },
 };
 
 const initialCustomerData: CustomerData = {

@@ -2,8 +2,11 @@ import { useRef, useMemo, Suspense } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, Html, Line } from '@react-three/drei';
 import * as THREE from 'three';
-import { PoolDimensions, PoolCalculations } from '@/types/configurator';
+import { PoolDimensions, PoolCalculations, StairsConfig, WadingPoolConfig } from '@/types/configurator';
 import { planFoilLayout, FoilStrip, ROLL_WIDTH_NARROW, ROLL_WIDTH_WIDE } from '@/lib/foilPlanner';
+
+// Wall thickness constant (20cm)
+const WALL_THICKNESS = 0.2;
 
 interface Pool3DVisualizationProps {
   dimensions: PoolDimensions;
@@ -91,13 +94,13 @@ function getPoolShape(dimensions: PoolDimensions): THREE.Vector2[] {
   return points;
 }
 
-// Pool shell mesh - walls and bottom correctly oriented
+// Pool shell mesh - walls and bottom with thickness
 function PoolMesh({ dimensions, solid = false }: { dimensions: PoolDimensions; solid?: boolean }) {
   const { depth, depthDeep, hasSlope, length, width, shape } = dimensions;
   const actualDeepDepth = hasSlope && depthDeep ? depthDeep : depth;
   const shape2D = useMemo(() => getPoolShape(dimensions), [dimensions]);
   
-  // Materials - solid or transparent based on prop
+  // Materials
   const wallMaterial = useMemo(() => 
     new THREE.MeshStandardMaterial({
       color: solid ? '#0284c7' : '#0ea5e9',
@@ -114,12 +117,20 @@ function PoolMesh({ dimensions, solid = false }: { dimensions: PoolDimensions; s
       side: THREE.DoubleSide,
     }), [solid]);
 
+  // Concrete shell material (outer walls + bottom thickness)
+  const concreteMaterial = useMemo(() => 
+    new THREE.MeshStandardMaterial({
+      color: '#d4d4d4',
+      roughness: 0.8,
+      side: THREE.DoubleSide,
+    }), []);
+
   const edgeColor = '#0c4a6e';
 
   const isRectangular = shape === 'prostokatny' || shape === 'prostokatny-schodki-zewnetrzne' || shape === 'prostokatny-schodki-narozne';
 
   // Create geometry for walls and bottom
-  const { wallGeometry, bottomGeometry, edges } = useMemo(() => {
+  const { wallGeometry, bottomGeometry, edges, shellGeometry } = useMemo(() => {
     if (isRectangular) {
       // Custom geometry for rectangular pools with optional slope
       const wallGeo = new THREE.BufferGeometry();
@@ -129,12 +140,11 @@ function PoolMesh({ dimensions, solid = false }: { dimensions: PoolDimensions; s
       const halfW = width / 2;
       
       // Bottom vertices - slope goes from shallow (x=-) to deep (x=+)
-      // Bottom is in XY plane at Z = -depth
       const bottomVerts = hasSlope ? [
-        -halfL, -halfW, -depth,           // 0 - shallow back-left
-        halfL, -halfW, -actualDeepDepth,  // 1 - deep back-right
-        halfL, halfW, -actualDeepDepth,   // 2 - deep front-right
-        -halfL, halfW, -depth,            // 3 - shallow front-left
+        -halfL, -halfW, -depth,
+        halfL, -halfW, -actualDeepDepth,
+        halfL, halfW, -actualDeepDepth,
+        -halfL, halfW, -depth,
       ] : [
         -halfL, -halfW, -depth,
         halfL, -halfW, -depth,
@@ -171,23 +181,73 @@ function PoolMesh({ dimensions, solid = false }: { dimensions: PoolDimensions; s
       ];
       
       const wallIndices = [
-        0, 3, 2, 0, 2, 1,  // Back wall
-        4, 5, 6, 4, 6, 7,  // Front wall
-        8, 11, 10, 8, 10, 9,  // Left wall
-        12, 13, 14, 12, 14, 15,  // Right wall
+        0, 3, 2, 0, 2, 1,
+        4, 5, 6, 4, 6, 7,
+        8, 11, 10, 8, 10, 9,
+        12, 13, 14, 12, 14, 15,
       ];
       
       wallGeo.setAttribute('position', new THREE.Float32BufferAttribute(wallVerts, 3));
       wallGeo.setIndex(wallIndices);
       wallGeo.computeVertexNormals();
       
+      // Create outer shell (concrete thickness)
+      const shellGeo = new THREE.BufferGeometry();
+      const outerHalfL = halfL + WALL_THICKNESS;
+      const outerHalfW = halfW + WALL_THICKNESS;
+      const bottomThickness = WALL_THICKNESS;
+      const outerDepth = depth + bottomThickness;
+      const outerDeepDepth = actualDeepDepth + bottomThickness;
+      
+      // Outer shell walls
+      const shellVerts = [
+        // Back outer wall
+        -outerHalfL, -outerHalfW, 0,
+        outerHalfL, -outerHalfW, 0,
+        outerHalfL, -outerHalfW, -outerDeepDepth,
+        -outerHalfL, -outerHalfW, -outerDepth,
+        // Front outer wall
+        -outerHalfL, outerHalfW, 0,
+        outerHalfL, outerHalfW, 0,
+        outerHalfL, outerHalfW, -outerDeepDepth,
+        -outerHalfL, outerHalfW, -outerDepth,
+        // Left outer wall
+        -outerHalfL, -outerHalfW, 0,
+        -outerHalfL, outerHalfW, 0,
+        -outerHalfL, outerHalfW, -outerDepth,
+        -outerHalfL, -outerHalfW, -outerDepth,
+        // Right outer wall
+        outerHalfL, -outerHalfW, 0,
+        outerHalfL, outerHalfW, 0,
+        outerHalfL, outerHalfW, -outerDeepDepth,
+        outerHalfL, -outerHalfW, -outerDeepDepth,
+        // Top rim (between inner and outer)
+        // Back rim
+        -halfL, -halfW, 0, -outerHalfL, -outerHalfW, 0, -outerHalfL, outerHalfW, 0, -halfL, halfW, 0,
+        halfL, -halfW, 0, outerHalfL, -outerHalfW, 0, outerHalfL, outerHalfW, 0, halfL, halfW, 0,
+      ];
+      
+      shellGeo.setAttribute('position', new THREE.Float32BufferAttribute(shellVerts, 3));
+      shellGeo.setIndex([
+        0, 3, 2, 0, 2, 1,
+        4, 5, 6, 4, 6, 7,
+        8, 11, 10, 8, 10, 9,
+        12, 13, 14, 12, 14, 15,
+      ]);
+      shellGeo.computeVertexNormals();
+      
       // Create edges
       const edgePoints: [number, number, number][][] = [
-        // Top rim
+        // Inner top rim
         [[-halfL, -halfW, 0], [halfL, -halfW, 0]],
         [[halfL, -halfW, 0], [halfL, halfW, 0]],
         [[halfL, halfW, 0], [-halfL, halfW, 0]],
         [[-halfL, halfW, 0], [-halfL, -halfW, 0]],
+        // Outer top rim
+        [[-outerHalfL, -outerHalfW, 0], [outerHalfL, -outerHalfW, 0]],
+        [[outerHalfL, -outerHalfW, 0], [outerHalfL, outerHalfW, 0]],
+        [[outerHalfL, outerHalfW, 0], [-outerHalfL, outerHalfW, 0]],
+        [[-outerHalfL, outerHalfW, 0], [-outerHalfL, -outerHalfW, 0]],
         // Bottom rim
         [[-halfL, -halfW, -depth], [halfL, -halfW, -actualDeepDepth]],
         [[halfL, -halfW, -actualDeepDepth], [halfL, halfW, -actualDeepDepth]],
@@ -200,15 +260,12 @@ function PoolMesh({ dimensions, solid = false }: { dimensions: PoolDimensions; s
         [[-halfL, halfW, 0], [-halfL, halfW, -depth]],
       ];
       
-      return { wallGeometry: wallGeo, bottomGeometry: bottomGeo, edges: edgePoints };
+      return { wallGeometry: wallGeo, bottomGeometry: bottomGeo, edges: edgePoints, shellGeometry: shellGeo };
     } else {
-      // For other shapes - build walls and bottom separately with correct orientation
+      // For other shapes
       const shapeObj = new THREE.Shape(shape2D);
-      
-      // Bottom - ShapeGeometry in XY plane, then move down to -depth
       const bottomGeo = new THREE.ShapeGeometry(shapeObj);
       
-      // Walls - create manually by extruding points vertically
       const wallPositions: number[] = [];
       const wallIndices: number[] = [];
       
@@ -218,15 +275,13 @@ function PoolMesh({ dimensions, solid = false }: { dimensions: PoolDimensions; s
         const next = shape2D[(i + 1) % numPoints];
         
         const baseIdx = i * 4;
-        // Four vertices per wall segment
         wallPositions.push(
-          curr.x, curr.y, 0,           // top-left
-          next.x, next.y, 0,           // top-right
-          next.x, next.y, -depth,      // bottom-right
-          curr.x, curr.y, -depth       // bottom-left
+          curr.x, curr.y, 0,
+          next.x, next.y, 0,
+          next.x, next.y, -depth,
+          curr.x, curr.y, -depth
         );
         
-        // Two triangles per wall segment
         wallIndices.push(
           baseIdx, baseIdx + 3, baseIdx + 2,
           baseIdx, baseIdx + 2, baseIdx + 1
@@ -238,24 +293,20 @@ function PoolMesh({ dimensions, solid = false }: { dimensions: PoolDimensions; s
       wallGeo.setIndex(wallIndices);
       wallGeo.computeVertexNormals();
       
-      // Create edge lines for the shape
       const edgePoints: [number, number, number][][] = [];
       
-      // Top rim
       for (let i = 0; i < numPoints; i++) {
         const curr = shape2D[i];
         const next = shape2D[(i + 1) % numPoints];
         edgePoints.push([[curr.x, curr.y, 0], [next.x, next.y, 0]]);
       }
       
-      // Bottom rim
       for (let i = 0; i < numPoints; i++) {
         const curr = shape2D[i];
         const next = shape2D[(i + 1) % numPoints];
         edgePoints.push([[curr.x, curr.y, -depth], [next.x, next.y, -depth]]);
       }
       
-      // Vertical edges (only at corners for readability)
       const verticalEdgeCount = Math.min(numPoints, 8);
       const step = Math.max(1, Math.floor(numPoints / verticalEdgeCount));
       for (let i = 0; i < numPoints; i += step) {
@@ -263,16 +314,21 @@ function PoolMesh({ dimensions, solid = false }: { dimensions: PoolDimensions; s
         edgePoints.push([[pt.x, pt.y, 0], [pt.x, pt.y, -depth]]);
       }
       
-      return { wallGeometry: wallGeo, bottomGeometry: bottomGeo, edges: edgePoints };
+      return { wallGeometry: wallGeo, bottomGeometry: bottomGeo, edges: edgePoints, shellGeometry: null };
     }
   }, [shape, length, width, depth, actualDeepDepth, hasSlope, shape2D, isRectangular]);
 
   return (
     <group>
+      {/* Outer concrete shell */}
+      {shellGeometry && (
+        <mesh geometry={shellGeometry} material={concreteMaterial} />
+      )}
+      
       {/* Walls */}
       <mesh geometry={wallGeometry} material={wallMaterial} />
       
-      {/* Bottom - for non-rectangular, position at -depth in Z */}
+      {/* Bottom */}
       {isRectangular ? (
         <mesh geometry={bottomGeometry!} material={bottomMaterial} />
       ) : (
@@ -283,6 +339,153 @@ function PoolMesh({ dimensions, solid = false }: { dimensions: PoolDimensions; s
       {edges && edges.map((edge, i) => (
         <Line key={i} points={edge} color={edgeColor} lineWidth={2} />
       ))}
+    </group>
+  );
+}
+
+// Stairs visualization
+function StairsMesh({ dimensions, stairs }: { dimensions: PoolDimensions; stairs: StairsConfig }) {
+  if (!stairs.enabled) return null;
+  
+  const { length, width, depth } = dimensions;
+  const { position, side, width: stairsWidth, stepCount, stepHeight, stepDepth } = stairs;
+  
+  const actualStairsWidth = stairsWidth === 'full' 
+    ? (side === 'front' || side === 'back' ? length : width)
+    : stairsWidth;
+  
+  const stairsMaterial = useMemo(() => 
+    new THREE.MeshStandardMaterial({
+      color: '#38bdf8',
+      transparent: true,
+      opacity: 0.7,
+    }), []);
+
+  const concreteMaterial = useMemo(() => 
+    new THREE.MeshStandardMaterial({
+      color: '#e5e7eb',
+      roughness: 0.8,
+    }), []);
+
+  const steps = useMemo(() => {
+    const stepsArr: JSX.Element[] = [];
+    const halfL = length / 2;
+    const halfW = width / 2;
+    
+    for (let i = 0; i < stepCount; i++) {
+      const stepY = -i * stepHeight;
+      const stepZ = i * stepDepth;
+      
+      let posX = 0, posY = 0, posZ = stepY - stepHeight / 2;
+      let rotY = 0;
+      let sizeX = actualStairsWidth, sizeY = stepDepth, sizeZ = stepHeight;
+      
+      // Calculate position based on side
+      if (side === 'left') {
+        posX = position === 'inside' ? -halfL + stepZ + stepDepth / 2 : -halfL - stepZ - stepDepth / 2;
+        posY = 0;
+        sizeX = stepDepth;
+        sizeY = actualStairsWidth;
+      } else if (side === 'right') {
+        posX = position === 'inside' ? halfL - stepZ - stepDepth / 2 : halfL + stepZ + stepDepth / 2;
+        posY = 0;
+        sizeX = stepDepth;
+        sizeY = actualStairsWidth;
+      } else if (side === 'front') {
+        posX = 0;
+        posY = position === 'inside' ? halfW - stepZ - stepDepth / 2 : halfW + stepZ + stepDepth / 2;
+      } else if (side === 'back') {
+        posX = 0;
+        posY = position === 'inside' ? -halfW + stepZ + stepDepth / 2 : -halfW - stepZ - stepDepth / 2;
+      }
+      
+      stepsArr.push(
+        <mesh key={i} position={[posX, posY, posZ]} material={concreteMaterial}>
+          <boxGeometry args={[sizeX, sizeY, sizeZ]} />
+        </mesh>
+      );
+    }
+    
+    return stepsArr;
+  }, [stepCount, stepHeight, stepDepth, actualStairsWidth, side, position, length, width, concreteMaterial]);
+
+  return <group>{steps}</group>;
+}
+
+// Wading pool visualization
+function WadingPoolMesh({ dimensions, wadingPool }: { dimensions: PoolDimensions; wadingPool: WadingPoolConfig }) {
+  if (!wadingPool.enabled) return null;
+  
+  const { length, width, depth } = dimensions;
+  const { side, width: wpWidth, length: wpLength, depth: wpDepth, position } = wadingPool;
+  
+  const halfL = length / 2;
+  const halfW = width / 2;
+  
+  const waterMaterial = useMemo(() => 
+    new THREE.MeshStandardMaterial({
+      color: '#7dd3fc',
+      transparent: true,
+      opacity: 0.5,
+    }), []);
+
+  const wallMaterial = useMemo(() => 
+    new THREE.MeshStandardMaterial({
+      color: '#0ea5e9',
+      transparent: true,
+      opacity: 0.6,
+    }), []);
+
+  const { posX, posY, sizeX, sizeY } = useMemo(() => {
+    let px = 0, py = 0, sx = wpWidth, sy = wpLength;
+    
+    if (side === 'left') {
+      px = position === 'inside' ? -halfL + wpLength / 2 : -halfL - wpLength / 2;
+      py = 0;
+      sx = wpLength;
+      sy = wpWidth;
+    } else if (side === 'right') {
+      px = position === 'inside' ? halfL - wpLength / 2 : halfL + wpLength / 2;
+      py = 0;
+      sx = wpLength;
+      sy = wpWidth;
+    } else if (side === 'front') {
+      px = 0;
+      py = position === 'inside' ? halfW - wpLength / 2 : halfW + wpLength / 2;
+    } else if (side === 'back') {
+      px = 0;
+      py = position === 'inside' ? -halfW + wpLength / 2 : -halfW - wpLength / 2;
+    }
+    
+    return { posX: px, posY: py, sizeX: sx, sizeY: sy };
+  }, [side, position, halfL, halfW, wpWidth, wpLength]);
+
+  return (
+    <group position={[posX, posY, 0]}>
+      {/* Floor of wading pool */}
+      <mesh position={[0, 0, -wpDepth]}>
+        <boxGeometry args={[sizeX, sizeY, WALL_THICKNESS]} />
+        <meshStandardMaterial color="#0369a1" />
+      </mesh>
+      
+      {/* Water in wading pool */}
+      <mesh position={[0, 0, -wpDepth / 2]} material={waterMaterial}>
+        <boxGeometry args={[sizeX - 0.02, sizeY - 0.02, wpDepth - 0.02]} />
+      </mesh>
+      
+      {/* Walls of wading pool */}
+      <mesh position={[sizeX / 2, 0, -wpDepth / 2]} material={wallMaterial}>
+        <boxGeometry args={[WALL_THICKNESS, sizeY, wpDepth]} />
+      </mesh>
+      <mesh position={[-sizeX / 2, 0, -wpDepth / 2]} material={wallMaterial}>
+        <boxGeometry args={[WALL_THICKNESS, sizeY, wpDepth]} />
+      </mesh>
+      <mesh position={[0, sizeY / 2, -wpDepth / 2]} material={wallMaterial}>
+        <boxGeometry args={[sizeX, WALL_THICKNESS, wpDepth]} />
+      </mesh>
+      <mesh position={[0, -sizeY / 2, -wpDepth / 2]} material={wallMaterial}>
+        <boxGeometry args={[sizeX, WALL_THICKNESS, wpDepth]} />
+      </mesh>
     </group>
   );
 }
@@ -559,6 +762,16 @@ function Scene({ dimensions, calculations, showFoilLayout, rollWidth }: Pool3DVi
         <PoolMesh dimensions={dimensions} solid={showFoilLayout} />
         <DimensionLines dimensions={dimensions} />
         
+        {/* Stairs */}
+        {dimensions.stairs?.enabled && (
+          <StairsMesh dimensions={dimensions} stairs={dimensions.stairs} />
+        )}
+        
+        {/* Wading pool */}
+        {dimensions.wadingPool?.enabled && (
+          <WadingPoolMesh dimensions={dimensions} wadingPool={dimensions.wadingPool} />
+        )}
+        
         {/* Water only when not showing foil layout */}
         {calculations && !showFoilLayout && (
           <WaterSurface dimensions={dimensions} waterDepth={calculations.waterDepth} />
@@ -629,6 +842,10 @@ export function Pool3DVisualization({
       
       <div className="absolute top-2 right-2 text-xs space-y-1 bg-background/95 p-2 rounded border border-border shadow-sm">
         <div className="flex items-center gap-2">
+          <div className="w-3 h-3 rounded bg-gray-300 border border-gray-400" />
+          <span>Konstrukcja</span>
+        </div>
+        <div className="flex items-center gap-2">
           <div className={`w-3 h-3 rounded ${showFoilLayout ? 'bg-sky-600' : 'bg-sky-500/40'} border border-sky-600`} />
           <span>Ściany</span>
         </div>
@@ -640,6 +857,18 @@ export function Pool3DVisualization({
           <div className="flex items-center gap-2">
             <div className="w-3 h-3 rounded bg-sky-300/40 border border-sky-400" />
             <span>Woda</span>
+          </div>
+        )}
+        {dimensions.stairs?.enabled && (
+          <div className="flex items-center gap-2">
+            <div className="w-3 h-3 rounded bg-gray-200 border border-gray-300" />
+            <span>Schodki</span>
+          </div>
+        )}
+        {dimensions.wadingPool?.enabled && (
+          <div className="flex items-center gap-2">
+            <div className="w-3 h-3 rounded bg-sky-200 border border-sky-300" />
+            <span>Brodzik</span>
           </div>
         )}
         {showFoilLayout && (
