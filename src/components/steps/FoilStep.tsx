@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useConfigurator } from '@/context/ConfiguratorContext';
+import { useSettings } from '@/context/SettingsContext';
 import { Button } from '@/components/ui/button';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
@@ -19,7 +20,8 @@ interface FoilStepProps {
 }
 
 export function FoilStep({ onNext, onBack }: FoilStepProps) {
-  const { state, dispatch, companySettings } = useConfigurator();
+  const { state, dispatch } = useConfigurator();
+  const { companySettings } = useSettings();
   const { foilType, foilCalculation, dimensions, sections } = state;
 
   const foilProducts = products.filter(p => p.category === 'folia');

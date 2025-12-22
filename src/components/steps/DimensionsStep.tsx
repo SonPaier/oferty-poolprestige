@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useConfigurator } from '@/context/ConfiguratorContext';
+import { useSettings } from '@/context/SettingsContext';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
@@ -79,7 +80,8 @@ const PoolShapeIcon = ({ shape, isSelected }: { shape: PoolShape; isSelected: bo
 };
 
 export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
-  const { state, dispatch, companySettings } = useConfigurator();
+  const { state, dispatch } = useConfigurator();
+  const { companySettings } = useSettings();
   const { dimensions, poolType, calculations } = state;
   const [showCustomDrawer, setShowCustomDrawer] = useState(false);
 

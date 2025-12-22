@@ -5,9 +5,7 @@ import {
   PoolDimensions, 
   CustomerData,
   ConfiguratorSection,
-  OfferItem,
-  defaultCompanySettings,
-  CompanySettings
+  OfferItem
 } from '@/types/configurator';
 import { Product } from '@/data/products';
 
@@ -157,18 +155,15 @@ function configuratorReducer(state: ConfiguratorState, action: ConfiguratorActio
 interface ConfiguratorContextType {
   state: ConfiguratorState;
   dispatch: React.Dispatch<ConfiguratorAction>;
-  companySettings: CompanySettings;
-  setCompanySettings: (settings: CompanySettings) => void;
 }
 
 const ConfiguratorContext = createContext<ConfiguratorContextType | undefined>(undefined);
 
 export function ConfiguratorProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(configuratorReducer, initialState);
-  const [companySettings, setCompanySettings] = React.useState<CompanySettings>(defaultCompanySettings);
 
   return (
-    <ConfiguratorContext.Provider value={{ state, dispatch, companySettings, setCompanySettings }}>
+    <ConfiguratorContext.Provider value={{ state, dispatch }}>
       {children}
     </ConfiguratorContext.Provider>
   );

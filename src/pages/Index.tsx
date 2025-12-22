@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { ConfiguratorProvider, useConfigurator } from '@/context/ConfiguratorContext';
+import { useSettings } from '@/context/SettingsContext';
 import { Header } from '@/components/Header';
 import { StepNavigation } from '@/components/StepNavigation';
 import { CustomerStep } from '@/components/steps/CustomerStep';
@@ -13,26 +14,21 @@ import { ExcavationStep } from '@/components/steps/ExcavationStep';
 import { AdditionsStep } from '@/components/steps/AdditionsStep';
 import { SummaryStep } from '@/components/steps/SummaryStep';
 import { SettingsDialog } from '@/components/SettingsDialog';
-import { ExcavationSettings, defaultExcavationSettings } from '@/types/offers';
-import { Toaster } from 'sonner';
+import { Toaster, toast } from 'sonner';
 
 function ConfiguratorContent() {
-  const { state, dispatch, companySettings, setCompanySettings } = useConfigurator();
+  const { state, dispatch } = useConfigurator();
+  const { companySettings, excavationSettings, setCompanySettings, setExcavationSettings, isLoading } = useSettings();
   const { step } = state;
   
   const [showSettings, setShowSettings] = useState(false);
-  const [excavationSettings, setExcavationSettings] = useState<ExcavationSettings>(() => {
-    try {
-      const saved = localStorage.getItem('pool_prestige_excavation_settings');
-      return saved ? JSON.parse(saved) : defaultExcavationSettings;
-    } catch {
-      return defaultExcavationSettings;
-    }
-  });
 
-  const saveExcavationSettings = (settings: ExcavationSettings) => {
-    setExcavationSettings(settings);
-    localStorage.setItem('pool_prestige_excavation_settings', JSON.stringify(settings));
+  const handleSaveCompanySettings = async (settings: typeof companySettings) => {
+    await setCompanySettings(settings);
+  };
+
+  const handleSaveExcavationSettings = async (settings: typeof excavationSettings) => {
+    await setExcavationSettings(settings);
   };
 
   const goToStep = (newStep: number) => {
@@ -64,11 +60,19 @@ function ConfiguratorContent() {
       case 9:
         return <AdditionsStep onNext={nextStep} onBack={prevStep} />;
       case 10:
-        return <SummaryStep onBack={prevStep} onReset={resetConfigurator} excavationSettings={excavationSettings} />;
+        return <SummaryStep onBack={prevStep} onReset={resetConfigurator} excavationSettings={excavationSettings} companySettings={companySettings} />;
       default:
         return <CustomerStep onNext={nextStep} />;
     }
   };
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-muted-foreground">Ładowanie ustawień...</div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen">
@@ -90,9 +94,9 @@ function ConfiguratorContent() {
         open={showSettings}
         onClose={() => setShowSettings(false)}
         companySettings={companySettings}
-        onSaveCompanySettings={setCompanySettings}
+        onSaveCompanySettings={handleSaveCompanySettings}
         excavationSettings={excavationSettings}
-        onSaveExcavationSettings={saveExcavationSettings}
+        onSaveExcavationSettings={handleSaveExcavationSettings}
       />
     </div>
   );
