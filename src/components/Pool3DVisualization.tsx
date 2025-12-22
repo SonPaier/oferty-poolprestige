@@ -325,33 +325,54 @@ function PoolMesh({ dimensions, solid = false }: { dimensions: PoolDimensions; s
       // Create outer shell for non-rectangular shapes
       // Offset each point outward by WALL_THICKNESS
       const outerShape2D: THREE.Vector2[] = [];
+
+      // Determine polygon winding (CCW    positive area)
+      const signedArea = (() => {
+        let sum = 0;
+        for (let i = 0; i < numPoints; i++) {
+          const a = shape2D[i];
+          const b = shape2D[(i + 1) % numPoints];
+          sum += a.x * b.y - b.x * a.y;
+        }
+        return sum / 2;
+      })();
+
+      // For CCW polygons, outward is the RIGHT normal; for CW, outward is the LEFT normal
+      const outwardIsRight = signedArea > 0;
+      const outwardNormal = (edge: THREE.Vector2) =>
+        outwardIsRight
+          ? new THREE.Vector2(edge.y, -edge.x) // right normal
+          : new THREE.Vector2(-edge.y, edge.x); // left normal
+
       for (let i = 0; i < numPoints; i++) {
         const prev = shape2D[(i - 1 + numPoints) % numPoints];
         const curr = shape2D[i];
         const next = shape2D[(i + 1) % numPoints];
-        
+
         // Calculate normal vectors for the two adjacent edges
         const edge1 = new THREE.Vector2(curr.x - prev.x, curr.y - prev.y).normalize();
         const edge2 = new THREE.Vector2(next.x - curr.x, next.y - curr.y).normalize();
-        
+
         // Perpendicular vectors (pointing outward)
-        const normal1 = new THREE.Vector2(-edge1.y, edge1.x);
-        const normal2 = new THREE.Vector2(-edge2.y, edge2.x);
-        
+        const normal1 = outwardNormal(edge1);
+        const normal2 = outwardNormal(edge2);
+
         // Average normal for the corner
         const avgNormal = new THREE.Vector2(
           (normal1.x + normal2.x) / 2,
           (normal1.y + normal2.y) / 2
         ).normalize();
-        
+
         // Handle sharp corners by adjusting offset distance
         const dot = normal1.dot(normal2);
         const offsetMult = dot > 0.1 ? 1 / Math.max(0.5, Math.sqrt((1 + dot) / 2)) : 1.5;
-        
-        outerShape2D.push(new THREE.Vector2(
-          curr.x + avgNormal.x * WALL_THICKNESS * offsetMult,
-          curr.y + avgNormal.y * WALL_THICKNESS * offsetMult
-        ));
+
+        outerShape2D.push(
+          new THREE.Vector2(
+            curr.x + avgNormal.x * WALL_THICKNESS * offsetMult,
+            curr.y + avgNormal.y * WALL_THICKNESS * offsetMult
+          )
+        );
       }
       
       // Create shell walls (outer walls)
