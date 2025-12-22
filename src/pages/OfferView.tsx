@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import { getOfferByShareUid } from '@/lib/offerDb';
 import { SavedOffer } from '@/types/offers';
-import { OfferItem } from '@/types/configurator';
+import { OfferItem, poolTypeLabels, PoolType } from '@/types/configurator';
 import { formatPrice } from '@/lib/calculations';
 import { getPriceInPLN } from '@/data/products';
 import { 
@@ -14,7 +14,8 @@ import {
   Phone,
   User,
   Building2,
-  Loader2
+  Loader2,
+  MapPin
 } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -37,6 +38,13 @@ interface InneItemData {
   description?: string;
 }
 
+// Optional item from "opcje" section
+interface OptionalItemData {
+  name: string;
+  quantity: number;
+  priceDifference: number;
+}
+
 // Unified item for display
 interface DisplayItem {
   id: string;
@@ -46,7 +54,7 @@ interface DisplayItem {
   quantity: number;
   unit: string;
   unitPrice: number;
-  discount: number;
+  discount: number; // 100 = full price, 50 = 50% of price
   isOptional: boolean;
 }
 
@@ -67,7 +75,7 @@ const sectionLabels: Record<string, string> = {
 
 // Helper to convert OfferItem or InneItemData to DisplayItem
 function toDisplayItem(item: OfferItem | InneItemData, index: number): DisplayItem {
-  // Check if it's an InneItemData (has name directly)
+  // Check if it's an InneItemData (has name directly and no product)
   if ('name' in item && typeof item.name === 'string' && !('product' in item)) {
     const inneItem = item as InneItemData;
     return {
@@ -77,7 +85,7 @@ function toDisplayItem(item: OfferItem | InneItemData, index: number): DisplayIt
       quantity: inneItem.quantity || 1,
       unit: inneItem.unit || 'szt',
       unitPrice: inneItem.unitPrice || 0,
-      discount: inneItem.discount || 0,
+      discount: inneItem.discount ?? 100, // Default to 100 (full price)
       isOptional: inneItem.isOptional || false,
     };
   }
@@ -95,7 +103,7 @@ function toDisplayItem(item: OfferItem | InneItemData, index: number): DisplayIt
     quantity: offerItem.quantity || 1,
     unit: 'szt',
     unitPrice: price,
-    discount: 0,
+    discount: 100, // OfferItems have full price (discount applied separately if needed)
     isOptional: false,
   };
 }
@@ -120,16 +128,12 @@ export default function OfferView() {
         const data = await getOfferByShareUid(shareUid);
         if (data) {
           setOffer(data);
-          // Initialize optional selections
+          // Initialize optional selections - all unchecked by default
           const initialSelections: Record<string, boolean> = {};
-          Object.entries(data.sections).forEach(([sectionKey, section]) => {
-            const items = section.items || [];
-            items.forEach((item: OfferItem | InneItemData, idx: number) => {
-              const displayItem = toDisplayItem(item, idx);
-              if (displayItem.isOptional) {
-                initialSelections[`${sectionKey}-${idx}`] = false;
-              }
-            });
+          // Check opcje section
+          const opcjeItems = (data.sections as any)?.opcje?.items || [];
+          opcjeItems.forEach((_: any, idx: number) => {
+            initialSelections[`opcje-${idx}`] = false;
           });
           setOptionalSelections(initialSelections);
         } else {
@@ -174,23 +178,27 @@ export default function OfferView() {
     // Add excavation
     totalNet += offer.excavation.excavationTotal + offer.excavation.removalFixedPrice;
 
-    // Add sections
+    // Add sections (except opcje which are optional)
     Object.entries(offer.sections).forEach(([sectionKey, section]) => {
+      if (sectionKey === 'opcje') return; // Handle opcje separately
+      
       const items = section.items || [];
       items.forEach((item: OfferItem | InneItemData, idx: number) => {
         const displayItem = toDisplayItem(item, idx);
-        const itemKey = `${sectionKey}-${idx}`;
-        
-        // Skip optional items that are not selected
-        if (displayItem.isOptional && !optionalSelections[itemKey]) {
-          return;
-        }
-
         const itemTotal = displayItem.unitPrice * displayItem.quantity;
-        const discount = displayItem.discount || 0;
-        const afterDiscount = itemTotal * (discount / 100); // discount is percentage to pay (100 = full price)
+        const discount = displayItem.discount || 100;
+        const afterDiscount = itemTotal * (discount / 100);
         totalNet += afterDiscount;
       });
+    });
+
+    // Add selected optional items (opcje)
+    const opcjeItems = (offer.sections as any)?.opcje?.items || [];
+    opcjeItems.forEach((item: OptionalItemData, idx: number) => {
+      const itemKey = `opcje-${idx}`;
+      if (optionalSelections[itemKey]) {
+        totalNet += item.priceDifference;
+      }
     });
 
     return {
@@ -245,12 +253,18 @@ export default function OfferView() {
     );
   }
 
+  // Get optional items for rendering at the end
+  const opcjeItems: OptionalItemData[] = (offer.sections as any)?.opcje?.items || [];
+
+  // Get pool type label with proper polish characters
+  const poolTypeLabel = poolTypeLabels[offer.poolType as PoolType] || offer.poolType;
+
   return (
     <div className="min-h-screen bg-background">
       {/* Fixed Header */}
       <header className="fixed top-0 left-0 right-0 z-50 bg-background/95 backdrop-blur-sm border-b border-border">
         <div className="container mx-auto px-4 py-3">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-4">
             <div className="flex items-center gap-4">
               <img 
                 src="/logo.png" 
@@ -274,7 +288,8 @@ export default function OfferView() {
               </div>
             </div>
             
-            <div className="hidden md:flex items-center gap-6 text-sm">
+            {/* Desktop: All customer data */}
+            <div className="hidden lg:flex items-center gap-4 text-sm flex-wrap justify-end">
               <div className="flex items-center gap-2">
                 <User className="w-4 h-4 text-muted-foreground" />
                 <span>{offer.customerData.contactPerson}</span>
@@ -285,6 +300,33 @@ export default function OfferView() {
                   <span>{offer.customerData.companyName}</span>
                 </div>
               )}
+              {offer.customerData.email && (
+                <div className="flex items-center gap-2">
+                  <Mail className="w-4 h-4 text-muted-foreground" />
+                  <span>{offer.customerData.email}</span>
+                </div>
+              )}
+              {offer.customerData.phone && (
+                <div className="flex items-center gap-2">
+                  <Phone className="w-4 h-4 text-muted-foreground" />
+                  <span>{offer.customerData.phone}</span>
+                </div>
+              )}
+              {(offer.customerData.city || offer.customerData.address) && (
+                <div className="flex items-center gap-2">
+                  <MapPin className="w-4 h-4 text-muted-foreground" />
+                  <span>
+                    {[offer.customerData.address, offer.customerData.postalCode, offer.customerData.city]
+                      .filter(Boolean)
+                      .join(', ')}
+                  </span>
+                </div>
+              )}
+              {offer.customerData.nip && (
+                <div className="text-muted-foreground">
+                  NIP: {offer.customerData.nip}
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -292,10 +334,16 @@ export default function OfferView() {
 
       {/* Main Content */}
       <main className="container mx-auto px-4 pt-24 pb-32">
-        {/* Customer Info for Mobile */}
-        <Card className="mb-6 md:hidden">
-          <CardContent className="pt-4">
-            <div className="grid grid-cols-2 gap-3 text-sm">
+        {/* Customer Info for Mobile/Tablet */}
+        <Card className="mb-6 lg:hidden">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base flex items-center gap-2">
+              <User className="w-5 h-5 text-primary" />
+              Dane klienta
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
               <div className="flex items-center gap-2">
                 <User className="w-4 h-4 text-muted-foreground" />
                 <span>{offer.customerData.contactPerson}</span>
@@ -316,6 +364,21 @@ export default function OfferView() {
                 <div className="flex items-center gap-2">
                   <Phone className="w-4 h-4 text-muted-foreground" />
                   <span>{offer.customerData.phone}</span>
+                </div>
+              )}
+              {(offer.customerData.city || offer.customerData.address) && (
+                <div className="flex items-center gap-2 sm:col-span-2">
+                  <MapPin className="w-4 h-4 text-muted-foreground" />
+                  <span>
+                    {[offer.customerData.address, offer.customerData.postalCode, offer.customerData.city]
+                      .filter(Boolean)
+                      .join(', ')}
+                  </span>
+                </div>
+              )}
+              {offer.customerData.nip && (
+                <div className="text-muted-foreground">
+                  NIP: {offer.customerData.nip}
                 </div>
               )}
             </div>
@@ -346,7 +409,7 @@ export default function OfferView() {
               </div>
             </div>
             <p className="text-center mt-3 text-sm text-muted-foreground">
-              Typ basenu: <span className="font-medium text-foreground">{offer.poolType}</span>
+              Typ basenu: <span className="font-medium text-foreground">{poolTypeLabel}</span>
             </p>
           </CardContent>
         </Card>
@@ -370,110 +433,145 @@ export default function OfferView() {
           </CardContent>
         </Card>
 
-        {/* Sections */}
-        {Object.entries(offer.sections).map(([sectionKey, section]) => {
-          const items = section.items || [];
-          if (items.length === 0) return null;
-          
-          return (
-            <Card key={sectionKey} className="mb-6">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base">
-                  {sectionLabels[sectionKey] || sectionKey}
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {items.map((item: OfferItem | InneItemData, idx: number) => {
-                  const displayItem = toDisplayItem(item, idx);
-                  const itemKey = `${sectionKey}-${idx}`;
-                  const isExpanded = expandedItems.has(itemKey);
-                  const isOptional = displayItem.isOptional;
-                  const isSelected = !isOptional || optionalSelections[itemKey];
-                  
-                  const itemTotal = displayItem.unitPrice * displayItem.quantity;
-                  const discount = displayItem.discount || 100;
-                  const afterDiscount = itemTotal * (discount / 100);
+        {/* Sections (except opcje) */}
+        {Object.entries(offer.sections)
+          .filter(([sectionKey]) => sectionKey !== 'opcje')
+          .map(([sectionKey, section]) => {
+            const items = section.items || [];
+            if (items.length === 0) return null;
+            
+            return (
+              <Card key={sectionKey} className="mb-6">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base">
+                    {sectionLabels[sectionKey] || sectionKey}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {items.map((item: OfferItem | InneItemData, idx: number) => {
+                    const displayItem = toDisplayItem(item, idx);
+                    const itemKey = `${sectionKey}-${idx}`;
+                    const isExpanded = expandedItems.has(itemKey);
+                    
+                    const itemTotal = displayItem.unitPrice * displayItem.quantity;
+                    const discount = displayItem.discount || 100;
+                    const afterDiscount = itemTotal * (discount / 100);
 
-                  return (
-                    <div 
-                      key={idx} 
-                      className={`border rounded-lg p-4 transition-all ${
-                        isOptional 
-                          ? isSelected 
-                            ? 'border-primary/50 bg-primary/5' 
-                            : 'border-dashed border-muted-foreground/30 bg-muted/30 opacity-75'
-                          : 'border-border'
-                      }`}
-                    >
-                      <div className="flex items-start gap-3">
-                        {isOptional && (
-                          <div className="pt-1">
-                            <Checkbox
-                              checked={isSelected}
-                              onCheckedChange={() => toggleOptionalSelection(itemKey)}
-                              className="data-[state=checked]:bg-primary data-[state=checked]:border-primary"
-                            />
-                          </div>
-                        )}
-                        
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-start justify-between gap-2">
-                            <div>
-                              <h4 className={`font-medium ${!isSelected && isOptional ? 'text-muted-foreground' : ''}`}>
-                                {displayItem.name}
-                                {isOptional && (
-                                  <span className="ml-2 text-xs px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-600">
-                                    Opcjonalne
-                                  </span>
+                    return (
+                      <div 
+                        key={idx} 
+                        className="border rounded-lg p-4 border-border"
+                      >
+                        <div className="flex items-start gap-3">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-start justify-between gap-2">
+                              <div>
+                                <h4 className="font-medium">
+                                  {displayItem.name}
+                                </h4>
+                                {displayItem.symbol && (
+                                  <p className="text-xs text-muted-foreground font-mono">
+                                    {displayItem.symbol}
+                                  </p>
                                 )}
-                              </h4>
-                              {displayItem.symbol && (
-                                <p className="text-xs text-muted-foreground font-mono">
-                                  {displayItem.symbol}
-                                </p>
+                              </div>
+                              <p className="font-semibold whitespace-nowrap text-primary">
+                                {formatPrice(afterDiscount)}
+                              </p>
+                            </div>
+                            
+                            <div className="flex items-center gap-4 mt-2 text-sm text-muted-foreground">
+                              <span>{displayItem.quantity} {displayItem.unit}</span>
+                              <span>×</span>
+                              <span>{formatPrice(displayItem.unitPrice)}</span>
+                              {discount < 100 && (
+                                <span className="text-green-600">-{100 - discount}%</span>
                               )}
                             </div>
-                            <p className={`font-semibold whitespace-nowrap ${!isSelected && isOptional ? 'text-muted-foreground' : 'text-primary'}`}>
-                              {formatPrice(afterDiscount)}
+
+                            <Collapsible open={isExpanded} onOpenChange={() => toggleExpanded(itemKey)}>
+                              <CollapsibleTrigger className="flex items-center gap-1 mt-3 text-sm text-primary hover:underline">
+                                {isExpanded ? (
+                                  <>
+                                    <ChevronUp className="w-4 h-4" />
+                                    Ukryj szczegóły
+                                  </>
+                                ) : (
+                                  <>
+                                    <ChevronDown className="w-4 h-4" />
+                                    Zobacz szczegóły
+                                  </>
+                                )}
+                              </CollapsibleTrigger>
+                              <CollapsibleContent>
+                                {renderItemDetails(displayItem)}
+                              </CollapsibleContent>
+                            </Collapsible>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </CardContent>
+              </Card>
+            );
+          })}
+
+        {/* Optional Items (Opcje dodatkowe) - at the end with checkboxes */}
+        {opcjeItems.length > 0 && (
+          <Card className="mb-6 border-amber-500/30 bg-amber-50/50 dark:bg-amber-950/20">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <span>Opcje dodatkowe</span>
+                <span className="text-xs font-normal text-muted-foreground">(zaznacz, aby dodać do oferty)</span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {opcjeItems.map((item: OptionalItemData, idx: number) => {
+                const itemKey = `opcje-${idx}`;
+                const isSelected = optionalSelections[itemKey] || false;
+
+                return (
+                  <div 
+                    key={idx} 
+                    className={`border rounded-lg p-4 transition-all cursor-pointer ${
+                      isSelected 
+                        ? 'border-primary/50 bg-primary/5' 
+                        : 'border-dashed border-muted-foreground/30 bg-background/50 hover:border-muted-foreground/50'
+                    }`}
+                    onClick={() => toggleOptionalSelection(itemKey)}
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className="pt-0.5">
+                        <Checkbox
+                          checked={isSelected}
+                          onCheckedChange={() => toggleOptionalSelection(itemKey)}
+                          className="data-[state=checked]:bg-primary data-[state=checked]:border-primary"
+                        />
+                      </div>
+                      
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <h4 className={`font-medium ${!isSelected ? 'text-muted-foreground' : ''}`}>
+                              {item.name}
+                            </h4>
+                            <p className="text-xs text-muted-foreground mt-1">
+                              {item.quantity} szt.
                             </p>
                           </div>
-                          
-                          <div className="flex items-center gap-4 mt-2 text-sm text-muted-foreground">
-                            <span>{displayItem.quantity} {displayItem.unit}</span>
-                            <span>×</span>
-                            <span>{formatPrice(displayItem.unitPrice)}</span>
-                            {discount < 100 && (
-                              <span className="text-green-600">-{100 - discount}%</span>
-                            )}
-                          </div>
-
-                          <Collapsible open={isExpanded} onOpenChange={() => toggleExpanded(itemKey)}>
-                            <CollapsibleTrigger className="flex items-center gap-1 mt-3 text-sm text-primary hover:underline">
-                              {isExpanded ? (
-                                <>
-                                  <ChevronUp className="w-4 h-4" />
-                                  Ukryj szczegóły
-                                </>
-                              ) : (
-                                <>
-                                  <ChevronDown className="w-4 h-4" />
-                                  Zobacz szczegóły
-                                </>
-                              )}
-                            </CollapsibleTrigger>
-                            <CollapsibleContent>
-                              {renderItemDetails(displayItem)}
-                            </CollapsibleContent>
-                          </Collapsible>
+                          <p className={`font-semibold whitespace-nowrap ${isSelected ? 'text-primary' : 'text-muted-foreground'}`}>
+                            +{formatPrice(item.priceDifference)}
+                          </p>
                         </div>
                       </div>
                     </div>
-                  );
-                })}
-              </CardContent>
-            </Card>
-          );
-        })}
+                  </div>
+                );
+              })}
+            </CardContent>
+          </Card>
+        )}
       </main>
 
       {/* Fixed Footer with Total */}
@@ -484,8 +582,12 @@ export default function OfferView() {
               <p className="text-sm text-muted-foreground">Suma netto</p>
               <p className="text-lg font-semibold">{formatPrice(calculatedTotals.net)}</p>
             </div>
+            <div className="text-center hidden sm:block">
+              <p className="text-sm text-muted-foreground">VAT 23%</p>
+              <p className="text-lg font-medium">{formatPrice(calculatedTotals.gross - calculatedTotals.net)}</p>
+            </div>
             <div className="text-right">
-              <p className="text-sm text-muted-foreground">Suma brutto (23% VAT)</p>
+              <p className="text-sm text-muted-foreground">Suma brutto</p>
               <p className="text-2xl font-bold text-primary">{formatPrice(calculatedTotals.gross)}</p>
             </div>
           </div>
