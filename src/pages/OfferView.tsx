@@ -5,6 +5,7 @@ import { SavedOffer } from '@/types/offers';
 import { OfferItem, poolTypeLabels, PoolType } from '@/types/configurator';
 import { formatPrice } from '@/lib/calculations';
 import { getPriceInPLN } from '@/data/products';
+import logo from '@/assets/logo.png';
 import { 
   ChevronDown, 
   ChevronUp, 
@@ -261,73 +262,79 @@ export default function OfferView() {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Fixed Header */}
-      <header className="fixed top-0 left-0 right-0 z-50 bg-background/95 backdrop-blur-sm border-b border-border">
-        <div className="container mx-auto px-4 py-3">
+      {/* Fixed Header - same style as configurator */}
+      <header className="fixed top-0 left-0 right-0 z-50 bg-header border-b border-header/80 shadow-lg">
+        <div className="container mx-auto px-4 lg:px-6 py-3 lg:py-4">
           <div className="flex items-center justify-between gap-4">
-            <div className="flex items-center gap-4">
-              <img 
-                src="/logo.png" 
-                alt="Pool Prestige" 
-                className="h-10 object-contain"
-                onError={(e) => {
-                  e.currentTarget.style.display = 'none';
-                }}
-              />
-              <div>
-                <h1 className="text-lg font-semibold">
-                  Oferta {offer.offerNumber}
-                </h1>
-                <p className="text-xs text-muted-foreground">
-                  {new Date(offer.createdAt).toLocaleDateString('pl-PL', {
-                    year: 'numeric',
-                    month: 'long',
-                    day: 'numeric'
-                  })}
-                </p>
+            {/* Left: Offer info */}
+            <div>
+              <h1 className="text-base lg:text-lg font-semibold text-header-foreground">
+                Oferta {offer.offerNumber}
+              </h1>
+              <p className="text-xs text-header-foreground/70">
+                {new Date(offer.createdAt).toLocaleDateString('pl-PL', {
+                  year: 'numeric',
+                  month: 'long',
+                  day: 'numeric'
+                })}
+              </p>
+            </div>
+            
+            {/* Desktop: Customer data in 2 rows */}
+            <div className="hidden lg:flex flex-col items-end gap-1 text-sm text-header-foreground">
+              {/* Row 1: Name, company, email, phone */}
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2">
+                  <User className="w-4 h-4 text-header-foreground/70" />
+                  <span>{offer.customerData.contactPerson}</span>
+                </div>
+                {offer.customerData.companyName && (
+                  <div className="flex items-center gap-2">
+                    <Building2 className="w-4 h-4 text-header-foreground/70" />
+                    <span>{offer.customerData.companyName}</span>
+                  </div>
+                )}
+                {offer.customerData.email && (
+                  <div className="flex items-center gap-2">
+                    <Mail className="w-4 h-4 text-header-foreground/70" />
+                    <a href={`mailto:${offer.customerData.email}`} className="hover:underline">
+                      {offer.customerData.email}
+                    </a>
+                  </div>
+                )}
+                {offer.customerData.phone && (
+                  <div className="flex items-center gap-2">
+                    <Phone className="w-4 h-4 text-header-foreground/70" />
+                    <a href={`tel:${offer.customerData.phone.replace(/\s/g, '')}`} className="hover:underline">
+                      {offer.customerData.phone}
+                    </a>
+                  </div>
+                )}
+              </div>
+              {/* Row 2: Address and NIP */}
+              <div className="flex items-center gap-4 text-header-foreground/80">
+                {(offer.customerData.city || offer.customerData.address) && (
+                  <div className="flex items-center gap-2">
+                    <MapPin className="w-4 h-4 text-header-foreground/70" />
+                    <span>
+                      {[offer.customerData.address, offer.customerData.postalCode, offer.customerData.city]
+                        .filter(Boolean)
+                        .join(', ')}
+                    </span>
+                  </div>
+                )}
+                {offer.customerData.nip && (
+                  <span>NIP: {offer.customerData.nip}</span>
+                )}
               </div>
             </div>
             
-            {/* Desktop: All customer data */}
-            <div className="hidden lg:flex items-center gap-4 text-sm flex-wrap justify-end">
-              <div className="flex items-center gap-2">
-                <User className="w-4 h-4 text-muted-foreground" />
-                <span>{offer.customerData.contactPerson}</span>
-              </div>
-              {offer.customerData.companyName && (
-                <div className="flex items-center gap-2">
-                  <Building2 className="w-4 h-4 text-muted-foreground" />
-                  <span>{offer.customerData.companyName}</span>
-                </div>
-              )}
-              {offer.customerData.email && (
-                <div className="flex items-center gap-2">
-                  <Mail className="w-4 h-4 text-muted-foreground" />
-                  <span>{offer.customerData.email}</span>
-                </div>
-              )}
-              {offer.customerData.phone && (
-                <div className="flex items-center gap-2">
-                  <Phone className="w-4 h-4 text-muted-foreground" />
-                  <span>{offer.customerData.phone}</span>
-                </div>
-              )}
-              {(offer.customerData.city || offer.customerData.address) && (
-                <div className="flex items-center gap-2">
-                  <MapPin className="w-4 h-4 text-muted-foreground" />
-                  <span>
-                    {[offer.customerData.address, offer.customerData.postalCode, offer.customerData.city]
-                      .filter(Boolean)
-                      .join(', ')}
-                  </span>
-                </div>
-              )}
-              {offer.customerData.nip && (
-                <div className="text-muted-foreground">
-                  NIP: {offer.customerData.nip}
-                </div>
-              )}
-            </div>
+            {/* Right: Logo */}
+            <img 
+              src={logo} 
+              alt="Pool Prestige" 
+              className="h-8 lg:h-10 w-auto object-contain"
+            />
           </div>
         </div>
       </header>
@@ -357,13 +364,17 @@ export default function OfferView() {
               {offer.customerData.email && (
                 <div className="flex items-center gap-2">
                   <Mail className="w-4 h-4 text-muted-foreground" />
-                  <span className="truncate">{offer.customerData.email}</span>
+                  <a href={`mailto:${offer.customerData.email}`} className="truncate text-primary hover:underline">
+                    {offer.customerData.email}
+                  </a>
                 </div>
               )}
               {offer.customerData.phone && (
                 <div className="flex items-center gap-2">
                   <Phone className="w-4 h-4 text-muted-foreground" />
-                  <span>{offer.customerData.phone}</span>
+                  <a href={`tel:${offer.customerData.phone.replace(/\s/g, '')}`} className="text-primary hover:underline">
+                    {offer.customerData.phone}
+                  </a>
                 </div>
               )}
               {(offer.customerData.city || offer.customerData.address) && (
