@@ -6,7 +6,8 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/context/AuthContext";
 import { SettingsProvider } from "@/context/SettingsContext";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
-import Index from "./pages/Index";
+import Dashboard from "./pages/Dashboard";
+import NewOffer from "./pages/NewOffer";
 import Login from "./pages/Login";
 import ImportProducts from "./pages/ImportProducts";
 import OfferView from "./pages/OfferView";
@@ -29,7 +30,12 @@ const App = () => (
               <Route path="/oferta/:shareUid" element={<OfferView />} />
               <Route path="/" element={
                 <ProtectedRoute>
-                  <Index />
+                  <Dashboard />
+                </ProtectedRoute>
+              } />
+              <Route path="/nowa-oferta" element={
+                <ProtectedRoute>
+                  <NewOffer />
                 </ProtectedRoute>
               } />
               <Route path="/historia" element={

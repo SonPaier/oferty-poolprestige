@@ -193,7 +193,13 @@ export function Header({ onSettingsClick, onNewOffer, editMode }: HeaderProps) {
             <Button
               variant="ghost"
               size="sm"
-              onClick={onNewOffer}
+              onClick={() => {
+                if (onNewOffer) {
+                  onNewOffer();
+                } else {
+                  navigate('/nowa-oferta');
+                }
+              }}
               className="text-header-foreground/80 hover:text-header-foreground hover:bg-header-foreground/10"
             >
               <FileText className="w-4 h-4 lg:mr-2" />
