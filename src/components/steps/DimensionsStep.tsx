@@ -33,9 +33,11 @@ import {
   CustomPoolVertex,
   StairsConfig,
   WadingPoolConfig,
-  StairsSide,
+  PoolCorner,
+  WallDirection,
   StairsPosition,
-  stairsSideLabels,
+  poolCornerLabels,
+  wallDirectionLabels,
   stairsPositionLabels
 } from '@/types/configurator';
 import { calculatePoolMetrics, calculateFoilOptimization } from '@/lib/calculations';
@@ -293,52 +295,51 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
                   </div>
                   
                   <div className="space-y-2">
-                    <Label className="text-sm">Bok basenu</Label>
+                    <Label className="text-sm">Narożnik</Label>
                     <Select
-                      value={dimensions.stairs.side}
-                      onValueChange={(value: StairsSide) => updateStairs({ side: value })}
+                      value={dimensions.stairs.corner}
+                      onValueChange={(value: PoolCorner) => updateStairs({ corner: value })}
                     >
                       <SelectTrigger className="h-9">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        {(Object.keys(stairsSideLabels) as StairsSide[]).map((side) => (
-                          <SelectItem key={side} value={side}>{stairsSideLabels[side]}</SelectItem>
+                        {(Object.keys(poolCornerLabels) as PoolCorner[]).map((corner) => (
+                          <SelectItem key={corner} value={corner}>{poolCornerLabels[corner]}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
                   </div>
                   
                   <div className="space-y-2">
-                    <Label className="text-sm">Szerokość schodków</Label>
+                    <Label className="text-sm">Kierunek</Label>
                     <Select
-                      value={dimensions.stairs.width === 'full' ? 'full' : 'custom'}
-                      onValueChange={(value) => updateStairs({ width: value === 'full' ? 'full' : 1.5 })}
+                      value={dimensions.stairs.direction}
+                      onValueChange={(value: WallDirection) => updateStairs({ direction: value })}
                     >
                       <SelectTrigger className="h-9">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="full">Pełna szerokość</SelectItem>
-                        <SelectItem value="custom">Własna szerokość</SelectItem>
+                        {(Object.keys(wallDirectionLabels) as WallDirection[]).map((dir) => (
+                          <SelectItem key={dir} value={dir}>{wallDirectionLabels[dir]}</SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                   </div>
                   
-                  {dimensions.stairs.width !== 'full' && (
-                    <div className="space-y-2">
-                      <Label className="text-sm">Szerokość (m)</Label>
-                      <Input
-                        type="number"
-                        step="0.1"
-                        min="0.5"
-                        max="5"
-                        value={typeof dimensions.stairs.width === 'number' ? dimensions.stairs.width : 1.5}
-                        onChange={(e) => updateStairs({ width: parseFloat(e.target.value) || 1.5 })}
-                        className="h-9"
-                      />
-                    </div>
-                  )}
+                  <div className="space-y-2">
+                    <Label className="text-sm">Szerokość (m)</Label>
+                    <Input
+                      type="number"
+                      step="0.1"
+                      min="0.5"
+                      max="5"
+                      value={typeof dimensions.stairs.width === 'number' ? dimensions.stairs.width : 1.5}
+                      onChange={(e) => updateStairs({ width: parseFloat(e.target.value) || 1.5 })}
+                      className="h-9"
+                    />
+                  </div>
                 </div>
               )}
             </div>
@@ -367,20 +368,36 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
               
               {dimensions.wadingPool?.enabled && (
                 <div className="grid grid-cols-2 gap-3 mt-3 pt-3 border-t border-border">
-                  <div className="space-y-2 col-span-2">
-                    <Label className="text-sm">Narożnik basenu</Label>
+                  <div className="space-y-2">
+                    <Label className="text-sm">Narożnik</Label>
                     <Select
-                      value={dimensions.wadingPool.side}
-                      onValueChange={(value: StairsSide) => updateWadingPool({ side: value })}
+                      value={dimensions.wadingPool.corner}
+                      onValueChange={(value: PoolCorner) => updateWadingPool({ corner: value })}
                     >
                       <SelectTrigger className="h-9">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="left">Lewy tylny</SelectItem>
-                        <SelectItem value="right">Prawy tylny</SelectItem>
-                        <SelectItem value="front">Prawy przedni</SelectItem>
-                        <SelectItem value="back">Lewy przedni</SelectItem>
+                        {(Object.keys(poolCornerLabels) as PoolCorner[]).map((corner) => (
+                          <SelectItem key={corner} value={corner}>{poolCornerLabels[corner]}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <Label className="text-sm">Kierunek</Label>
+                    <Select
+                      value={dimensions.wadingPool.direction}
+                      onValueChange={(value: WallDirection) => updateWadingPool({ direction: value })}
+                    >
+                      <SelectTrigger className="h-9">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {(Object.keys(wallDirectionLabels) as WallDirection[]).map((dir) => (
+                          <SelectItem key={dir} value={dir}>{wallDirectionLabels[dir]}</SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                   </div>
