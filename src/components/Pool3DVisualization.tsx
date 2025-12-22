@@ -12,7 +12,7 @@ interface Pool3DVisualizationProps {
   height?: number;
 }
 
-// Generate pool shape as 2D points
+// Generate pool shape as 2D points (XY plane, will be used for top rim and bottom)
 function getPoolShape(dimensions: PoolDimensions): THREE.Vector2[] {
   const { shape, length, width, lLength2 = 3, lWidth2 = 2 } = dimensions;
   const points: THREE.Vector2[] = [];
@@ -90,36 +90,36 @@ function getPoolShape(dimensions: PoolDimensions): THREE.Vector2[] {
   return points;
 }
 
-// Pool shell mesh (walls only, no bottom for uniform depth)
-function PoolMesh({ dimensions }: { dimensions: PoolDimensions }) {
+// Pool shell mesh - walls and bottom correctly oriented
+function PoolMesh({ dimensions, solid = false }: { dimensions: PoolDimensions; solid?: boolean }) {
   const { depth, depthDeep, hasSlope, length, width, shape } = dimensions;
   const actualDeepDepth = hasSlope && depthDeep ? depthDeep : depth;
   const shape2D = useMemo(() => getPoolShape(dimensions), [dimensions]);
   
-  // Wall material - semi-transparent blue
+  // Materials - solid or transparent based on prop
   const wallMaterial = useMemo(() => 
     new THREE.MeshStandardMaterial({
-      color: '#0ea5e9',
-      transparent: true,
-      opacity: 0.35,
+      color: solid ? '#0284c7' : '#0ea5e9',
+      transparent: !solid,
+      opacity: solid ? 1 : 0.35,
       side: THREE.DoubleSide,
-    }), []);
+    }), [solid]);
 
-  // Bottom material - slightly darker
   const bottomMaterial = useMemo(() => 
     new THREE.MeshStandardMaterial({
-      color: '#0284c7',
-      transparent: true,
-      opacity: 0.6,
+      color: solid ? '#0369a1' : '#0284c7',
+      transparent: !solid,
+      opacity: solid ? 1 : 0.6,
       side: THREE.DoubleSide,
-    }), []);
+    }), [solid]);
 
-  // Edge material
   const edgeColor = '#0c4a6e';
 
-  // Create geometry based on shape and slope
+  const isRectangular = shape === 'prostokatny' || shape === 'prostokatny-schodki-zewnetrzne' || shape === 'prostokatny-schodki-narozne';
+
+  // Create geometry for walls and bottom
   const { wallGeometry, bottomGeometry, edges } = useMemo(() => {
-    if (shape === 'prostokatny' || shape === 'prostokatny-schodki-zewnetrzne' || shape === 'prostokatny-schodki-narozne') {
+    if (isRectangular) {
       // Custom geometry for rectangular pools with optional slope
       const wallGeo = new THREE.BufferGeometry();
       const bottomGeo = new THREE.BufferGeometry();
@@ -128,12 +128,12 @@ function PoolMesh({ dimensions }: { dimensions: PoolDimensions }) {
       const halfW = width / 2;
       
       // Bottom vertices - slope goes from shallow (x=-) to deep (x=+)
+      // Bottom is in XY plane at Z = -depth
       const bottomVerts = hasSlope ? [
-        // Bottom surface with slope
-        -halfL, -halfW, -depth,        // 0 - shallow back-left
+        -halfL, -halfW, -depth,           // 0 - shallow back-left
         halfL, -halfW, -actualDeepDepth,  // 1 - deep back-right
         halfL, halfW, -actualDeepDepth,   // 2 - deep front-right
-        -halfL, halfW, -depth,         // 3 - shallow front-left
+        -halfL, halfW, -depth,            // 3 - shallow front-left
       ] : [
         -halfL, -halfW, -depth,
         halfL, -halfW, -depth,
@@ -170,14 +170,10 @@ function PoolMesh({ dimensions }: { dimensions: PoolDimensions }) {
       ];
       
       const wallIndices = [
-        // Back wall
-        0, 3, 2, 0, 2, 1,
-        // Front wall
-        4, 5, 6, 4, 6, 7,
-        // Left wall
-        8, 11, 10, 8, 10, 9,
-        // Right wall
-        12, 13, 14, 12, 14, 15,
+        0, 3, 2, 0, 2, 1,  // Back wall
+        4, 5, 6, 4, 6, 7,  // Front wall
+        8, 11, 10, 8, 10, 9,  // Left wall
+        12, 13, 14, 12, 14, 15,  // Right wall
       ];
       
       wallGeo.setAttribute('position', new THREE.Float32BufferAttribute(wallVerts, 3));
@@ -205,164 +201,165 @@ function PoolMesh({ dimensions }: { dimensions: PoolDimensions }) {
       
       return { wallGeometry: wallGeo, bottomGeometry: bottomGeo, edges: edgePoints };
     } else {
-      // For other shapes - uniform extrusion
+      // For other shapes - build walls and bottom separately with correct orientation
       const shapeObj = new THREE.Shape(shape2D);
-      const extrudeSettings = { steps: 1, depth: depth, bevelEnabled: false };
-      const geo = new THREE.ExtrudeGeometry(shapeObj, extrudeSettings);
-      const edgesGeo = new THREE.EdgesGeometry(geo);
       
-      return { 
-        wallGeometry: geo, 
-        bottomGeometry: null, 
-        edges: null 
-      };
+      // Bottom - ShapeGeometry in XY plane, then move down to -depth
+      const bottomGeo = new THREE.ShapeGeometry(shapeObj);
+      
+      // Walls - create manually by extruding points vertically
+      const wallPositions: number[] = [];
+      const wallIndices: number[] = [];
+      
+      const numPoints = shape2D.length;
+      for (let i = 0; i < numPoints; i++) {
+        const curr = shape2D[i];
+        const next = shape2D[(i + 1) % numPoints];
+        
+        const baseIdx = i * 4;
+        // Four vertices per wall segment
+        wallPositions.push(
+          curr.x, curr.y, 0,           // top-left
+          next.x, next.y, 0,           // top-right
+          next.x, next.y, -depth,      // bottom-right
+          curr.x, curr.y, -depth       // bottom-left
+        );
+        
+        // Two triangles per wall segment
+        wallIndices.push(
+          baseIdx, baseIdx + 3, baseIdx + 2,
+          baseIdx, baseIdx + 2, baseIdx + 1
+        );
+      }
+      
+      const wallGeo = new THREE.BufferGeometry();
+      wallGeo.setAttribute('position', new THREE.Float32BufferAttribute(wallPositions, 3));
+      wallGeo.setIndex(wallIndices);
+      wallGeo.computeVertexNormals();
+      
+      // Create edge lines for the shape
+      const edgePoints: [number, number, number][][] = [];
+      
+      // Top rim
+      for (let i = 0; i < numPoints; i++) {
+        const curr = shape2D[i];
+        const next = shape2D[(i + 1) % numPoints];
+        edgePoints.push([[curr.x, curr.y, 0], [next.x, next.y, 0]]);
+      }
+      
+      // Bottom rim
+      for (let i = 0; i < numPoints; i++) {
+        const curr = shape2D[i];
+        const next = shape2D[(i + 1) % numPoints];
+        edgePoints.push([[curr.x, curr.y, -depth], [next.x, next.y, -depth]]);
+      }
+      
+      // Vertical edges (only at corners for readability)
+      const verticalEdgeCount = Math.min(numPoints, 8);
+      const step = Math.max(1, Math.floor(numPoints / verticalEdgeCount));
+      for (let i = 0; i < numPoints; i += step) {
+        const pt = shape2D[i];
+        edgePoints.push([[pt.x, pt.y, 0], [pt.x, pt.y, -depth]]);
+      }
+      
+      return { wallGeometry: wallGeo, bottomGeometry: bottomGeo, edges: edgePoints };
     }
-  }, [shape, length, width, depth, actualDeepDepth, hasSlope, shape2D]);
-
-  const isRectangular = shape === 'prostokatny' || shape === 'prostokatny-schodki-zewnetrzne' || shape === 'prostokatny-schodki-narozne';
+  }, [shape, length, width, depth, actualDeepDepth, hasSlope, shape2D, isRectangular]);
 
   return (
     <group>
+      {/* Walls */}
+      <mesh geometry={wallGeometry} material={wallMaterial} />
+      
+      {/* Bottom - for non-rectangular, position at -depth in Z */}
       {isRectangular ? (
-        <>
-          {/* Walls */}
-          <mesh geometry={wallGeometry} material={wallMaterial} />
-          {/* Bottom */}
-          <mesh geometry={bottomGeometry!} material={bottomMaterial} />
-          {/* Edges */}
-          {edges && edges.map((edge, i) => (
-            <Line key={i} points={edge} color={edgeColor} lineWidth={2} />
-          ))}
-        </>
+        <mesh geometry={bottomGeometry!} material={bottomMaterial} />
       ) : (
-        <group rotation={[-Math.PI / 2, 0, 0]}>
-          <mesh geometry={wallGeometry} material={wallMaterial} />
-          <lineSegments>
-            <edgesGeometry args={[wallGeometry]} />
-            <lineBasicMaterial color={edgeColor} />
-          </lineSegments>
-        </group>
+        <mesh geometry={bottomGeometry!} material={bottomMaterial} position={[0, 0, -depth]} />
       )}
+      
+      {/* Edges */}
+      {edges && edges.map((edge, i) => (
+        <Line key={i} points={edge} color={edgeColor} lineWidth={2} />
+      ))}
     </group>
   );
 }
 
-// Foil strips visualization
-function FoilStrips({ dimensions, rollWidth }: { dimensions: PoolDimensions; rollWidth: number }) {
+// Foil lines visualization - dashed red lines showing where foil strips go
+function FoilLines({ dimensions, rollWidth }: { dimensions: PoolDimensions; rollWidth: number }) {
   const { length, width, depth, depthDeep, hasSlope } = dimensions;
   const OVERLAP = 0.1;
   const effectiveWidth = rollWidth - OVERLAP;
   const actualDeep = hasSlope && depthDeep ? depthDeep : depth;
   
-  const strips = useMemo(() => {
-    const result: { position: [number, number, number]; size: [number, number]; color: string; rotation: [number, number, number] }[] = [];
-    const colors = ['#22c55e', '#3b82f6', '#eab308', '#ec4899', '#8b5cf6', '#14b8a6', '#f97316'];
+  const lines = useMemo(() => {
+    const result: { points: [number, number, number][]; }[] = [];
     
-    let colorIndex = 0;
-    
-    // Bottom strips (along length axis)
-    let currentY = -width / 2;
+    // Bottom foil lines - parallel to length axis, spacing = rollWidth
+    let currentY = -width / 2 + rollWidth;
     while (currentY < width / 2) {
-      const isFirst = currentY === -width / 2;
-      const stripW = isFirst ? rollWidth : effectiveWidth;
-      const actualW = Math.min(stripW, width / 2 - currentY + (isFirst ? 0 : OVERLAP));
-      
-      const avgZ = hasSlope ? -(depth + actualDeep) / 2 : -depth;
-      
+      const z1 = hasSlope ? -depth : -depth;
+      const z2 = hasSlope ? -actualDeep : -depth;
       result.push({
-        position: [0, currentY + actualW / 2, avgZ - 0.02],
-        size: [length - 0.1, actualW - 0.05],
-        color: colors[colorIndex % colors.length],
-        rotation: [0, 0, 0],
+        points: [
+          [-length / 2, currentY, z1 - 0.01],
+          [length / 2, currentY, z2 - 0.01]
+        ]
       });
-      
-      currentY += isFirst ? rollWidth : effectiveWidth;
-      colorIndex++;
+      currentY += effectiveWidth;
     }
     
-    // Back wall strips (-Y)
-    let currentX = -length / 2;
+    // Back wall lines (-Y side)
+    let currentX = -length / 2 + rollWidth;
     while (currentX < length / 2) {
-      const isFirst = currentX === -length / 2;
-      const stripW = isFirst ? rollWidth : effectiveWidth;
-      const actualW = Math.min(stripW, length / 2 - currentX + (isFirst ? 0 : OVERLAP));
-      
-      // Calculate interpolated depth at this X position
-      const tLeft = (currentX + length/2) / length;
-      const tRight = (currentX + actualW + length/2) / length;
-      const depthLeft = hasSlope ? depth + tLeft * (actualDeep - depth) : depth;
-      const depthRight = hasSlope ? depth + tRight * (actualDeep - depth) : depth;
-      const avgWallHeight = (depthLeft + depthRight) / 2;
-      
+      const t = (currentX + length / 2) / length;
+      const zBottom = hasSlope ? -(depth + t * (actualDeep - depth)) : -depth;
       result.push({
-        position: [currentX + actualW / 2, -width / 2 + 0.02, -avgWallHeight / 2],
-        size: [actualW - 0.05, avgWallHeight - 0.05],
-        color: colors[colorIndex % colors.length],
-        rotation: [Math.PI / 2, 0, 0],
+        points: [
+          [currentX, -width / 2 + 0.01, 0],
+          [currentX, -width / 2 + 0.01, zBottom]
+        ]
       });
-      
-      currentX += isFirst ? rollWidth : effectiveWidth;
-      colorIndex++;
+      currentX += effectiveWidth;
     }
     
-    // Front wall strips (+Y)
-    currentX = -length / 2;
+    // Front wall lines (+Y side)
+    currentX = -length / 2 + rollWidth;
     while (currentX < length / 2) {
-      const isFirst = currentX === -length / 2;
-      const stripW = isFirst ? rollWidth : effectiveWidth;
-      const actualW = Math.min(stripW, length / 2 - currentX + (isFirst ? 0 : OVERLAP));
-      
-      const tLeft = (currentX + length/2) / length;
-      const tRight = (currentX + actualW + length/2) / length;
-      const depthLeft = hasSlope ? depth + tLeft * (actualDeep - depth) : depth;
-      const depthRight = hasSlope ? depth + tRight * (actualDeep - depth) : depth;
-      const avgWallHeight = (depthLeft + depthRight) / 2;
-      
+      const t = (currentX + length / 2) / length;
+      const zBottom = hasSlope ? -(depth + t * (actualDeep - depth)) : -depth;
       result.push({
-        position: [currentX + actualW / 2, width / 2 - 0.02, -avgWallHeight / 2],
-        size: [actualW - 0.05, avgWallHeight - 0.05],
-        color: colors[colorIndex % colors.length],
-        rotation: [Math.PI / 2, 0, 0],
+        points: [
+          [currentX, width / 2 - 0.01, 0],
+          [currentX, width / 2 - 0.01, zBottom]
+        ]
       });
-      
-      currentX += isFirst ? rollWidth : effectiveWidth;
-      colorIndex++;
+      currentX += effectiveWidth;
     }
     
-    // Left wall (-X) - shallow side
-    currentY = -width / 2;
+    // Left wall lines (-X side)
+    currentY = -width / 2 + rollWidth;
     while (currentY < width / 2) {
-      const isFirst = currentY === -width / 2;
-      const stripW = isFirst ? rollWidth : effectiveWidth;
-      const actualW = Math.min(stripW, width / 2 - currentY + (isFirst ? 0 : OVERLAP));
-      
       result.push({
-        position: [-length / 2 + 0.02, currentY + actualW / 2, -depth / 2],
-        size: [depth - 0.05, actualW - 0.05],
-        color: colors[colorIndex % colors.length],
-        rotation: [0, Math.PI / 2, 0],
+        points: [
+          [-length / 2 + 0.01, currentY, 0],
+          [-length / 2 + 0.01, currentY, -depth]
+        ]
       });
-      
-      currentY += isFirst ? rollWidth : effectiveWidth;
-      colorIndex++;
+      currentY += effectiveWidth;
     }
     
-    // Right wall (+X) - deep side
-    currentY = -width / 2;
+    // Right wall lines (+X side)
+    currentY = -width / 2 + rollWidth;
     while (currentY < width / 2) {
-      const isFirst = currentY === -width / 2;
-      const stripW = isFirst ? rollWidth : effectiveWidth;
-      const actualW = Math.min(stripW, width / 2 - currentY + (isFirst ? 0 : OVERLAP));
-      
       result.push({
-        position: [length / 2 - 0.02, currentY + actualW / 2, -actualDeep / 2],
-        size: [actualDeep - 0.05, actualW - 0.05],
-        color: colors[colorIndex % colors.length],
-        rotation: [0, Math.PI / 2, 0],
+        points: [
+          [length / 2 - 0.01, currentY, 0],
+          [length / 2 - 0.01, currentY, -actualDeep]
+        ]
       });
-      
-      currentY += isFirst ? rollWidth : effectiveWidth;
-      colorIndex++;
+      currentY += effectiveWidth;
     }
     
     return result;
@@ -370,16 +367,16 @@ function FoilStrips({ dimensions, rollWidth }: { dimensions: PoolDimensions; rol
 
   return (
     <>
-      {strips.map((strip, i) => (
-        <mesh key={i} position={strip.position} rotation={strip.rotation}>
-          <planeGeometry args={strip.size} />
-          <meshStandardMaterial 
-            color={strip.color} 
-            transparent 
-            opacity={0.6} 
-            side={THREE.DoubleSide}
-          />
-        </mesh>
+      {lines.map((line, i) => (
+        <Line
+          key={i}
+          points={line.points}
+          color="#dc2626"
+          lineWidth={2}
+          dashed
+          dashSize={0.15}
+          gapSize={0.1}
+        />
       ))}
     </>
   );
@@ -479,7 +476,7 @@ function DimensionLines({ dimensions }: { dimensions: PoolDimensions }) {
         </group>
       )}
       
-      {/* L-shape */}
+      {/* L-shape additional dimensions */}
       {shape === 'litera-l' && (
         <>
           <DimensionLine
@@ -497,11 +494,11 @@ function DimensionLines({ dimensions }: { dimensions: PoolDimensions }) {
 // Water surface
 function WaterSurface({ dimensions, waterDepth }: { dimensions: PoolDimensions; waterDepth: number }) {
   const shape2D = useMemo(() => getPoolShape(dimensions), [dimensions]);
-  const shape = useMemo(() => new THREE.Shape(shape2D), [shape2D]);
+  const shapeObj = useMemo(() => new THREE.Shape(shape2D), [shape2D]);
+  const geometry = useMemo(() => new THREE.ShapeGeometry(shapeObj), [shapeObj]);
   
   return (
-    <mesh position={[0, 0, -waterDepth]} rotation={[0, 0, 0]}>
-      <shapeGeometry args={[shape]} />
+    <mesh position={[0, 0, -waterDepth]} geometry={geometry}>
       <meshStandardMaterial color="#38bdf8" transparent opacity={0.4} side={THREE.DoubleSide} />
     </mesh>
   );
@@ -515,14 +512,17 @@ function Scene({ dimensions, calculations, showFoilLayout, rollWidth }: Pool3DVi
       <directionalLight position={[10, 10, 10]} intensity={0.8} />
       <directionalLight position={[-5, 5, -5]} intensity={0.3} />
       
-      <PoolMesh dimensions={dimensions} />
+      {/* Pool mesh - solid when showing foil, transparent otherwise */}
+      <PoolMesh dimensions={dimensions} solid={showFoilLayout} />
       <DimensionLines dimensions={dimensions} />
       
-      {calculations && (
+      {/* Water only when not showing foil layout */}
+      {calculations && !showFoilLayout && (
         <WaterSurface dimensions={dimensions} waterDepth={calculations.waterDepth} />
       )}
       
-      {showFoilLayout && <FoilStrips dimensions={dimensions} rollWidth={rollWidth} />}
+      {/* Foil lines instead of filled strips */}
+      {showFoilLayout && <FoilLines dimensions={dimensions} rollWidth={rollWidth} />}
       
       <OrbitControls 
         enablePan={true}
@@ -553,7 +553,7 @@ export function Pool3DVisualization({
   height = 400,
 }: Pool3DVisualizationProps) {
   const maxDimension = Math.max(dimensions.length, dimensions.width, dimensions.depth * 2);
-  const cameraDistance = maxDimension * 1.5;
+  const cameraDistance = maxDimension * 1.8;
 
   return (
     <div 
@@ -563,7 +563,8 @@ export function Pool3DVisualization({
       <Suspense fallback={<LoadingFallback />}>
         <Canvas
           camera={{
-            position: [cameraDistance * 0.8, -cameraDistance * 0.6, cameraDistance * 0.6],
+            // Better initial angle - looking from front-right-top at 45° angle
+            position: [cameraDistance * 0.7, cameraDistance * 0.5, cameraDistance * 0.5],
             fov: 45,
             near: 0.1,
             far: 1000,
@@ -584,21 +585,23 @@ export function Pool3DVisualization({
       
       <div className="absolute top-2 right-2 text-xs space-y-1 bg-background/95 p-2 rounded border border-border shadow-sm">
         <div className="flex items-center gap-2">
-          <div className="w-3 h-3 rounded bg-sky-500/40 border border-sky-600" />
+          <div className={`w-3 h-3 rounded ${showFoilLayout ? 'bg-sky-600' : 'bg-sky-500/40'} border border-sky-600`} />
           <span>Ściany</span>
         </div>
         <div className="flex items-center gap-2">
-          <div className="w-3 h-3 rounded bg-sky-600/60 border border-sky-700" />
+          <div className={`w-3 h-3 rounded ${showFoilLayout ? 'bg-sky-700' : 'bg-sky-600/60'} border border-sky-700`} />
           <span>Dno</span>
         </div>
-        <div className="flex items-center gap-2">
-          <div className="w-3 h-3 rounded bg-sky-300/40 border border-sky-400" />
-          <span>Woda</span>
-        </div>
+        {!showFoilLayout && (
+          <div className="flex items-center gap-2">
+            <div className="w-3 h-3 rounded bg-sky-300/40 border border-sky-400" />
+            <span>Woda</span>
+          </div>
+        )}
         {showFoilLayout && (
           <div className="flex items-center gap-2 pt-1 border-t border-border mt-1">
-            <div className="w-3 h-3 rounded bg-green-500/60 border border-green-600" />
-            <span>Pasy folii ({rollWidth}m)</span>
+            <div className="w-3 h-1 border-t-2 border-dashed border-red-600" />
+            <span>Linie folii ({rollWidth}m)</span>
           </div>
         )}
       </div>
