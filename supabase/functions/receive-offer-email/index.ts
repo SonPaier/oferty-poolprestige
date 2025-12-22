@@ -6,25 +6,38 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, svix-id, svix-timestamp, svix-signature",
 };
 
-// Resend Inbound Email Webhook payload structure
-interface ResendInboundEmail {
-  type: "email.received";
-  created_at: string;
-  data: {
-    email_id: string;
+// Flexible payload structure for both Resend and Zapier
+interface EmailPayload {
+  type?: "email.received" | string;
+  created_at?: string;
+  data?: {
+    email_id?: string;
     from: string;
-    to: string[];
+    to?: string | string[];
     cc?: string[];
     subject: string;
     text?: string;
     html?: string;
+    // Resend format: base64 encoded
     attachments?: Array<{
       filename: string;
-      content: string; // base64 encoded
+      content: string;
       content_type: string;
       size: number;
     }>;
+    // Zapier format: URLs
+    attachment_urls?: string[];
   };
+  // Direct Zapier fields (flat structure)
+  from?: string;
+  to?: string;
+  subject?: string;
+  text?: string;
+  html?: string;
+  body_plain?: string;
+  body_html?: string;
+  attachment_urls?: string[];
+  attachments?: string; // Zapier might send as comma-separated URLs
 }
 
 serve(async (req: Request): Promise<Response> => {
@@ -34,27 +47,34 @@ serve(async (req: Request): Promise<Response> => {
   }
 
   try {
-    const payload: ResendInboundEmail = await req.json();
+    const payload: EmailPayload = await req.json();
     
-    console.log("📧 Received inbound email webhook:", {
-      type: payload.type,
-      from: payload.data?.from,
-      to: payload.data?.to,
-      subject: payload.data?.subject,
-      attachmentCount: payload.data?.attachments?.length || 0,
+    // Normalize data - handle both nested (Resend) and flat (Zapier) structures
+    const emailData = {
+      from: payload.data?.from || payload.from || "",
+      to: payload.data?.to || payload.to || "",
+      subject: payload.data?.subject || payload.subject || "(brak tematu)",
+      text: payload.data?.text || payload.text || payload.body_plain || "",
+      html: payload.data?.html || payload.html || payload.body_html || "",
+    };
+
+    console.log("📧 Received email webhook:", {
+      from: emailData.from,
+      to: emailData.to,
+      subject: emailData.subject,
+      textLength: emailData.text?.length || 0,
+      htmlLength: emailData.html?.length || 0,
     });
 
-    // Verify this is an email received event
-    if (payload.type !== "email.received") {
-      console.log("⚠️ Ignoring non-email event:", payload.type);
-      return new Response(JSON.stringify({ success: true, ignored: true }), {
-        status: 200,
-        headers: { "Content-Type": "application/json", ...corsHeaders },
-      });
+    // Validate we have minimum required data
+    if (!emailData.from) {
+      console.error("❌ Missing 'from' field in payload");
+      return new Response(
+        JSON.stringify({ success: false, error: "Missing 'from' field" }),
+        { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
+      );
     }
 
-    const { from, to, subject, text, html, attachments } = payload.data;
-    
     // Initialize Supabase client
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -69,25 +89,24 @@ serve(async (req: Request): Promise<Response> => {
       path: string;
     }> = [];
 
-    if (attachments && attachments.length > 0) {
-      console.log(`📎 Processing ${attachments.length} attachments...`);
+    // Handle Resend-style attachments (base64)
+    const resendAttachments = payload.data?.attachments || [];
+    if (resendAttachments.length > 0) {
+      console.log(`📎 Processing ${resendAttachments.length} Resend attachments (base64)...`);
       
-      for (const attachment of attachments) {
+      for (const attachment of resendAttachments) {
         try {
-          // Decode base64 content
           const binaryString = atob(attachment.content);
           const bytes = new Uint8Array(binaryString.length);
           for (let i = 0; i < binaryString.length; i++) {
             bytes[i] = binaryString.charCodeAt(i);
           }
           
-          // Generate unique path
           const timestamp = Date.now();
           const safeName = attachment.filename.replace(/[^a-zA-Z0-9.-]/g, "_");
           const filePath = `email-attachments/${timestamp}-${safeName}`;
           
-          // Upload to storage
-          const { data: uploadData, error: uploadError } = await supabase.storage
+          const { error: uploadError } = await supabase.storage
             .from("offer-attachments")
             .upload(filePath, bytes, {
               contentType: attachment.content_type,
@@ -99,7 +118,6 @@ serve(async (req: Request): Promise<Response> => {
             continue;
           }
 
-          // Get public URL
           const { data: urlData } = supabase.storage
             .from("offer-attachments")
             .getPublicUrl(filePath);
@@ -112,16 +130,103 @@ serve(async (req: Request): Promise<Response> => {
             path: filePath,
           });
 
-          console.log(`✅ Uploaded: ${attachment.filename}`);
+          console.log(`✅ Uploaded (base64): ${attachment.filename}`);
         } catch (err) {
           console.error(`❌ Error processing attachment ${attachment.filename}:`, err);
         }
       }
     }
 
+    // Handle Zapier-style attachments (URLs)
+    let zapierAttachmentUrls: string[] = [];
+    
+    // Can be array or comma-separated string
+    if (payload.data?.attachment_urls) {
+      zapierAttachmentUrls = Array.isArray(payload.data.attachment_urls) 
+        ? payload.data.attachment_urls 
+        : [payload.data.attachment_urls];
+    } else if (payload.attachment_urls) {
+      zapierAttachmentUrls = Array.isArray(payload.attachment_urls) 
+        ? payload.attachment_urls 
+        : [payload.attachment_urls];
+    } else if (payload.attachments && typeof payload.attachments === 'string') {
+      // Comma-separated URLs
+      zapierAttachmentUrls = payload.attachments.split(',').map(url => url.trim()).filter(Boolean);
+    }
+
+    if (zapierAttachmentUrls.length > 0) {
+      console.log(`📎 Processing ${zapierAttachmentUrls.length} Zapier attachments (URLs)...`);
+      
+      for (const attachmentUrl of zapierAttachmentUrls) {
+        try {
+          if (!attachmentUrl || !attachmentUrl.startsWith('http')) {
+            console.log(`⚠️ Skipping invalid URL: ${attachmentUrl}`);
+            continue;
+          }
+
+          // Download the attachment
+          const response = await fetch(attachmentUrl);
+          if (!response.ok) {
+            console.error(`❌ Failed to download attachment from ${attachmentUrl}: ${response.status}`);
+            continue;
+          }
+
+          const contentType = response.headers.get('content-type') || 'application/octet-stream';
+          const contentDisposition = response.headers.get('content-disposition') || '';
+          
+          // Try to extract filename from content-disposition or URL
+          let filename = 'attachment';
+          const filenameMatch = contentDisposition.match(/filename[*]?=["']?([^"';\n]+)/i);
+          if (filenameMatch) {
+            filename = filenameMatch[1];
+          } else {
+            // Extract from URL
+            const urlParts = new URL(attachmentUrl);
+            const pathParts = urlParts.pathname.split('/');
+            filename = pathParts[pathParts.length - 1] || 'attachment';
+          }
+
+          const arrayBuffer = await response.arrayBuffer();
+          const bytes = new Uint8Array(arrayBuffer);
+
+          const timestamp = Date.now();
+          const safeName = filename.replace(/[^a-zA-Z0-9.-]/g, "_");
+          const filePath = `email-attachments/${timestamp}-${safeName}`;
+
+          const { error: uploadError } = await supabase.storage
+            .from("offer-attachments")
+            .upload(filePath, bytes, {
+              contentType: contentType,
+              upsert: false,
+            });
+
+          if (uploadError) {
+            console.error(`❌ Failed to upload ${filename}:`, uploadError);
+            continue;
+          }
+
+          const { data: urlData } = supabase.storage
+            .from("offer-attachments")
+            .getPublicUrl(filePath);
+
+          uploadedAttachments.push({
+            name: filename,
+            type: contentType,
+            size: bytes.length,
+            url: urlData.publicUrl,
+            path: filePath,
+          });
+
+          console.log(`✅ Uploaded (URL): ${filename}`);
+        } catch (err) {
+          console.error(`❌ Error downloading attachment from ${attachmentUrl}:`, err);
+        }
+      }
+    }
+
     // Extract customer data from email
-    const emailContent = text || html || "";
-    const customerData = extractCustomerData(from, emailContent);
+    const emailContent = emailData.text || emailData.html || "";
+    const customerData = extractCustomerData(emailData.from, emailContent);
 
     // Generate offer number
     const now = new Date();
@@ -132,7 +237,7 @@ serve(async (req: Request): Promise<Response> => {
     const newOffer = {
       offer_number: offerNumber,
       share_uid: shareUid,
-      status: "queue", // New offers go to queue
+      status: "queue",
       pool_type: "prywatny",
       dimensions: {
         shape: "prostokatny",
@@ -162,7 +267,8 @@ serve(async (req: Request): Promise<Response> => {
       },
       customer_data: {
         ...customerData,
-        sourceEmail: emailContent.substring(0, 5000), // Store first 5000 chars of email
+        sourceEmail: emailContent.substring(0, 5000),
+        emailSubject: emailData.subject,
         attachments: uploadedAttachments,
       },
       total_net: 0,
@@ -183,8 +289,8 @@ serve(async (req: Request): Promise<Response> => {
     console.log("✅ Created new offer in queue:", {
       id: insertedOffer.id,
       offerNumber: insertedOffer.offer_number,
-      from: from,
-      subject: subject,
+      from: emailData.from,
+      subject: emailData.subject,
       attachments: uploadedAttachments.length,
     });
 
