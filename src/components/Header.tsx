@@ -126,8 +126,8 @@ export function Header({ onSettingsClick, onNewOffer, editMode, showNavLinks = t
                   onClick={() => navigate('/historia')}
                   className="text-header-foreground/80 hover:text-header-foreground hover:bg-header-foreground/10"
                 >
-                  <History className="w-4 h-4 lg:mr-2" />
-                  <span className="hidden lg:inline">Historia</span>
+                  <FileText className="w-4 h-4 lg:mr-2" />
+                  <span className="hidden lg:inline">Oferty</span>
                 </Button>
                 
                 <Button
