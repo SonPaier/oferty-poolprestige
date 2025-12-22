@@ -287,140 +287,131 @@ function PoolMesh({ dimensions, solid = false }: { dimensions: PoolDimensions; s
   );
 }
 
-// Foil lines visualization using the new foil planner
+// Foil lines visualization - shows SEAMS (joints) between strips, not strip centers
 function FoilLines({ dimensions, rollWidth }: { dimensions: PoolDimensions; rollWidth: number }) {
   const { length, width, depth, depthDeep, hasSlope } = dimensions;
   const actualDeep = hasSlope && depthDeep ? depthDeep : depth;
+  const FOLD_AT_BOTTOM = 0.15; // 15cm fold at wall-bottom transition
   
-  // Use the new foil planner for proper strip layout
-  const foilPlan = useMemo(() => planFoilLayout(dimensions, 20), [dimensions]);
-  
-  // Generate strip lines from the plan
-  const stripLines = useMemo(() => {
-    const lines: { points: [number, number, number][]; isSeam: boolean }[] = [];
+  // Generate seam lines (where strips meet)
+  const seamLines = useMemo(() => {
+    const lines: [number, number, number][][] = [];
     
-    // Group strips by surface for proper visualization
-    const bottomStrips = foilPlan.strips.filter(s => s.surface === 'bottom');
-    const wallStrips = foilPlan.strips.filter(s => s.surface.startsWith('wall'));
-    
-    // === BOTTOM STRIPS ===
+    // === BOTTOM SEAMS ===
     // Strips go across the pool perpendicular to the longer side
     const longerSide = Math.max(length, width);
     const shorterSide = Math.min(length, width);
     const isLengthLonger = length >= width;
     
-    // Calculate strip positions for visualization
-    let currentPos = -shorterSide / 2;
-    const effectiveWidth = rollWidth - 0.05; // 5cm overlap for bottom
+    const bottomOverlap = 0.05; // 5cm overlap for bottom
+    const effectiveBottomWidth = rollWidth - bottomOverlap;
     
-    while (currentPos < shorterSide / 2) {
-      const nextPos = Math.min(currentPos + rollWidth, shorterSide / 2);
-      const linePos = currentPos + (rollWidth / 2);
+    // Calculate how many strips needed for bottom
+    const bottomStripsNeeded = Math.ceil(shorterSide / effectiveBottomWidth);
+    
+    // Only draw seams if more than 1 strip is needed
+    if (bottomStripsNeeded > 1) {
+      // Seam positions are at strip boundaries
+      let seamPos = -shorterSide / 2 + rollWidth - bottomOverlap / 2;
       
-      if (linePos > -shorterSide / 2 && linePos < shorterSide / 2) {
-        if (isLengthLonger) {
-          // Line goes along X, positioned in Y
-          lines.push({
-            points: [
-              [-longerSide / 2, linePos, -depth - 0.01],
-              [longerSide / 2, linePos, hasSlope ? -actualDeep - 0.01 : -depth - 0.01]
-            ],
-            isSeam: currentPos > -shorterSide / 2 // Not a seam for first strip
-          });
-        } else {
-          // Line goes along Y, positioned in X
-          lines.push({
-            points: [
-              [linePos, -longerSide / 2, -depth - 0.01],
-              [linePos, longerSide / 2, hasSlope ? -actualDeep - 0.01 : -depth - 0.01]
-            ],
-            isSeam: currentPos > -shorterSide / 2
-          });
+      for (let i = 1; i < bottomStripsNeeded; i++) {
+        if (seamPos < shorterSide / 2 - bottomOverlap) {
+          if (isLengthLonger) {
+            lines.push([
+              [-longerSide / 2, seamPos, -depth - 0.01],
+              [longerSide / 2, seamPos, hasSlope ? -actualDeep - 0.01 : -depth - 0.01]
+            ]);
+          } else {
+            lines.push([
+              [seamPos, -longerSide / 2, -depth - 0.01],
+              [seamPos, longerSide / 2, hasSlope ? -actualDeep - 0.01 : -depth - 0.01]
+            ]);
+          }
         }
+        seamPos += effectiveBottomWidth;
+      }
+    }
+    
+    // === WALL SEAMS ===
+    // Only show seams if wall height + fold exceeds roll width
+    const wallOverlap = 0.10; // 10cm overlap for walls
+    const effectiveWallWidth = rollWidth - wallOverlap;
+    
+    // Calculate total height to cover (wall + fold at bottom)
+    const shallowWallTotal = depth + FOLD_AT_BOTTOM;
+    const deepWallTotal = actualDeep + FOLD_AT_BOTTOM;
+    
+    // Shallow walls (front, back, left) - only add seams if multiple strips needed
+    const shallowStripsNeeded = Math.ceil(shallowWallTotal / effectiveWallWidth);
+    
+    if (shallowStripsNeeded > 1) {
+      // Front wall (+Y)
+      let seamZ = -rollWidth + wallOverlap / 2;
+      for (let i = 1; i < shallowStripsNeeded; i++) {
+        if (seamZ > -depth) {
+          lines.push([
+            [-length / 2, width / 2 - 0.01, seamZ],
+            [length / 2, width / 2 - 0.01, seamZ]
+          ]);
+        }
+        seamZ -= effectiveWallWidth;
       }
       
-      currentPos += effectiveWidth;
+      // Back wall (-Y)
+      seamZ = -rollWidth + wallOverlap / 2;
+      for (let i = 1; i < shallowStripsNeeded; i++) {
+        if (seamZ > -depth) {
+          lines.push([
+            [-length / 2, -width / 2 + 0.01, seamZ],
+            [length / 2, -width / 2 + 0.01, seamZ]
+          ]);
+        }
+        seamZ -= effectiveWallWidth;
+      }
+      
+      // Left wall (-X)
+      seamZ = -rollWidth + wallOverlap / 2;
+      for (let i = 1; i < shallowStripsNeeded; i++) {
+        if (seamZ > -depth) {
+          lines.push([
+            [-length / 2 + 0.01, -width / 2, seamZ],
+            [-length / 2 + 0.01, width / 2, seamZ]
+          ]);
+        }
+        seamZ -= effectiveWallWidth;
+      }
     }
     
-    // === WALL STRIPS ===
-    // Horizontal strips on walls (preferred per guidelines)
-    const wallHeight = depth;
-    const deepWallHeight = actualDeep;
-    const effectiveWallWidth = rollWidth - 0.10; // 10cm overlap for walls
+    // Right wall (+X) - deep side, may need more strips
+    const deepStripsNeeded = Math.ceil(deepWallTotal / effectiveWallWidth);
     
-    // Front wall (+Y) - horizontal lines
-    let currentZ = 0;
-    while (currentZ < wallHeight) {
-      const lineZ = -currentZ - (rollWidth / 2);
-      if (lineZ > -wallHeight && lineZ < 0) {
-        lines.push({
-          points: [
-            [-length / 2, width / 2 - 0.01, lineZ],
-            [length / 2, width / 2 - 0.01, lineZ]
-          ],
-          isSeam: currentZ > 0
-        });
+    if (deepStripsNeeded > 1) {
+      let seamZ = -rollWidth + wallOverlap / 2;
+      for (let i = 1; i < deepStripsNeeded; i++) {
+        if (seamZ > -actualDeep) {
+          lines.push([
+            [length / 2 - 0.01, -width / 2, seamZ],
+            [length / 2 - 0.01, width / 2, seamZ]
+          ]);
+        }
+        seamZ -= effectiveWallWidth;
       }
-      currentZ += effectiveWallWidth;
-    }
-    
-    // Back wall (-Y) - horizontal lines
-    currentZ = 0;
-    while (currentZ < wallHeight) {
-      const lineZ = -currentZ - (rollWidth / 2);
-      if (lineZ > -wallHeight && lineZ < 0) {
-        lines.push({
-          points: [
-            [-length / 2, -width / 2 + 0.01, lineZ],
-            [length / 2, -width / 2 + 0.01, lineZ]
-          ],
-          isSeam: currentZ > 0
-        });
-      }
-      currentZ += effectiveWallWidth;
-    }
-    
-    // Left wall (-X) - horizontal lines (shallow side)
-    currentZ = 0;
-    while (currentZ < wallHeight) {
-      const lineZ = -currentZ - (rollWidth / 2);
-      if (lineZ > -wallHeight && lineZ < 0) {
-        lines.push({
-          points: [
-            [-length / 2 + 0.01, -width / 2, lineZ],
-            [-length / 2 + 0.01, width / 2, lineZ]
-          ],
-          isSeam: currentZ > 0
-        });
-      }
-      currentZ += effectiveWallWidth;
-    }
-    
-    // Right wall (+X) - horizontal lines (deep side)
-    currentZ = 0;
-    while (currentZ < deepWallHeight) {
-      const lineZ = -currentZ - (rollWidth / 2);
-      if (lineZ > -deepWallHeight && lineZ < 0) {
-        lines.push({
-          points: [
-            [length / 2 - 0.01, -width / 2, lineZ],
-            [length / 2 - 0.01, width / 2, lineZ]
-          ],
-          isSeam: currentZ > 0
-        });
-      }
-      currentZ += effectiveWallWidth;
     }
     
     return lines;
-  }, [dimensions, rollWidth, foilPlan, length, width, depth, actualDeep, hasSlope]);
+  }, [dimensions, rollWidth, length, width, depth, actualDeep, hasSlope]);
+
+  // Only render if there are seams to show
+  if (seamLines.length === 0) {
+    return null;
+  }
 
   return (
     <>
-      {stripLines.map((line, i) => (
+      {seamLines.map((points, i) => (
         <Line
           key={i}
-          points={line.points}
+          points={points}
           color="#dc2626"
           lineWidth={2}
           dashed
