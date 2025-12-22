@@ -7,12 +7,13 @@ import { Label } from '@/components/ui/label';
 import { ProductCard } from '@/components/ProductCard';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ArrowLeft, Palette, Info, Calculator, CheckCircle, Eye } from 'lucide-react';
+import { ArrowLeft, Palette, Info, Calculator, CheckCircle, Eye, Box } from 'lucide-react';
 import { products, Product, getPriceInPLN } from '@/data/products';
 import { formatPrice, calculateFoilOptimization, FoilOptimizationResult } from '@/lib/calculations';
 import { OfferItem } from '@/types/configurator';
 import { poolShapeLabels } from '@/types/configurator';
 import { FoilLayoutVisualization } from '@/components/FoilLayoutVisualization';
+import { Pool3DVisualization } from '@/components/Pool3DVisualization';
 
 interface FoilStepProps {
   onNext: () => void;
@@ -168,17 +169,76 @@ export function FoilStep({ onNext, onBack }: FoilStepProps) {
                         <DialogTitle>Kalkulacja folii basenowej</DialogTitle>
                       </DialogHeader>
                       
-                      <Tabs defaultValue="calculations" className="w-full">
-                        <TabsList className="grid w-full grid-cols-2">
+                      <Tabs defaultValue="3d" className="w-full">
+                        <TabsList className="grid w-full grid-cols-3">
+                          <TabsTrigger value="3d" className="gap-2">
+                            <Box className="w-4 h-4" />
+                            Widok 3D
+                          </TabsTrigger>
                           <TabsTrigger value="calculations" className="gap-2">
                             <Calculator className="w-4 h-4" />
                             Kalkulacje
                           </TabsTrigger>
                           <TabsTrigger value="visualization" className="gap-2">
                             <Eye className="w-4 h-4" />
-                            Wizualizacja
+                            Rzut 2D
                           </TabsTrigger>
                         </TabsList>
+                        
+                        <TabsContent value="3d" className="mt-4">
+                          <div className="space-y-4">
+                            <p className="text-sm text-muted-foreground">
+                              Interaktywna wizualizacja 3D z układem pasów folii. Obracaj myszką, zoom scrollem.
+                            </p>
+                            <Tabs defaultValue="165" className="w-full">
+                              <TabsList className="grid w-full grid-cols-3 mb-4">
+                                <TabsTrigger value="165">Rolka 1,65m</TabsTrigger>
+                                <TabsTrigger value="205">Rolka 2,05m</TabsTrigger>
+                                <TabsTrigger value="mixed" className={bestOption === 'mixed' ? 'data-[state=active]:bg-primary data-[state=active]:text-primary-foreground' : ''}>
+                                  Mix {bestOption === 'mixed' && <CheckCircle className="w-3 h-3 ml-1" />}
+                                </TabsTrigger>
+                              </TabsList>
+                              
+                              <TabsContent value="165">
+                                <Pool3DVisualization 
+                                  dimensions={dimensions}
+                                  calculations={state.calculations}
+                                  showFoilLayout={true}
+                                  rollWidth={1.65}
+                                  height={350}
+                                />
+                              </TabsContent>
+                              
+                              <TabsContent value="205">
+                                <Pool3DVisualization 
+                                  dimensions={dimensions}
+                                  calculations={state.calculations}
+                                  showFoilLayout={true}
+                                  rollWidth={2.05}
+                                  height={350}
+                                />
+                              </TabsContent>
+                              
+                              <TabsContent value="mixed">
+                                <div className="space-y-3">
+                                  <div className="p-3 rounded-lg bg-primary/10 border border-primary/20 text-sm">
+                                    <p className="font-medium">Optymalna kombinacja:</p>
+                                    <p className="text-muted-foreground">
+                                      {calc?.rolls165 || 0} × 1,65m + {calc?.rolls205 || 0} × 2,05m
+                                    </p>
+                                  </div>
+                                  <Pool3DVisualization 
+                                    dimensions={dimensions}
+                                    calculations={state.calculations}
+                                    showFoilLayout={true}
+                                    rollWidth={2.05}
+                                    height={350}
+                                  />
+                                </div>
+                              </TabsContent>
+                            </Tabs>
+                          </div>
+                        </TabsContent>
                         
                         <TabsContent value="calculations" className="mt-4">
                           <div className="space-y-4 text-sm">

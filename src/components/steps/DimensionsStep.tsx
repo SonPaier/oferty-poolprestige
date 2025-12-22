@@ -322,44 +322,87 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
             </div>
           )}
 
-          {/* Depth - always visible */}
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="depth">Głębokość niecki (m)</Label>
-              <Input
-                id="depth"
-                type="number"
-                step="0.1"
-                min="0.5"
-                max="5"
-                value={dimensions.depth}
-                onChange={(e) => updateDimension('depth', parseFloat(e.target.value) || 0)}
-                className="input-field"
+          {/* Depth section */}
+          <div className="space-y-4">
+            <div className="flex items-center justify-between p-4 rounded-lg bg-muted/30 border border-border">
+              <div className="flex items-center gap-3">
+                <Ruler className="w-5 h-5 text-primary" />
+                <div>
+                  <Label htmlFor="hasSlope" className="font-medium">Spadek dna</Label>
+                  <p className="text-xs text-muted-foreground">
+                    Różne głębokości (płytko → głęboko)
+                  </p>
+                </div>
+              </div>
+              <Switch
+                id="hasSlope"
+                checked={dimensions.hasSlope}
+                onCheckedChange={(checked) => {
+                  updateDimension('hasSlope', checked);
+                  if (checked && !dimensions.depthDeep) {
+                    updateDimension('depthDeep', dimensions.depth + 0.5);
+                  }
+                }}
               />
-              <p className="text-xs text-muted-foreground">
-                Głębokość wody: {calculations?.waterDepth?.toFixed(2) || (dimensions.depth - (dimensions.overflowType === 'skimmerowy' ? 0.1 : 0)).toFixed(2)} m
-              </p>
             </div>
 
-            {/* Attractions - only for public pools */}
-            {isPublicPool && (
+            <div className={`grid gap-4 ${dimensions.hasSlope ? 'grid-cols-3' : 'grid-cols-2'}`}>
               <div className="space-y-2">
-                <Label htmlFor="attractions">Ilość atrakcji</Label>
+                <Label htmlFor="depth">{dimensions.hasSlope ? 'Głębokość płytka (m)' : 'Głębokość niecki (m)'}</Label>
                 <Input
-                  id="attractions"
+                  id="depth"
                   type="number"
-                  step="1"
-                  min="0"
-                  max="20"
-                  value={dimensions.attractions}
-                  onChange={(e) => updateDimension('attractions', parseInt(e.target.value) || 0)}
+                  step="0.1"
+                  min="0.5"
+                  max="5"
+                  value={dimensions.depth}
+                  onChange={(e) => updateDimension('depth', parseFloat(e.target.value) || 0)}
                   className="input-field"
                 />
                 <p className="text-xs text-muted-foreground">
-                  +{6 * dimensions.attractions} m³/h do filtracji
+                  Woda: {calculations?.waterDepth?.toFixed(2) || (dimensions.depth - (dimensions.overflowType === 'skimmerowy' ? 0.1 : 0)).toFixed(2)} m
                 </p>
               </div>
-            )}
+
+              {dimensions.hasSlope && (
+                <div className="space-y-2">
+                  <Label htmlFor="depthDeep">Głębokość głęboka (m)</Label>
+                  <Input
+                    id="depthDeep"
+                    type="number"
+                    step="0.1"
+                    min={dimensions.depth}
+                    max="5"
+                    value={dimensions.depthDeep || dimensions.depth + 0.5}
+                    onChange={(e) => updateDimension('depthDeep', parseFloat(e.target.value) || 0)}
+                    className="input-field"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Spadek: {((dimensions.depthDeep || dimensions.depth) - dimensions.depth).toFixed(2)} m
+                  </p>
+                </div>
+              )}
+
+              {/* Attractions - only for public pools */}
+              {isPublicPool && (
+                <div className="space-y-2">
+                  <Label htmlFor="attractions">Ilość atrakcji</Label>
+                  <Input
+                    id="attractions"
+                    type="number"
+                    step="1"
+                    min="0"
+                    max="20"
+                    value={dimensions.attractions}
+                    onChange={(e) => updateDimension('attractions', parseInt(e.target.value) || 0)}
+                    className="input-field"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    +{6 * dimensions.attractions} m³/h do filtracji
+                  </p>
+                </div>
+              )}
+            </div>
           </div>
 
           <div className="flex items-center justify-between p-4 rounded-lg bg-muted/30 border border-border">
@@ -466,19 +509,6 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
                     </div>
                   </div>
 
-                  {state.foilCalculation && (
-                    <div className="p-4 rounded-lg bg-muted/30 border border-border">
-                      <p className="text-sm font-medium mb-2">Szacunkowe zapotrzebowanie folii</p>
-                      <p className="text-lg font-bold">
-                        {state.foilCalculation.totalArea.toFixed(1)} m²
-                      </p>
-                      {dimensions.isIrregular && (
-                        <p className="text-xs text-warning mt-1">
-                          + {companySettings.irregularSurchargePercent}% za kształt nieregularny
-                        </p>
-                      )}
-                    </div>
-                  )}
                 </div>
               )}
             </TabsContent>

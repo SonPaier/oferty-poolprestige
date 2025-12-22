@@ -20,7 +20,9 @@ export interface PoolDimensions {
   shape: PoolShape;
   length: number;
   width: number;
-  depth: number; // Single depth (głębokość niecki)
+  depth: number; // Głębokość płytka (min)
+  depthDeep?: number; // Głębokość głęboka (max) - jeśli jest spadek
+  hasSlope: boolean; // Czy basen ma spadek dna
   isIrregular: boolean;
   overflowType: PoolOverflowType;
   attractions: number; // Number of attractions (for public pools)
