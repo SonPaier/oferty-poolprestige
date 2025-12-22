@@ -798,7 +798,7 @@ export default function OfferView() {
 
         {/* Social Media Links */}
         <div className="container mx-auto px-4 py-6 flex flex-col items-center gap-4 border-t border-border/50">
-          <p className="text-sm text-muted-foreground">Śledź nas w social mediach</p>
+          <p className="text-sm text-muted-foreground">Zobacz nasze realizacje i śledź nas w social mediach</p>
           <div className="flex items-center gap-4">
             <a
               href="https://www.facebook.com/PoolPrestige.TechnikaBasenowa"
