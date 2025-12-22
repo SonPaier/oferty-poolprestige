@@ -280,13 +280,79 @@ export function CustomPoolDrawer({
     });
   }, [metersToCanvas, selectedVertexIndex]);
 
+  // Draw direction arrow for stairs
+  const drawStairsArrow = useCallback((canvas: FabricCanvas, points: Point[], rotation: number) => {
+    if (points.length < 3) return;
+    
+    // Calculate centroid
+    const canvasPoints = points.map(p => metersToCanvas(p));
+    const cx = canvasPoints.reduce((sum, p) => sum + p.x, 0) / canvasPoints.length;
+    const cy = canvasPoints.reduce((sum, p) => sum + p.y, 0) / canvasPoints.length;
+    
+    // Arrow length
+    const arrowLen = 40;
+    const arrowHead = 12;
+    
+    // Calculate arrow direction based on rotation (direction person walks INTO pool)
+    let dx = 0, dy = 0;
+    switch (rotation) {
+      case 0: dy = 1; break;   // Entry from top, arrow points down
+      case 90: dx = -1; break;  // Entry from right, arrow points left  
+      case 180: dy = -1; break; // Entry from bottom, arrow points up
+      case 270: dx = 1; break;  // Entry from left, arrow points right
+    }
+    
+    const endX = cx + dx * arrowLen;
+    const endY = cy + dy * arrowLen;
+    
+    // Arrow shaft
+    const shaft = new Line([cx, cy, endX, endY], {
+      stroke: MODE_COLORS.stairs.stroke,
+      strokeWidth: 3,
+      selectable: false,
+      evented: false,
+    });
+    objectDataMap.set(shaft, { type: 'arrow', layer: 'stairs' });
+    canvas.add(shaft);
+    
+    // Arrow head (two lines)
+    const headAngle1 = Math.atan2(dy, dx) + Math.PI * 0.75;
+    const headAngle2 = Math.atan2(dy, dx) - Math.PI * 0.75;
+    
+    const head1 = new Line([
+      endX, endY,
+      endX + Math.cos(headAngle1) * arrowHead,
+      endY + Math.sin(headAngle1) * arrowHead
+    ], {
+      stroke: MODE_COLORS.stairs.stroke,
+      strokeWidth: 3,
+      selectable: false,
+      evented: false,
+    });
+    objectDataMap.set(head1, { type: 'arrow', layer: 'stairs' });
+    canvas.add(head1);
+    
+    const head2 = new Line([
+      endX, endY,
+      endX + Math.cos(headAngle2) * arrowHead,
+      endY + Math.sin(headAngle2) * arrowHead
+    ], {
+      stroke: MODE_COLORS.stairs.stroke,
+      strokeWidth: 3,
+      selectable: false,
+      evented: false,
+    });
+    objectDataMap.set(head2, { type: 'arrow', layer: 'stairs' });
+    canvas.add(head2);
+  }, [metersToCanvas]);
+
   // Redraw all shapes
   const redrawAllShapes = useCallback((canvas: FabricCanvas) => {
-    // Remove existing polygons and vertices (keep grid)
+    // Remove existing polygons, vertices, and arrows (keep grid)
     const objects = canvas.getObjects();
     objects.forEach(obj => {
       const data = objectDataMap.get(obj);
-      if (data?.type === 'polygon' || data?.type === 'vertex' || data?.type === 'edge-label') {
+      if (data?.type === 'polygon' || data?.type === 'vertex' || data?.type === 'edge-label' || data?.type === 'arrow') {
         canvas.remove(obj);
       }
     });
@@ -300,6 +366,10 @@ export function CustomPoolDrawer({
     // Draw stairs layer
     if (stairsVertices.length > 0) {
       drawPolygonLayer(canvas, stairsVertices, 'stairs', currentMode === 'stairs');
+      // Draw direction arrow for stairs
+      if (stairsVertices.length >= 3) {
+        drawStairsArrow(canvas, stairsVertices, stairsRotation);
+      }
     }
     
     // Draw wading pool layer
@@ -308,7 +378,7 @@ export function CustomPoolDrawer({
     }
 
     canvas.renderAll();
-  }, [poolVertices, stairsVertices, wadingPoolVertices, currentMode, drawPolygonLayer]);
+  }, [poolVertices, stairsVertices, wadingPoolVertices, currentMode, drawPolygonLayer, stairsRotation, drawStairsArrow]);
 
   // Initialize canvas
   useEffect(() => {
@@ -498,10 +568,10 @@ export function CustomPoolDrawer({
 
   const getRotationLabel = (rotation: number): string => {
     switch (rotation) {
-      case 0: return 'Wejście od góry ↓';
-      case 90: return 'Wejście od lewej →';
-      case 180: return 'Wejście od dołu ↑';
-      case 270: return 'Wejście od prawej ←';
+      case 0: return 'Wejście z góry ↓';
+      case 90: return 'Wejście z prawej ←';
+      case 180: return 'Wejście z dołu ↑';
+      case 270: return 'Wejście z lewej →';
       default: return '';
     }
   };
