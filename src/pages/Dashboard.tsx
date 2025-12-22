@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { useSettings } from '@/context/SettingsContext';
-import { getQueueOffers, getOffersByStatus } from '@/lib/offerDb';
+import { getQueueOffers, getOffersByStatus, getRecentlyEditedOffers } from '@/lib/offerDb';
 import { SavedOffer } from '@/types/offers';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -17,6 +17,7 @@ import {
   History, 
   ArrowRight, 
   AlertTriangle,
+  Pencil,
   FileText
 } from 'lucide-react';
 import { format } from 'date-fns';
@@ -29,6 +30,7 @@ export default function Dashboard() {
   const { companySettings, excavationSettings, setCompanySettings, setExcavationSettings, isLoading } = useSettings();
   const [queueOffers, setQueueOffers] = useState<(SavedOffer & { shareUid: string })[]>([]);
   const [sentOffers, setSentOffers] = useState<(SavedOffer & { shareUid: string })[]>([]);
+  const [recentlyEditedOffers, setRecentlyEditedOffers] = useState<(SavedOffer & { shareUid: string })[]>([]);
   const [overdueOffers, setOverdueOffers] = useState<{ id: string; offerNumber: string; customerName: string; createdAt: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [showSettings, setShowSettings] = useState(false);
@@ -38,13 +40,15 @@ export default function Dashboard() {
   useEffect(() => {
     const loadData = async () => {
       try {
-        const [queue, sent] = await Promise.all([
+        const [queue, sent, recentlyEdited] = await Promise.all([
           getQueueOffers(),
-          getOffersByStatus('sent')
+          getOffersByStatus('sent'),
+          getRecentlyEditedOffers(5)
         ]);
         
         setQueueOffers(queue);
         setSentOffers(sent.slice(0, 5)); // Last 5 sent offers
+        setRecentlyEditedOffers(recentlyEdited);
         
         // Calculate overdue
         const now = new Date();
@@ -147,7 +151,7 @@ export default function Dashboard() {
         </section>
 
         {/* Stats Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
           {/* Queue Stats */}
           <Card className="p-6">
             <div className="flex items-center justify-between mb-4">
@@ -237,8 +241,55 @@ export default function Dashboard() {
             </Button>
           </Card>
 
+          {/* Recently Edited */}
+          <Card className="p-6">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <Pencil className="w-5 h-5 text-amber-500" />
+                <h3 className="font-semibold">Ostatnio edytowane</h3>
+              </div>
+              <span className="text-2xl font-bold text-amber-500">{recentlyEditedOffers.length}</span>
+            </div>
+            
+            {recentlyEditedOffers.length > 0 ? (
+              <div className="space-y-2 mb-4">
+                {recentlyEditedOffers.slice(0, 3).map(offer => (
+                  <div 
+                    key={offer.id}
+                    className="p-2 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 cursor-pointer transition-colors"
+                    onClick={() => navigate(`/oferta/${offer.shareUid}`)}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium truncate">{offer.offerNumber}</p>
+                        <p className="text-xs text-muted-foreground truncate">
+                          {offer.customerData.contactPerson}
+                        </p>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        {formatDate(offer.updatedAt)}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground mb-4">Brak edytowanych ofert</p>
+            )}
+            
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full"
+              onClick={() => navigate('/historia')}
+            >
+              Zobacz wszystkie
+              <ArrowRight className="w-4 h-4 ml-2" />
+            </Button>
+          </Card>
+
           {/* Sent Offers */}
-          <Card className="p-6 md:col-span-2 lg:col-span-1">
+          <Card className="p-6">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
                 <History className="w-5 h-5 text-green-500" />
