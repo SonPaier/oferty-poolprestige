@@ -166,7 +166,8 @@ export function AutomationStep({ onNext, onBack }: AutomationStepProps) {
     });
   };
 
-  const handleNext = () => {
+  // Auto-save section when selections change
+  useEffect(() => {
     const items: OfferItem[] = Object.values(selectedItems).map(product => ({
       id: `auto-${product.id}`,
       product,
@@ -180,9 +181,7 @@ export function AutomationStep({ onNext, onBack }: AutomationStepProps) {
         data: { ...sections.automatyka, items },
       },
     });
-    
-    onNext();
-  };
+  }, [selectedItems]);
 
   return (
     <div className="animate-slide-up">
@@ -324,15 +323,6 @@ export function AutomationStep({ onNext, onBack }: AutomationStepProps) {
         </p>
       </div>
 
-      <div className="flex justify-between mt-6">
-        <Button variant="outline" onClick={onBack}>
-          <ArrowLeft className="w-4 h-4 mr-2" />
-          Wstecz
-        </Button>
-        <Button onClick={handleNext} className="btn-primary px-8">
-          Dalej: Podsumowanie
-        </Button>
-      </div>
     </div>
   );
 }
