@@ -10,9 +10,10 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover';
 import { toast } from 'sonner';
-import { getOverdueOffersCount, getQueueOffers } from '@/lib/offerDb';
+import { getQueueOffers } from '@/lib/offerDb';
 import { format } from 'date-fns';
 import { pl } from 'date-fns/locale';
+import { useSettings } from '@/context/SettingsContext';
 
 import { EditModeInfo } from '@/context/ConfiguratorContext';
 
@@ -25,25 +26,25 @@ interface HeaderProps {
 export function Header({ onSettingsClick, onNewOffer, editMode }: HeaderProps) {
   const navigate = useNavigate();
   const { logout } = useAuth();
+  const { companySettings } = useSettings();
   const [overdueCount, setOverdueCount] = useState(0);
   const [queueCount, setQueueCount] = useState(0);
   const [overdueOffers, setOverdueOffers] = useState<{ id: string; offerNumber: string; customerName: string; createdAt: string }[]>([]);
   
+  const dueDays = companySettings.dueDays || 3;
+  
   useEffect(() => {
     const fetchNotifications = async () => {
-      const count = await getOverdueOffersCount();
-      setOverdueCount(count);
-      
       const queueOffers = await getQueueOffers();
       setQueueCount(queueOffers.length);
       
       // Get overdue offers for notification popover
       const now = new Date();
-      const threeDaysAgo = new Date();
-      threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
+      const dueDate = new Date();
+      dueDate.setDate(dueDate.getDate() - dueDays);
       
       const overdue = queueOffers
-        .filter(o => new Date(o.createdAt) < threeDaysAgo)
+        .filter(o => new Date(o.createdAt) < dueDate)
         .slice(0, 5)
         .map(o => ({
           id: o.id,
@@ -53,6 +54,7 @@ export function Header({ onSettingsClick, onNewOffer, editMode }: HeaderProps) {
         }));
       
       setOverdueOffers(overdue);
+      setOverdueCount(overdue.length);
     };
     
     fetchNotifications();
@@ -60,7 +62,7 @@ export function Header({ onSettingsClick, onNewOffer, editMode }: HeaderProps) {
     // Refresh every 60 seconds
     const interval = setInterval(fetchNotifications, 60000);
     return () => clearInterval(interval);
-  }, []);
+  }, [dueDays]);
   
   const handleLogout = () => {
     logout();

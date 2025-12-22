@@ -178,6 +178,24 @@ export function SettingsDialog({
                   className="input-field"
                 />
               </div>
+              <div className="space-y-2">
+                <Label htmlFor="dueDays">Termin odpowiedzi (dni)</Label>
+                <Input
+                  id="dueDays"
+                  type="number"
+                  min="1"
+                  max="30"
+                  value={company.dueDays || 3}
+                  onChange={(e) => setCompany({ 
+                    ...company, 
+                    dueDays: parseInt(e.target.value) || 3 
+                  })}
+                  className="input-field"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Po ilu dniach oferta w kolejce jest oznaczana jako przeterminowana
+                </p>
+              </div>
             </div>
           </div>
 

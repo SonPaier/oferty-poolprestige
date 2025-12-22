@@ -40,8 +40,6 @@ import { toast } from 'sonner';
 import { format, differenceInDays } from 'date-fns';
 import { pl } from 'date-fns/locale';
 
-const DUE_DAYS = 3;
-
 function getStatusBadge(status: OfferStatus) {
   switch (status) {
     case 'queue':
@@ -55,10 +53,10 @@ function getStatusBadge(status: OfferStatus) {
   }
 }
 
-function getDueDateInfo(createdAt: string) {
+function getDueDateInfo(createdAt: string, dueDays: number) {
   const created = new Date(createdAt);
   const dueDate = new Date(created);
-  dueDate.setDate(dueDate.getDate() + DUE_DAYS);
+  dueDate.setDate(dueDate.getDate() + dueDays);
   
   const now = new Date();
   const daysUntilDue = differenceInDays(dueDate, now);
@@ -145,7 +143,8 @@ export default function OfferQueue() {
     }
   };
 
-  const overdueCount = offers.filter(o => getDueDateInfo(o.createdAt).isOverdue).length;
+  const dueDays = companySettings.dueDays || 3;
+  const overdueCount = offers.filter(o => getDueDateInfo(o.createdAt, dueDays).isOverdue).length;
 
   return (
     <div className="min-h-screen bg-background">
@@ -233,7 +232,7 @@ export default function OfferQueue() {
               </TableHeader>
               <TableBody>
                 {filteredOffers.map((offer) => {
-                  const { dueDate, daysUntilDue, isOverdue } = getDueDateInfo(offer.createdAt);
+                  const { dueDate, daysUntilDue, isOverdue } = getDueDateInfo(offer.createdAt, dueDays);
                   
                   return (
                     <TableRow 
@@ -351,7 +350,7 @@ export default function OfferQueue() {
             </div>
             <div className="flex items-center gap-2">
               <AlertTriangle className="w-4 h-4 text-destructive" />
-              <span className="text-muted-foreground">- Po terminie ({DUE_DAYS} dni)</span>
+              <span className="text-muted-foreground">- Po terminie ({dueDays} dni)</span>
             </div>
           </div>
         </div>
