@@ -22,7 +22,9 @@ import {
   Pencil,
   Copy,
   ArrowLeft,
-  FileDown
+  FileDown,
+  Facebook,
+  Instagram
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -793,6 +795,31 @@ export default function OfferView() {
             </CardContent>
           </Card>
         )}
+
+        {/* Social Media Links */}
+        <div className="container mx-auto px-4 py-6 flex flex-col items-center gap-4 border-t border-border/50">
+          <p className="text-sm text-muted-foreground">Śledź nas w social mediach</p>
+          <div className="flex items-center gap-4">
+            <a
+              href="https://www.facebook.com/PoolPrestige.TechnikaBasenowa"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-[#1877F2]/10 text-[#1877F2] hover:bg-[#1877F2]/20 transition-colors"
+            >
+              <Facebook className="w-5 h-5" />
+              <span className="text-sm font-medium">Facebook</span>
+            </a>
+            <a
+              href="https://www.instagram.com/poolprestige_baseny/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-gradient-to-br from-[#F58529]/10 via-[#DD2A7B]/10 to-[#8134AF]/10 text-[#DD2A7B] hover:from-[#F58529]/20 hover:via-[#DD2A7B]/20 hover:to-[#8134AF]/20 transition-colors"
+            >
+              <Instagram className="w-5 h-5" />
+              <span className="text-sm font-medium">Instagram</span>
+            </a>
+          </div>
+        </div>
       </main>
 
       {/* Fixed Footer with Total */}
