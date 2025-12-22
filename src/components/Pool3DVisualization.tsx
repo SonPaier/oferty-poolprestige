@@ -1273,16 +1273,16 @@ function CustomWadingPoolMesh({ vertices, wadingDepth, poolDepth, poolVertices }
       <mesh position={[0, 0, floorZ]} geometry={floorGeo} material={floorMaterial} />
       
       {/* Internal rim/walls - only on edges facing the main pool */}
-      {/* Left rim (X-) */}
+      {/* Left rim (X-) - positioned at the edge of wading pool */}
       {isLeftInternal && (
         <group>
           {/* Vertical wall */}
           <mesh position={[minX + RIM_WIDTH / 2, centroid.y, floorZ - wadingDepth / 2]} material={wallMaterial}>
-            <boxGeometry args={[RIM_WIDTH, bounds.sizeY, wadingDepth]} />
+            <boxGeometry args={[RIM_WIDTH, bounds.sizeY - (isBottomInternal ? RIM_WIDTH : 0) - (isTopInternal ? RIM_WIDTH : 0), wadingDepth]} />
           </mesh>
           {/* White top rim */}
           <mesh position={[minX + RIM_WIDTH / 2, centroid.y, 0]} material={rimMaterial}>
-            <boxGeometry args={[RIM_WIDTH, bounds.sizeY + (isBottomInternal ? RIM_WIDTH : 0) + (isTopInternal ? RIM_WIDTH : 0), RIM_WIDTH]} />
+            <boxGeometry args={[RIM_WIDTH, bounds.sizeY, RIM_WIDTH]} />
           </mesh>
         </group>
       )}
@@ -1291,10 +1291,10 @@ function CustomWadingPoolMesh({ vertices, wadingDepth, poolDepth, poolVertices }
       {isRightInternal && (
         <group>
           <mesh position={[maxX - RIM_WIDTH / 2, centroid.y, floorZ - wadingDepth / 2]} material={wallMaterial}>
-            <boxGeometry args={[RIM_WIDTH, bounds.sizeY, wadingDepth]} />
+            <boxGeometry args={[RIM_WIDTH, bounds.sizeY - (isBottomInternal ? RIM_WIDTH : 0) - (isTopInternal ? RIM_WIDTH : 0), wadingDepth]} />
           </mesh>
           <mesh position={[maxX - RIM_WIDTH / 2, centroid.y, 0]} material={rimMaterial}>
-            <boxGeometry args={[RIM_WIDTH, bounds.sizeY + (isBottomInternal ? RIM_WIDTH : 0) + (isTopInternal ? RIM_WIDTH : 0), RIM_WIDTH]} />
+            <boxGeometry args={[RIM_WIDTH, bounds.sizeY, RIM_WIDTH]} />
           </mesh>
         </group>
       )}
@@ -1303,10 +1303,10 @@ function CustomWadingPoolMesh({ vertices, wadingDepth, poolDepth, poolVertices }
       {isBottomInternal && (
         <group>
           <mesh position={[centroid.x, minY + RIM_WIDTH / 2, floorZ - wadingDepth / 2]} material={wallMaterial}>
-            <boxGeometry args={[bounds.sizeX, RIM_WIDTH, wadingDepth]} />
+            <boxGeometry args={[bounds.sizeX - (isLeftInternal ? RIM_WIDTH : 0) - (isRightInternal ? RIM_WIDTH : 0), RIM_WIDTH, wadingDepth]} />
           </mesh>
           <mesh position={[centroid.x, minY + RIM_WIDTH / 2, 0]} material={rimMaterial}>
-            <boxGeometry args={[bounds.sizeX + (isLeftInternal ? RIM_WIDTH : 0) + (isRightInternal ? RIM_WIDTH : 0), RIM_WIDTH, RIM_WIDTH]} />
+            <boxGeometry args={[bounds.sizeX, RIM_WIDTH, RIM_WIDTH]} />
           </mesh>
         </group>
       )}
@@ -1315,10 +1315,10 @@ function CustomWadingPoolMesh({ vertices, wadingDepth, poolDepth, poolVertices }
       {isTopInternal && (
         <group>
           <mesh position={[centroid.x, maxY - RIM_WIDTH / 2, floorZ - wadingDepth / 2]} material={wallMaterial}>
-            <boxGeometry args={[bounds.sizeX, RIM_WIDTH, wadingDepth]} />
+            <boxGeometry args={[bounds.sizeX - (isLeftInternal ? RIM_WIDTH : 0) - (isRightInternal ? RIM_WIDTH : 0), RIM_WIDTH, wadingDepth]} />
           </mesh>
           <mesh position={[centroid.x, maxY - RIM_WIDTH / 2, 0]} material={rimMaterial}>
-            <boxGeometry args={[bounds.sizeX + (isLeftInternal ? RIM_WIDTH : 0) + (isRightInternal ? RIM_WIDTH : 0), RIM_WIDTH, RIM_WIDTH]} />
+            <boxGeometry args={[bounds.sizeX, RIM_WIDTH, RIM_WIDTH]} />
           </mesh>
         </group>
       )}
