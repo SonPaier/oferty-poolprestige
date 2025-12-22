@@ -3,33 +3,87 @@ import { Canvas as FabricCanvas, Circle, Line, Polygon, Text, FabricObject } fro
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Trash2, RotateCcw, Check, MousePointer, Plus, Grid3X3 } from 'lucide-react';
+import { Trash2, RotateCcw, Check, MousePointer, Plus, Grid3X3, Footprints, Baby, Waves } from 'lucide-react';
 import { toast } from 'sonner';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 // Store custom data on fabric objects using a WeakMap
-const objectDataMap = new WeakMap<FabricObject, { type: string; index?: number }>();
+const objectDataMap = new WeakMap<FabricObject, { type: string; index?: number; layer?: DrawingMode }>();
 
 interface Point {
   x: number;
   y: number;
 }
 
+export type DrawingMode = 'pool' | 'stairs' | 'wadingPool';
+
 interface CustomPoolDrawerProps {
-  onComplete: (vertices: Point[], area: number, perimeter: number) => void;
+  onComplete: (
+    poolVertices: Point[], 
+    area: number, 
+    perimeter: number,
+    stairsVertices?: Point[],
+    wadingPoolVertices?: Point[]
+  ) => void;
   onCancel: () => void;
-  initialVertices?: Point[];
+  initialPoolVertices?: Point[];
+  initialStairsVertices?: Point[];
+  initialWadingPoolVertices?: Point[];
 }
 
 const GRID_SIZE = 50; // pixels per meter
 const CANVAS_WIDTH = 800;
 const CANVAS_HEIGHT = 500;
 
-export function CustomPoolDrawer({ onComplete, onCancel, initialVertices }: CustomPoolDrawerProps) {
+// Colors for different drawing modes
+const MODE_COLORS = {
+  pool: { fill: 'hsl(190 80% 42% / 0.2)', stroke: 'hsl(190 80% 42%)', vertex: 'hsl(190 80% 42%)' },
+  stairs: { fill: 'hsl(30 80% 50% / 0.3)', stroke: 'hsl(30 80% 50%)', vertex: 'hsl(30 80% 50%)' },
+  wadingPool: { fill: 'hsl(280 60% 50% / 0.3)', stroke: 'hsl(280 60% 50%)', vertex: 'hsl(280 60% 50%)' },
+};
+
+const MODE_LABELS: Record<DrawingMode, string> = {
+  pool: 'Basen',
+  stairs: 'Schody',
+  wadingPool: 'Brodzik',
+};
+
+export function CustomPoolDrawer({ 
+  onComplete, 
+  onCancel, 
+  initialPoolVertices,
+  initialStairsVertices,
+  initialWadingPoolVertices 
+}: CustomPoolDrawerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fabricRef = useRef<FabricCanvas | null>(null);
-  const [vertices, setVertices] = useState<Point[]>(initialVertices || []);
-  const [isDrawing, setIsDrawing] = useState(true);
+  
+  // Separate vertices for each layer
+  const [poolVertices, setPoolVertices] = useState<Point[]>(initialPoolVertices || []);
+  const [stairsVertices, setStairsVertices] = useState<Point[]>(initialStairsVertices || []);
+  const [wadingPoolVertices, setWadingPoolVertices] = useState<Point[]>(initialWadingPoolVertices || []);
+  
+  const [currentMode, setCurrentMode] = useState<DrawingMode>('pool');
+  const [isDrawing, setIsDrawing] = useState(!initialPoolVertices || initialPoolVertices.length < 3);
   const [selectedVertexIndex, setSelectedVertexIndex] = useState<number | null>(null);
+
+  // Get current vertices based on mode
+  const getCurrentVertices = useCallback(() => {
+    switch (currentMode) {
+      case 'pool': return poolVertices;
+      case 'stairs': return stairsVertices;
+      case 'wadingPool': return wadingPoolVertices;
+    }
+  }, [currentMode, poolVertices, stairsVertices, wadingPoolVertices]);
+
+  // Set current vertices based on mode
+  const setCurrentVertices = useCallback((vertices: Point[]) => {
+    switch (currentMode) {
+      case 'pool': setPoolVertices(vertices); break;
+      case 'stairs': setStairsVertices(vertices); break;
+      case 'wadingPool': setWadingPoolVertices(vertices); break;
+    }
+  }, [currentMode]);
 
   // Calculate polygon area using Shoelace formula
   const calculateArea = useCallback((points: Point[]): number => {
@@ -132,17 +186,15 @@ export function CustomPoolDrawer({ onComplete, onCancel, initialVertices }: Cust
     }
   }, []);
 
-  // Redraw polygon and vertices
-  const redrawShape = useCallback((canvas: FabricCanvas, points: Point[]) => {
-    // Remove existing polygon and vertices (keep grid)
-    const objects = canvas.getObjects();
-    objects.forEach(obj => {
-      const data = objectDataMap.get(obj);
-      if (data?.type === 'polygon' || data?.type === 'vertex' || data?.type === 'edge-label') {
-        canvas.remove(obj);
-      }
-    });
-
+  // Draw a single polygon layer
+  const drawPolygonLayer = useCallback((
+    canvas: FabricCanvas, 
+    points: Point[], 
+    mode: DrawingMode,
+    isActiveLayer: boolean
+  ) => {
+    const colors = MODE_COLORS[mode];
+    
     if (points.length < 2) {
       // Just draw vertices
       points.forEach((point, index) => {
@@ -151,47 +203,52 @@ export function CustomPoolDrawer({ onComplete, onCancel, initialVertices }: Cust
           left: canvasPoint.x - 8,
           top: canvasPoint.y - 8,
           radius: 8,
-          fill: 'hsl(190 80% 42%)',
+          fill: colors.vertex,
           stroke: 'white',
           strokeWidth: 2,
-          selectable: true,
+          selectable: isActiveLayer,
+          evented: isActiveLayer,
+          opacity: isActiveLayer ? 1 : 0.6,
         });
-        objectDataMap.set(vertex, { type: 'vertex', index });
+        objectDataMap.set(vertex, { type: 'vertex', index, layer: mode });
         canvas.add(vertex);
       });
-      canvas.renderAll();
       return;
     }
 
     // Draw polygon
     const canvasPoints = points.map(p => metersToCanvas(p));
     const polygon = new Polygon(canvasPoints, {
-      fill: 'hsl(190 80% 42% / 0.2)',
-      stroke: 'hsl(190 80% 42%)',
+      fill: colors.fill,
+      stroke: colors.stroke,
       strokeWidth: 2,
       selectable: false,
       evented: false,
+      opacity: isActiveLayer ? 1 : 0.5,
     });
-    objectDataMap.set(polygon, { type: 'polygon' });
+    objectDataMap.set(polygon, { type: 'polygon', layer: mode });
     canvas.add(polygon);
 
     // Draw vertices and edge lengths
     points.forEach((point, index) => {
       const canvasPoint = metersToCanvas(point);
+      const isSelected = isActiveLayer && selectedVertexIndex === index;
       const vertex = new Circle({
         left: canvasPoint.x - 8,
         top: canvasPoint.y - 8,
         radius: 8,
-        fill: selectedVertexIndex === index ? 'hsl(30 80% 50%)' : 'hsl(190 80% 42%)',
+        fill: isSelected ? 'hsl(0 80% 50%)' : colors.vertex,
         stroke: 'white',
         strokeWidth: 2,
-        selectable: true,
+        selectable: isActiveLayer,
+        evented: isActiveLayer,
+        opacity: isActiveLayer ? 1 : 0.6,
       });
-      objectDataMap.set(vertex, { type: 'vertex', index });
+      objectDataMap.set(vertex, { type: 'vertex', index, layer: mode });
       canvas.add(vertex);
 
-      // Draw edge length label
-      if (points.length >= 2) {
+      // Draw edge length label only for active layer
+      if (isActiveLayer && points.length >= 2) {
         const nextIndex = (index + 1) % points.length;
         const nextPoint = points[nextIndex];
         const dx = nextPoint.x - point.x;
@@ -205,19 +262,47 @@ export function CustomPoolDrawer({ onComplete, onCancel, initialVertices }: Cust
           left: midX - 15,
           top: midY - 8,
           fontSize: 12,
-          fill: 'hsl(190 60% 30%)',
+          fill: colors.stroke,
           fontWeight: 'bold',
           backgroundColor: 'white',
           selectable: false,
           evented: false,
         });
-        objectDataMap.set(label, { type: 'edge-label' });
+        objectDataMap.set(label, { type: 'edge-label', layer: mode });
         canvas.add(label);
       }
     });
+  }, [metersToCanvas, selectedVertexIndex]);
+
+  // Redraw all shapes
+  const redrawAllShapes = useCallback((canvas: FabricCanvas) => {
+    // Remove existing polygons and vertices (keep grid)
+    const objects = canvas.getObjects();
+    objects.forEach(obj => {
+      const data = objectDataMap.get(obj);
+      if (data?.type === 'polygon' || data?.type === 'vertex' || data?.type === 'edge-label') {
+        canvas.remove(obj);
+      }
+    });
+
+    // Draw layers in order: pool first (background), then stairs, then wading pool
+    // Draw pool layer
+    if (poolVertices.length > 0) {
+      drawPolygonLayer(canvas, poolVertices, 'pool', currentMode === 'pool');
+    }
+    
+    // Draw stairs layer
+    if (stairsVertices.length > 0) {
+      drawPolygonLayer(canvas, stairsVertices, 'stairs', currentMode === 'stairs');
+    }
+    
+    // Draw wading pool layer
+    if (wadingPoolVertices.length > 0) {
+      drawPolygonLayer(canvas, wadingPoolVertices, 'wadingPool', currentMode === 'wadingPool');
+    }
 
     canvas.renderAll();
-  }, [metersToCanvas, selectedVertexIndex]);
+  }, [poolVertices, stairsVertices, wadingPoolVertices, currentMode, drawPolygonLayer]);
 
   // Initialize canvas
   useEffect(() => {
@@ -233,15 +318,36 @@ export function CustomPoolDrawer({ onComplete, onCancel, initialVertices }: Cust
     fabricRef.current = canvas;
     drawGrid(canvas);
     
-    if (initialVertices && initialVertices.length > 0) {
-      redrawShape(canvas, initialVertices);
-      setIsDrawing(false);
-    }
+    // Draw initial shapes
+    redrawAllShapes(canvas);
 
     return () => {
       canvas.dispose();
     };
   }, []);
+
+  // Redraw when vertices or mode changes
+  useEffect(() => {
+    const canvas = fabricRef.current;
+    if (canvas) {
+      redrawAllShapes(canvas);
+    }
+  }, [poolVertices, stairsVertices, wadingPoolVertices, currentMode, redrawAllShapes]);
+
+  // Handle mode change
+  const handleModeChange = (mode: DrawingMode) => {
+    // Check if pool is drawn before allowing stairs/wading pool
+    if ((mode === 'stairs' || mode === 'wadingPool') && poolVertices.length < 3) {
+      toast.error('Najpierw narysuj kształt basenu');
+      return;
+    }
+    
+    setCurrentMode(mode);
+    setSelectedVertexIndex(null);
+    
+    const currentVerts = mode === 'pool' ? poolVertices : mode === 'stairs' ? stairsVertices : wadingPoolVertices;
+    setIsDrawing(currentVerts.length < 3);
+  };
 
   // Handle canvas click to add vertices
   useEffect(() => {
@@ -256,24 +362,24 @@ export function CustomPoolDrawer({ onComplete, onCancel, initialVertices }: Cust
       const snappedY = snapToGrid(pointer.y);
       
       const newPoint = canvasToMeters({ x: snappedX, y: snappedY });
+      const currentVerts = getCurrentVertices();
       
       // Check if clicking near the first vertex to close the shape
-      if (vertices.length >= 3) {
-        const firstCanvasPoint = metersToCanvas(vertices[0]);
+      if (currentVerts.length >= 3) {
+        const firstCanvasPoint = metersToCanvas(currentVerts[0]);
         const dist = Math.sqrt(
           Math.pow(snappedX - firstCanvasPoint.x, 2) + 
           Math.pow(snappedY - firstCanvasPoint.y, 2)
         );
         if (dist < 20) {
           setIsDrawing(false);
-          toast.success('Kształt zamknięty! Możesz teraz edytować wierzchołki.');
+          toast.success(`${MODE_LABELS[currentMode]} zamknięty! Możesz teraz edytować wierzchołki.`);
           return;
         }
       }
       
-      const newVertices = [...vertices, newPoint];
-      setVertices(newVertices);
-      redrawShape(canvas, newVertices);
+      const newVertices = [...currentVerts, newPoint];
+      setCurrentVertices(newVertices);
     };
 
     canvas.on('mouse:down', handleMouseDown);
@@ -281,7 +387,7 @@ export function CustomPoolDrawer({ onComplete, onCancel, initialVertices }: Cust
     return () => {
       canvas.off('mouse:down', handleMouseDown);
     };
-  }, [isDrawing, vertices, canvasToMeters, metersToCanvas, snapToGrid, redrawShape]);
+  }, [isDrawing, currentMode, getCurrentVertices, setCurrentVertices, canvasToMeters, metersToCanvas, snapToGrid]);
 
   // Handle vertex selection and dragging
   useEffect(() => {
@@ -291,7 +397,7 @@ export function CustomPoolDrawer({ onComplete, onCancel, initialVertices }: Cust
     const handleObjectMoving = (e: any) => {
       const obj = e.target;
       const data = objectDataMap.get(obj);
-      if (data?.type === 'vertex') {
+      if (data?.type === 'vertex' && data.layer === currentMode) {
         const index = data.index!;
         const snappedX = snapToGrid(obj.left + 8);
         const snappedY = snapToGrid(obj.top + 8);
@@ -302,49 +408,46 @@ export function CustomPoolDrawer({ onComplete, onCancel, initialVertices }: Cust
         });
         
         const newPoint = canvasToMeters({ x: snappedX, y: snappedY });
-        const newVertices = [...vertices];
+        const currentVerts = getCurrentVertices();
+        const newVertices = [...currentVerts];
         newVertices[index] = newPoint;
-        setVertices(newVertices);
+        setCurrentVertices(newVertices);
       }
-    };
-
-    const handleObjectModified = () => {
-      redrawShape(canvas, vertices);
     };
 
     const handleSelection = (e: any) => {
       const obj = e.selected?.[0];
       const data = obj ? objectDataMap.get(obj) : null;
-      if (data?.type === 'vertex') {
+      if (data?.type === 'vertex' && data.layer === currentMode) {
         setSelectedVertexIndex(data.index!);
       }
     };
 
     canvas.on('object:moving', handleObjectMoving);
-    canvas.on('object:modified', handleObjectModified);
     canvas.on('selection:created', handleSelection);
     canvas.on('selection:updated', handleSelection);
     canvas.on('selection:cleared', () => setSelectedVertexIndex(null));
 
     return () => {
       canvas.off('object:moving', handleObjectMoving);
-      canvas.off('object:modified', handleObjectModified);
       canvas.off('selection:created', handleSelection);
       canvas.off('selection:updated', handleSelection);
       canvas.off('selection:cleared');
     };
-  }, [isDrawing, vertices, canvasToMeters, snapToGrid, redrawShape]);
-
-  // Update shape when vertices change
-  useEffect(() => {
-    const canvas = fabricRef.current;
-    if (canvas && !isDrawing) {
-      redrawShape(canvas, vertices);
-    }
-  }, [vertices, isDrawing, redrawShape]);
+  }, [isDrawing, currentMode, getCurrentVertices, setCurrentVertices, canvasToMeters, snapToGrid]);
 
   const handleReset = () => {
-    setVertices([]);
+    setCurrentVertices([]);
+    setIsDrawing(true);
+    setSelectedVertexIndex(null);
+    toast.info(`Zacznij rysować ${MODE_LABELS[currentMode]} od nowa`);
+  };
+
+  const handleResetAll = () => {
+    setPoolVertices([]);
+    setStairsVertices([]);
+    setWadingPoolVertices([]);
+    setCurrentMode('pool');
     setIsDrawing(true);
     setSelectedVertexIndex(null);
     const canvas = fabricRef.current;
@@ -352,44 +455,71 @@ export function CustomPoolDrawer({ onComplete, onCancel, initialVertices }: Cust
       canvas.clear();
       drawGrid(canvas);
     }
-    toast.info('Zacznij rysować od nowa');
+    toast.info('Wszystko zresetowane');
   };
 
   const handleDeleteVertex = () => {
     if (selectedVertexIndex === null) return;
-    const newVertices = vertices.filter((_, i) => i !== selectedVertexIndex);
-    setVertices(newVertices);
+    const currentVerts = getCurrentVertices();
+    const newVertices = currentVerts.filter((_, i) => i !== selectedVertexIndex);
+    setCurrentVertices(newVertices);
     setSelectedVertexIndex(null);
     if (newVertices.length < 3) {
       setIsDrawing(true);
     }
-    const canvas = fabricRef.current;
-    if (canvas) {
-      redrawShape(canvas, newVertices);
-    }
   };
 
   const handleComplete = () => {
-    if (vertices.length < 3) {
-      toast.error('Potrzebujesz minimum 3 punktów, aby utworzyć kształt');
+    if (poolVertices.length < 3) {
+      toast.error('Potrzebujesz minimum 3 punktów, aby utworzyć kształt basenu');
       return;
     }
-    const area = calculateArea(vertices);
-    const perimeter = calculatePerimeter(vertices);
-    onComplete(vertices, area, perimeter);
+    const area = calculateArea(poolVertices);
+    const perimeter = calculatePerimeter(poolVertices);
+    onComplete(
+      poolVertices, 
+      area, 
+      perimeter,
+      stairsVertices.length >= 3 ? stairsVertices : undefined,
+      wadingPoolVertices.length >= 3 ? wadingPoolVertices : undefined
+    );
   };
 
   const updateVertexCoordinate = (index: number, axis: 'x' | 'y', value: number) => {
-    const newVertices = [...vertices];
+    const currentVerts = getCurrentVertices();
+    const newVertices = [...currentVerts];
     newVertices[index] = { ...newVertices[index], [axis]: value };
-    setVertices(newVertices);
+    setCurrentVertices(newVertices);
   };
 
-  const area = calculateArea(vertices);
-  const perimeter = calculatePerimeter(vertices);
+  const currentVerts = getCurrentVertices();
+  const area = calculateArea(poolVertices);
+  const perimeter = calculatePerimeter(poolVertices);
+  const colors = MODE_COLORS[currentMode];
 
   return (
     <div className="space-y-4">
+      {/* Mode Tabs */}
+      <Tabs value={currentMode} onValueChange={(v) => handleModeChange(v as DrawingMode)}>
+        <TabsList className="grid w-full grid-cols-3">
+          <TabsTrigger value="pool" className="flex items-center gap-2">
+            <Waves className="w-4 h-4" />
+            <span>Basen</span>
+            {poolVertices.length >= 3 && <Check className="w-3 h-3 text-green-500" />}
+          </TabsTrigger>
+          <TabsTrigger value="stairs" className="flex items-center gap-2">
+            <Footprints className="w-4 h-4" />
+            <span>Schody</span>
+            {stairsVertices.length >= 3 && <Check className="w-3 h-3 text-green-500" />}
+          </TabsTrigger>
+          <TabsTrigger value="wadingPool" className="flex items-center gap-2">
+            <Baby className="w-4 h-4" />
+            <span>Brodzik</span>
+            {wadingPoolVertices.length >= 3 && <Check className="w-3 h-3 text-green-500" />}
+          </TabsTrigger>
+        </TabsList>
+      </Tabs>
+
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -397,21 +527,24 @@ export function CustomPoolDrawer({ onComplete, onCancel, initialVertices }: Cust
             <span>1 kratka = 1 metr</span>
           </div>
           {isDrawing ? (
-            <div className="flex items-center gap-2 text-sm text-primary">
+            <div className="flex items-center gap-2 text-sm" style={{ color: colors.stroke }}>
               <Plus className="w-4 h-4" />
-              <span>Kliknij, aby dodać punkty. Kliknij pierwszy punkt, aby zamknąć.</span>
+              <span>Kliknij, aby dodać punkty {MODE_LABELS[currentMode]}. Kliknij pierwszy punkt, aby zamknąć.</span>
             </div>
           ) : (
-            <div className="flex items-center gap-2 text-sm text-primary">
+            <div className="flex items-center gap-2 text-sm" style={{ color: colors.stroke }}>
               <MousePointer className="w-4 h-4" />
-              <span>Przeciągnij punkty, aby edytować kształt.</span>
+              <span>Przeciągnij punkty, aby edytować {MODE_LABELS[currentMode]}.</span>
             </div>
           )}
         </div>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" onClick={handleReset}>
             <RotateCcw className="w-4 h-4 mr-1" />
-            Reset
+            Reset {MODE_LABELS[currentMode]}
+          </Button>
+          <Button variant="ghost" size="sm" onClick={handleResetAll}>
+            Reset wszystko
           </Button>
           {selectedVertexIndex !== null && (
             <Button variant="destructive" size="sm" onClick={handleDeleteVertex}>
@@ -422,16 +555,34 @@ export function CustomPoolDrawer({ onComplete, onCancel, initialVertices }: Cust
         </div>
       </div>
 
+      {/* Legend */}
+      <div className="flex gap-4 text-xs">
+        <div className="flex items-center gap-1">
+          <div className="w-3 h-3 rounded" style={{ backgroundColor: MODE_COLORS.pool.stroke }} />
+          <span>Basen</span>
+        </div>
+        <div className="flex items-center gap-1">
+          <div className="w-3 h-3 rounded" style={{ backgroundColor: MODE_COLORS.stairs.stroke }} />
+          <span>Schody</span>
+        </div>
+        <div className="flex items-center gap-1">
+          <div className="w-3 h-3 rounded" style={{ backgroundColor: MODE_COLORS.wadingPool.stroke }} />
+          <span>Brodzik</span>
+        </div>
+      </div>
+
       <div className="border border-border rounded-lg overflow-hidden bg-white">
         <canvas ref={canvasRef} />
       </div>
 
       {/* Vertex coordinates editor */}
-      {vertices.length > 0 && !isDrawing && (
+      {currentVerts.length > 0 && !isDrawing && (
         <div className="p-4 rounded-lg bg-muted/30 border border-border">
-          <Label className="text-sm font-medium mb-2 block">Współrzędne wierzchołków (metry)</Label>
+          <Label className="text-sm font-medium mb-2 block">
+            Współrzędne wierzchołków {MODE_LABELS[currentMode]} (metry)
+          </Label>
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
-            {vertices.map((vertex, index) => (
+            {currentVerts.map((vertex, index) => (
               <div 
                 key={index} 
                 className={`p-2 rounded border ${selectedVertexIndex === index ? 'border-primary bg-primary/10' : 'border-border'}`}
@@ -464,16 +615,32 @@ export function CustomPoolDrawer({ onComplete, onCancel, initialVertices }: Cust
       {/* Calculations summary */}
       <div className="grid grid-cols-2 gap-4">
         <div className="p-4 rounded-lg bg-primary/10 border border-primary/20">
-          <p className="text-xs text-muted-foreground uppercase tracking-wide">Powierzchnia</p>
+          <p className="text-xs text-muted-foreground uppercase tracking-wide">Powierzchnia basenu</p>
           <p className="text-2xl font-bold text-primary">
             {area.toFixed(1)} <span className="text-sm font-normal">m²</span>
           </p>
         </div>
         <div className="p-4 rounded-lg bg-muted/50 border border-border">
-          <p className="text-xs text-muted-foreground uppercase tracking-wide">Obwód</p>
+          <p className="text-xs text-muted-foreground uppercase tracking-wide">Obwód basenu</p>
           <p className="text-2xl font-bold">
             {perimeter.toFixed(1)} <span className="text-sm font-normal">m</span>
           </p>
+        </div>
+      </div>
+
+      {/* Status indicators */}
+      <div className="flex gap-4 text-sm">
+        <div className={`flex items-center gap-2 ${poolVertices.length >= 3 ? 'text-green-600' : 'text-muted-foreground'}`}>
+          <Waves className="w-4 h-4" />
+          Basen: {poolVertices.length >= 3 ? '✓ Gotowy' : `${poolVertices.length}/3 punktów`}
+        </div>
+        <div className={`flex items-center gap-2 ${stairsVertices.length >= 3 ? 'text-green-600' : 'text-muted-foreground'}`}>
+          <Footprints className="w-4 h-4" />
+          Schody: {stairsVertices.length >= 3 ? '✓ Gotowe' : stairsVertices.length > 0 ? `${stairsVertices.length}/3 punktów` : 'Opcjonalne'}
+        </div>
+        <div className={`flex items-center gap-2 ${wadingPoolVertices.length >= 3 ? 'text-green-600' : 'text-muted-foreground'}`}>
+          <Baby className="w-4 h-4" />
+          Brodzik: {wadingPoolVertices.length >= 3 ? '✓ Gotowy' : wadingPoolVertices.length > 0 ? `${wadingPoolVertices.length}/3 punktów` : 'Opcjonalny'}
         </div>
       </div>
 
@@ -481,7 +648,7 @@ export function CustomPoolDrawer({ onComplete, onCancel, initialVertices }: Cust
         <Button variant="outline" onClick={onCancel}>
           Anuluj
         </Button>
-        <Button onClick={handleComplete} disabled={vertices.length < 3} className="btn-primary">
+        <Button onClick={handleComplete} disabled={poolVertices.length < 3} className="btn-primary">
           <Check className="w-4 h-4 mr-2" />
           Zatwierdź kształt
         </Button>
