@@ -1181,6 +1181,11 @@ function CustomWadingPoolMesh({ vertices, wadingDepth, poolDepth, poolVertices }
     new THREE.MeshStandardMaterial({ color: '#5b9bd5' }), []);
   const wallMaterial = useMemo(() => 
     new THREE.MeshStandardMaterial({ color: '#5b9bd5' }), []);
+  // White/gray rim material like pool edge
+  const rimMaterial = useMemo(() => 
+    new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.6 }), []);
+
+  const RIM_WIDTH = 0.15; // 15cm rim
 
   // Calculate pool center (same as getPoolShape uses for custom pools)
   const poolCenter = useMemo(() => {
@@ -1197,6 +1202,11 @@ function CustomWadingPoolMesh({ vertices, wadingDepth, poolDepth, poolVertices }
     vertices.map(v => ({ x: v.x - poolCenter.x, y: v.y - poolCenter.y })),
   [vertices, poolCenter]);
 
+  // Transform pool vertices for edge detection
+  const transformedPoolVertices = useMemo(() => 
+    poolVertices.map(v => ({ x: v.x - poolCenter.x, y: v.y - poolCenter.y })),
+  [poolVertices, poolCenter]);
+
   const shape2D = useMemo(() => transformedVertices.map(v => new THREE.Vector2(v.x, v.y)), [transformedVertices]);
   const shapeObj = useMemo(() => new THREE.Shape(shape2D), [shape2D]);
   const floorGeo = useMemo(() => new THREE.ShapeGeometry(shapeObj), [shapeObj]);
@@ -1210,14 +1220,40 @@ function CustomWadingPoolMesh({ vertices, wadingDepth, poolDepth, poolVertices }
   const bounds = useMemo(() => {
     const xs = transformedVertices.map(v => v.x);
     const ys = transformedVertices.map(v => v.y);
-    return { sizeX: Math.max(...xs) - Math.min(...xs), sizeY: Math.max(...ys) - Math.min(...ys) };
+    return { 
+      sizeX: Math.max(...xs) - Math.min(...xs), 
+      sizeY: Math.max(...ys) - Math.min(...ys),
+      minX: Math.min(...xs),
+      maxX: Math.max(...xs),
+      minY: Math.min(...ys),
+      maxY: Math.max(...ys),
+    };
   }, [transformedVertices]);
 
   // Wading pool floor is at wadingDepth from surface (shallow area)
-  // It should be an elevated platform inside the pool
   const floorZ = -wadingDepth;
   // The raised platform height (from pool floor to wading floor)
   const platformHeight = poolDepth - wadingDepth;
+
+  // Determine which edges are internal (not touching pool boundary)
+  // Check if edge is near pool boundary
+  const poolBounds = useMemo(() => {
+    const xs = transformedPoolVertices.map(v => v.x);
+    const ys = transformedPoolVertices.map(v => v.y);
+    return {
+      minX: Math.min(...xs),
+      maxX: Math.max(...xs),
+      minY: Math.min(...ys),
+      maxY: Math.max(...ys),
+    };
+  }, [transformedPoolVertices]);
+
+  // Check which edges are internal (threshold 0.3m from pool boundary)
+  const threshold = 0.3;
+  const isLeftInternal = bounds.minX > poolBounds.minX + threshold;
+  const isRightInternal = bounds.maxX < poolBounds.maxX - threshold;
+  const isBottomInternal = bounds.minY > poolBounds.minY + threshold;
+  const isTopInternal = bounds.maxY < poolBounds.maxY - threshold;
 
   // Calculate actual bounds for dimensions
   const xs = transformedVertices.map(v => v.x);
@@ -1233,11 +1269,63 @@ function CustomWadingPoolMesh({ vertices, wadingDepth, poolDepth, poolVertices }
       <mesh position={[centroid.x, centroid.y, -poolDepth + platformHeight / 2]} material={wallMaterial}>
         <boxGeometry args={[bounds.sizeX, bounds.sizeY, platformHeight]} />
       </mesh>
-      {/* Floor surface (top of wading pool) */}
+      {/* Floor surface (top of wading pool) - blue */}
       <mesh position={[0, 0, floorZ]} geometry={floorGeo} material={floorMaterial} />
+      
+      {/* Internal rim/walls - only on edges facing the main pool */}
+      {/* Left rim (X-) */}
+      {isLeftInternal && (
+        <group>
+          {/* Vertical wall */}
+          <mesh position={[minX + RIM_WIDTH / 2, centroid.y, floorZ - wadingDepth / 2]} material={wallMaterial}>
+            <boxGeometry args={[RIM_WIDTH, bounds.sizeY, wadingDepth]} />
+          </mesh>
+          {/* White top rim */}
+          <mesh position={[minX + RIM_WIDTH / 2, centroid.y, 0]} material={rimMaterial}>
+            <boxGeometry args={[RIM_WIDTH, bounds.sizeY + (isBottomInternal ? RIM_WIDTH : 0) + (isTopInternal ? RIM_WIDTH : 0), RIM_WIDTH]} />
+          </mesh>
+        </group>
+      )}
+      
+      {/* Right rim (X+) */}
+      {isRightInternal && (
+        <group>
+          <mesh position={[maxX - RIM_WIDTH / 2, centroid.y, floorZ - wadingDepth / 2]} material={wallMaterial}>
+            <boxGeometry args={[RIM_WIDTH, bounds.sizeY, wadingDepth]} />
+          </mesh>
+          <mesh position={[maxX - RIM_WIDTH / 2, centroid.y, 0]} material={rimMaterial}>
+            <boxGeometry args={[RIM_WIDTH, bounds.sizeY + (isBottomInternal ? RIM_WIDTH : 0) + (isTopInternal ? RIM_WIDTH : 0), RIM_WIDTH]} />
+          </mesh>
+        </group>
+      )}
+      
+      {/* Bottom rim (Y-) */}
+      {isBottomInternal && (
+        <group>
+          <mesh position={[centroid.x, minY + RIM_WIDTH / 2, floorZ - wadingDepth / 2]} material={wallMaterial}>
+            <boxGeometry args={[bounds.sizeX, RIM_WIDTH, wadingDepth]} />
+          </mesh>
+          <mesh position={[centroid.x, minY + RIM_WIDTH / 2, 0]} material={rimMaterial}>
+            <boxGeometry args={[bounds.sizeX + (isLeftInternal ? RIM_WIDTH : 0) + (isRightInternal ? RIM_WIDTH : 0), RIM_WIDTH, RIM_WIDTH]} />
+          </mesh>
+        </group>
+      )}
+      
+      {/* Top rim (Y+) */}
+      {isTopInternal && (
+        <group>
+          <mesh position={[centroid.x, maxY - RIM_WIDTH / 2, floorZ - wadingDepth / 2]} material={wallMaterial}>
+            <boxGeometry args={[bounds.sizeX, RIM_WIDTH, wadingDepth]} />
+          </mesh>
+          <mesh position={[centroid.x, maxY - RIM_WIDTH / 2, 0]} material={rimMaterial}>
+            <boxGeometry args={[bounds.sizeX + (isLeftInternal ? RIM_WIDTH : 0) + (isRightInternal ? RIM_WIDTH : 0), RIM_WIDTH, RIM_WIDTH]} />
+          </mesh>
+        </group>
+      )}
+      
       {/* Water in wading pool */}
       <mesh position={[centroid.x, centroid.y, floorZ + (wadingDepth * 0.4)]} material={waterMaterial}>
-        <boxGeometry args={[bounds.sizeX * 0.95, bounds.sizeY * 0.95, wadingDepth * 0.8]} />
+        <boxGeometry args={[bounds.sizeX * 0.9, bounds.sizeY * 0.9, wadingDepth * 0.8]} />
       </mesh>
       {/* Dimension lines for wading pool */}
       {/* Width dimension */}
