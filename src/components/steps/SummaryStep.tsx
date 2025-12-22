@@ -28,12 +28,15 @@ import {
   Percent,
   Edit2,
   Package,
-  Plus
+  Plus,
+  Link2,
+  ExternalLink
 } from 'lucide-react';
 import { getPriceInPLN, products } from '@/data/products';
 import { formatPrice } from '@/lib/calculations';
 import { OfferItem, ConfiguratorSection } from '@/types/configurator';
 import { ExcavationSettings, calculateExcavation, generateOfferNumber, saveOffer, SavedOffer } from '@/types/offers';
+import { saveOfferToDb } from '@/lib/offerDb';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useState, useEffect, useMemo } from 'react';
@@ -98,6 +101,7 @@ export function SummaryStep({ onBack, onReset, excavationSettings }: SummaryStep
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
   const [isSendingEmail, setIsSendingEmail] = useState(false);
   const [logoBase64, setLogoBase64] = useState<string | null>(null);
+  const [savedOfferLink, setSavedOfferLink] = useState<string | null>(null);
   
   // VAT rate state (23% default, can change to 8%)
   const [vatRate, setVatRate] = useState<number>(0.23);
@@ -325,8 +329,28 @@ export function SummaryStep({ onBack, onReset, excavationSettings }: SummaryStep
     return options;
   }, [sections.oswietlenie?.items, sections.automatyka?.items]);
 
-  const handleSaveOffer = () => {
+
+  const handleSaveOffer = async (): Promise<string> => {
     const offerNumber = generateOfferNumber();
+    
+    // Prepare sections with inne items included
+    const sectionsWithInne = {
+      ...Object.fromEntries(
+        Object.entries(sections).map(([key, section]) => [key, { items: section.items }])
+      ),
+      inne: { 
+        items: inneItems.map(item => ({
+          id: item.id,
+          name: item.name,
+          unit: item.unit,
+          quantity: item.quantity,
+          unitPrice: item.unitPrice,
+          discount: item.discount,
+          isCustom: item.isCustom || false,
+        }))
+      },
+    };
+    
     const offer: SavedOffer = {
       id: crypto.randomUUID(),
       offerNumber,
@@ -336,18 +360,37 @@ export function SummaryStep({ onBack, onReset, excavationSettings }: SummaryStep
       poolType,
       dimensions,
       calculations,
-      sections: Object.fromEntries(
-        Object.entries(sections).map(([key, section]) => [key, { items: section.items }])
-      ),
+      sections: sectionsWithInne as Record<string, { items: any[] }>,
       excavation,
       totalNet: grandTotalNet,
       totalGross: grandTotalGross,
     };
 
+    // Save to localStorage (backup)
     saveOffer(offer);
-    toast.success('Oferta została zapisana', {
-      description: `Numer: ${offer.offerNumber}`,
-    });
+    
+    // Save to database
+    const dbResult = await saveOfferToDb(offer);
+    
+    if (dbResult) {
+      const offerUrl = `${window.location.origin}/oferta/${dbResult.shareUid}`;
+      setSavedOfferLink(offerUrl);
+      toast.success('Oferta została zapisana', {
+        description: (
+          <div className="flex flex-col gap-2">
+            <span>Numer: {offer.offerNumber}</span>
+            <a href={offerUrl} target="_blank" rel="noopener noreferrer" className="text-primary underline">
+              Otwórz podgląd online
+            </a>
+          </div>
+        ),
+        duration: 10000,
+      });
+    } else {
+      toast.success('Oferta zapisana lokalnie', {
+        description: `Numer: ${offer.offerNumber}. Błąd zapisu do bazy.`,
+      });
+    }
     
     return offerNumber;
   };
@@ -362,7 +405,7 @@ export function SummaryStep({ onBack, onReset, excavationSettings }: SummaryStep
   };
 
   const handleGeneratePDF = async () => {
-    const offerNumber = handleSaveOffer();
+    const offerNumber = await handleSaveOffer();
     setIsGeneratingPDF(true);
 
     try {
@@ -477,7 +520,7 @@ export function SummaryStep({ onBack, onReset, excavationSettings }: SummaryStep
       return;
     }
 
-    const offerNumber = handleSaveOffer();
+    const offerNumber = await handleSaveOffer();
     setIsSendingEmail(true);
 
     try {
@@ -1049,6 +1092,36 @@ export function SummaryStep({ onBack, onReset, excavationSettings }: SummaryStep
           </div>
         </div>
       </div>
+
+      {/* Saved offer link */}
+      {savedOfferLink && (
+        <div className="glass-card p-4 mt-6 bg-green-500/10 border-green-500/30">
+          <div className="flex items-center gap-3">
+            <Link2 className="w-5 h-5 text-green-600" />
+            <div className="flex-1">
+              <p className="text-sm font-medium text-green-700">Oferta zapisana! Link do podglądu online:</p>
+              <a 
+                href={savedOfferLink} 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="text-sm text-primary underline flex items-center gap-1 mt-1"
+              >
+                {savedOfferLink} <ExternalLink className="w-3 h-3" />
+              </a>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                navigator.clipboard.writeText(savedOfferLink);
+                toast.success('Link skopiowany do schowka');
+              }}
+            >
+              Kopiuj link
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* Actions */}
       <div className="glass-card p-4 mt-6">
