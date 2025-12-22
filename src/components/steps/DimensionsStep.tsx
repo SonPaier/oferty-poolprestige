@@ -353,7 +353,7 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
                     <p className="text-xs text-muted-foreground">
                       {dimensions.wadingPool?.enabled 
                         ? `${dimensions.wadingPool.width}×${dimensions.wadingPool.length}m, głęb. ${dimensions.wadingPool.depth}m`
-                        : 'Płytka strefa dla dzieci'
+                        : 'Płytka strefa w narożniku basenu'
                       }
                     </p>
                   </div>
@@ -367,25 +367,8 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
               
               {dimensions.wadingPool?.enabled && (
                 <div className="grid grid-cols-2 gap-3 mt-3 pt-3 border-t border-border">
-                  <div className="space-y-2">
-                    <Label className="text-sm">Pozycja</Label>
-                    <Select
-                      value={dimensions.wadingPool.position}
-                      onValueChange={(value: StairsPosition) => updateWadingPool({ position: value })}
-                    >
-                      <SelectTrigger className="h-9">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {(Object.keys(stairsPositionLabels) as StairsPosition[]).map((pos) => (
-                          <SelectItem key={pos} value={pos}>{stairsPositionLabels[pos]}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <Label className="text-sm">Bok basenu</Label>
+                  <div className="space-y-2 col-span-2">
+                    <Label className="text-sm">Narożnik basenu</Label>
                     <Select
                       value={dimensions.wadingPool.side}
                       onValueChange={(value: StairsSide) => updateWadingPool({ side: value })}
@@ -394,9 +377,10 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        {(Object.keys(stairsSideLabels) as StairsSide[]).map((side) => (
-                          <SelectItem key={side} value={side}>{stairsSideLabels[side]}</SelectItem>
-                        ))}
+                        <SelectItem value="left">Lewy tylny</SelectItem>
+                        <SelectItem value="right">Prawy tylny</SelectItem>
+                        <SelectItem value="front">Prawy przedni</SelectItem>
+                        <SelectItem value="back">Lewy przedni</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>

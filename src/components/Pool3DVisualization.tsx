@@ -343,24 +343,20 @@ function PoolMesh({ dimensions, solid = false }: { dimensions: PoolDimensions; s
   );
 }
 
-// Stairs visualization
+// Stairs visualization - stairs descend to the pool floor
 function StairsMesh({ dimensions, stairs }: { dimensions: PoolDimensions; stairs: StairsConfig }) {
   if (!stairs.enabled) return null;
   
-  const { length, width, depth } = dimensions;
+  const { length, width, depth, depthDeep, hasSlope } = dimensions;
   const { position, side, width: stairsWidth, stepCount, stepHeight, stepDepth } = stairs;
+  
+  // Use shallow depth for stairs (they start from shallow end)
+  const poolDepth = depth;
   
   const actualStairsWidth = stairsWidth === 'full' 
     ? (side === 'front' || side === 'back' ? length : width)
-    : stairsWidth;
+    : (typeof stairsWidth === 'number' ? stairsWidth : 1);
   
-  const stairsMaterial = useMemo(() => 
-    new THREE.MeshStandardMaterial({
-      color: '#38bdf8',
-      transparent: true,
-      opacity: 0.7,
-    }), []);
-
   const concreteMaterial = useMemo(() => 
     new THREE.MeshStandardMaterial({
       color: '#e5e7eb',
@@ -372,13 +368,21 @@ function StairsMesh({ dimensions, stairs }: { dimensions: PoolDimensions; stairs
     const halfL = length / 2;
     const halfW = width / 2;
     
-    for (let i = 0; i < stepCount; i++) {
-      const stepY = -i * stepHeight;
-      const stepZ = i * stepDepth;
+    // Calculate actual step count to reach the bottom
+    const actualStepCount = Math.ceil(poolDepth / stepHeight);
+    
+    for (let i = 0; i < actualStepCount; i++) {
+      const stepTop = -i * stepHeight; // Top of this step
+      const stepZ = i * stepDepth; // How far into the pool
       
-      let posX = 0, posY = 0, posZ = stepY - stepHeight / 2;
-      let rotY = 0;
-      let sizeX = actualStairsWidth, sizeY = stepDepth, sizeZ = stepHeight;
+      let posX = 0, posY = 0;
+      let sizeX = actualStairsWidth, sizeY = stepDepth;
+      
+      // The step height goes from its top down to the pool floor
+      // Each step is taller than the previous one (fills to the bottom)
+      const stepBottom = -poolDepth;
+      const thisStepHeight = Math.abs(stepTop - stepBottom);
+      const posZ = (stepTop + stepBottom) / 2; // Center of the step vertically
       
       // Calculate position based on side
       if (side === 'left') {
@@ -401,18 +405,18 @@ function StairsMesh({ dimensions, stairs }: { dimensions: PoolDimensions; stairs
       
       stepsArr.push(
         <mesh key={i} position={[posX, posY, posZ]} material={concreteMaterial}>
-          <boxGeometry args={[sizeX, sizeY, sizeZ]} />
+          <boxGeometry args={[sizeX, sizeY, thisStepHeight]} />
         </mesh>
       );
     }
     
     return stepsArr;
-  }, [stepCount, stepHeight, stepDepth, actualStairsWidth, side, position, length, width, concreteMaterial]);
+  }, [stepHeight, stepDepth, actualStairsWidth, side, position, length, width, poolDepth, concreteMaterial]);
 
   return <group>{steps}</group>;
 }
 
-// Wading pool visualization
+// Wading pool visualization - always in corner, walls extend to pool floor
 function WadingPoolMesh({ dimensions, wadingPool }: { dimensions: PoolDimensions; wadingPool: WadingPoolConfig }) {
   if (!wadingPool.enabled) return null;
   
@@ -421,6 +425,11 @@ function WadingPoolMesh({ dimensions, wadingPool }: { dimensions: PoolDimensions
   
   const halfL = length / 2;
   const halfW = width / 2;
+  
+  // Pool depth for walls that extend to the bottom
+  const poolDepth = depth;
+  // Height of the internal walls (from wading pool floor to pool floor)
+  const internalWallHeight = poolDepth - wpDepth;
   
   const waterMaterial = useMemo(() => 
     new THREE.MeshStandardMaterial({
@@ -436,33 +445,54 @@ function WadingPoolMesh({ dimensions, wadingPool }: { dimensions: PoolDimensions
       opacity: 0.6,
     }), []);
 
-  const { posX, posY, sizeX, sizeY } = useMemo(() => {
-    let px = 0, py = 0, sx = wpWidth, sy = wpLength;
+  const concreteMaterial = useMemo(() => 
+    new THREE.MeshStandardMaterial({
+      color: '#d4d4d4',
+      roughness: 0.8,
+    }), []);
+
+  // Brodzik zawsze w narożniku - określamy narożnik na podstawie 'side'
+  // side określa który róg: 'left' = lewy-tylny, 'right' = prawy-tylny, 'front' = prawy-przedni, 'back' = lewy-przedni
+  const cornerConfig = useMemo(() => {
+    const sizeX = wpLength; // Rozmiar wzdłuż X
+    const sizeY = wpWidth;  // Rozmiar wzdłuż Y
     
-    if (side === 'left') {
-      px = position === 'inside' ? -halfL + wpLength / 2 : -halfL - wpLength / 2;
-      py = 0;
-      sx = wpLength;
-      sy = wpWidth;
-    } else if (side === 'right') {
-      px = position === 'inside' ? halfL - wpLength / 2 : halfL + wpLength / 2;
-      py = 0;
-      sx = wpLength;
-      sy = wpWidth;
-    } else if (side === 'front') {
-      px = 0;
-      py = position === 'inside' ? halfW - wpLength / 2 : halfW + wpLength / 2;
-    } else if (side === 'back') {
-      px = 0;
-      py = position === 'inside' ? -halfW + wpLength / 2 : -halfW - wpLength / 2;
-    }
+    // Pozycje narożników
+    const corners: Record<string, { posX: number; posY: number; wallXSide: number; wallYSide: number }> = {
+      'left': { 
+        posX: -halfL + sizeX / 2, 
+        posY: -halfW + sizeY / 2,
+        wallXSide: 1, // ściana od strony +X
+        wallYSide: 1, // ściana od strony +Y
+      },
+      'right': { 
+        posX: halfL - sizeX / 2, 
+        posY: -halfW + sizeY / 2,
+        wallXSide: -1, // ściana od strony -X
+        wallYSide: 1, // ściana od strony +Y
+      },
+      'front': { 
+        posX: halfL - sizeX / 2, 
+        posY: halfW - sizeY / 2,
+        wallXSide: -1, // ściana od strony -X
+        wallYSide: -1, // ściana od strony -Y
+      },
+      'back': { 
+        posX: -halfL + sizeX / 2, 
+        posY: halfW - sizeY / 2,
+        wallXSide: 1, // ściana od strony +X
+        wallYSide: -1, // ściana od strony -Y
+      },
+    };
     
-    return { posX: px, posY: py, sizeX: sx, sizeY: sy };
-  }, [side, position, halfL, halfW, wpWidth, wpLength]);
+    return { ...corners[side], sizeX, sizeY };
+  }, [side, halfL, halfW, wpLength, wpWidth]);
+
+  const { posX, posY, sizeX, sizeY, wallXSide, wallYSide } = cornerConfig;
 
   return (
     <group position={[posX, posY, 0]}>
-      {/* Floor of wading pool */}
+      {/* Floor of wading pool (płaskie dno brodzika) */}
       <mesh position={[0, 0, -wpDepth]}>
         <boxGeometry args={[sizeX, sizeY, WALL_THICKNESS]} />
         <meshStandardMaterial color="#0369a1" />
@@ -473,18 +503,35 @@ function WadingPoolMesh({ dimensions, wadingPool }: { dimensions: PoolDimensions
         <boxGeometry args={[sizeX - 0.02, sizeY - 0.02, wpDepth - 0.02]} />
       </mesh>
       
-      {/* Walls of wading pool */}
-      <mesh position={[sizeX / 2, 0, -wpDepth / 2]} material={wallMaterial}>
-        <boxGeometry args={[WALL_THICKNESS, sizeY, wpDepth]} />
+      {/* Internal wall along X axis - extends from wading pool floor to main pool floor */}
+      <mesh 
+        position={[0, wallYSide * sizeY / 2, -wpDepth - internalWallHeight / 2]} 
+        material={concreteMaterial}
+      >
+        <boxGeometry args={[sizeX + WALL_THICKNESS, WALL_THICKNESS, internalWallHeight]} />
       </mesh>
-      <mesh position={[-sizeX / 2, 0, -wpDepth / 2]} material={wallMaterial}>
-        <boxGeometry args={[WALL_THICKNESS, sizeY, wpDepth]} />
+      
+      {/* Internal wall along Y axis - extends from wading pool floor to main pool floor */}
+      <mesh 
+        position={[wallXSide * sizeX / 2, 0, -wpDepth - internalWallHeight / 2]} 
+        material={concreteMaterial}
+      >
+        <boxGeometry args={[WALL_THICKNESS, sizeY + WALL_THICKNESS, internalWallHeight]} />
       </mesh>
-      <mesh position={[0, sizeY / 2, -wpDepth / 2]} material={wallMaterial}>
-        <boxGeometry args={[sizeX, WALL_THICKNESS, wpDepth]} />
+      
+      {/* Top portion of internal walls (wading pool depth) */}
+      <mesh 
+        position={[0, wallYSide * sizeY / 2, -wpDepth / 2]} 
+        material={wallMaterial}
+      >
+        <boxGeometry args={[sizeX + WALL_THICKNESS, WALL_THICKNESS, wpDepth]} />
       </mesh>
-      <mesh position={[0, -sizeY / 2, -wpDepth / 2]} material={wallMaterial}>
-        <boxGeometry args={[sizeX, WALL_THICKNESS, wpDepth]} />
+      
+      <mesh 
+        position={[wallXSide * sizeX / 2, 0, -wpDepth / 2]} 
+        material={wallMaterial}
+      >
+        <boxGeometry args={[WALL_THICKNESS, sizeY + WALL_THICKNESS, wpDepth]} />
       </mesh>
     </group>
   );
