@@ -38,6 +38,8 @@ const initialDimensions: PoolDimensions = {
   length: 8,
   width: 4,
   depth: 1.5,
+  depthDeep: undefined,
+  hasSlope: false,
   isIrregular: false,
   overflowType: 'skimmerowy',
   attractions: 0,
