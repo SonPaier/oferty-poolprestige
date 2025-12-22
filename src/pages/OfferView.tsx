@@ -19,7 +19,8 @@ import {
   Loader2,
   MapPin,
   Pencil,
-  Copy
+  Copy,
+  ArrowLeft
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -631,6 +632,14 @@ export default function OfferView() {
             {/* Admin actions */}
             {isAuthenticated && offer && (
               <div className="flex items-center gap-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => navigate(-1)}
+                >
+                  <ArrowLeft className="w-4 h-4 mr-2" />
+                  Wróć
+                </Button>
                 <Button
                   variant="outline"
                   size="sm"
