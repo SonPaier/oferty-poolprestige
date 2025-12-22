@@ -270,7 +270,7 @@ export default function OfferView() {
   return (
     <div className="min-h-screen bg-background">
       {/* Fixed Header - same style as configurator */}
-      <header className="fixed top-0 left-0 right-0 z-50 bg-header border-b border-header/80 shadow-lg">
+      <header className="fixed top-0 left-0 right-0 z-[100] bg-header border-b border-header/80 shadow-lg">
         <div className="container mx-auto px-4 lg:px-6 py-3 lg:py-4">
           <div className="flex items-center justify-between gap-4">
             {/* Left: Offer info */}
