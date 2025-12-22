@@ -10,12 +10,14 @@ export interface CustomPoolVertex {
 }
 
 export type StairsPosition = 'inside' | 'outside';
-export type StairsSide = 'left' | 'right' | 'front' | 'back';
+export type PoolCorner = 'back-left' | 'back-right' | 'front-left' | 'front-right';
+export type WallDirection = 'along-length' | 'along-width'; // wzdłuż długości (X) lub szerokości (Y)
 
 export interface StairsConfig {
   enabled: boolean;
   position: StairsPosition; // wewnątrz/zewnątrz basenu
-  side: StairsSide; // na którym boku
+  corner: PoolCorner; // który narożnik
+  direction: WallDirection; // wzdłuż której ściany
   width: number | 'full'; // szerokość schodków lub 'full' = pełna szerokość boku
   stepHeight: number; // wysokość stopnia (domyślnie 0.29m)
   stepCount: number; // wyliczane z głębokości / stepHeight
@@ -24,9 +26,10 @@ export interface StairsConfig {
 
 export interface WadingPoolConfig {
   enabled: boolean;
-  side: StairsSide; // na którym boku
-  width: number; // szerokość brodzika
-  length: number; // długość brodzika (w głąb basenu lub na zewnątrz)
+  corner: PoolCorner; // który narożnik
+  direction: WallDirection; // wzdłuż której ściany
+  width: number; // szerokość brodzika (wzdłuż ściany)
+  length: number; // długość brodzika (w głąb basenu)
   depth: number; // głębokość brodzika (zazwyczaj 0.3-0.6m)
   position: StairsPosition; // wewnątrz/zewnątrz basenu
 }
@@ -34,16 +37,18 @@ export interface WadingPoolConfig {
 export const defaultStairsConfig: StairsConfig = {
   enabled: false,
   position: 'inside',
-  side: 'left',
-  width: 'full',
+  corner: 'back-left',
+  direction: 'along-width',
+  width: 1.5,
   stepHeight: 0.29,
-  stepCount: 4, // będzie przeliczone
+  stepCount: 4,
   stepDepth: 0.29,
 };
 
 export const defaultWadingPoolConfig: WadingPoolConfig = {
   enabled: false,
-  side: 'left',
+  corner: 'back-left',
+  direction: 'along-width',
   width: 2,
   length: 1.5,
   depth: 0.4,
@@ -55,11 +60,16 @@ export const stairsPositionLabels: Record<StairsPosition, string> = {
   outside: 'Na zewnątrz basenu',
 };
 
-export const stairsSideLabels: Record<StairsSide, string> = {
-  left: 'Lewy bok',
-  right: 'Prawy bok',
-  front: 'Przód',
-  back: 'Tył',
+export const poolCornerLabels: Record<PoolCorner, string> = {
+  'back-left': 'Tylny lewy',
+  'back-right': 'Tylny prawy',
+  'front-left': 'Przedni lewy',
+  'front-right': 'Przedni prawy',
+};
+
+export const wallDirectionLabels: Record<WallDirection, string> = {
+  'along-length': 'Wzdłuż długości',
+  'along-width': 'Wzdłuż szerokości',
 };
 
 // Nominal load values for DIN filtration formula

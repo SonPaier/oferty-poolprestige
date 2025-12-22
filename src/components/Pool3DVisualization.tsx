@@ -414,12 +414,12 @@ function PoolMesh({ dimensions, solid = false }: { dimensions: PoolDimensions; s
 }
 
 // Stairs visualization - stairs descend to the pool floor
-// For L-shaped pools, positions stairs in the inner corner
+// Uses corner + direction for 8 possible configurations
 function StairsMesh({ dimensions, stairs }: { dimensions: PoolDimensions; stairs: StairsConfig }) {
   if (!stairs.enabled) return null;
   
   const { shape, length, width, depth, lLength2 = 3, lWidth2 = 2 } = dimensions;
-  const { position, side, width: stairsWidth, stepHeight, stepDepth } = stairs;
+  const { position, corner, direction, width: stairsWidth, stepHeight, stepDepth } = stairs;
   
   const poolDepth = depth;
   const halfL = length / 2;
@@ -431,19 +431,31 @@ function StairsMesh({ dimensions, stairs }: { dimensions: PoolDimensions; stairs
       roughness: 0.8,
     }), []);
 
-  // For L-shape, calculate inner corner position
   const isLShape = shape === 'litera-l';
-  const innerCornerX = isLShape ? -halfL + lLength2 : 0;
-  const innerCornerY = isLShape ? -halfW : 0;
+  const actualStairsWidth = typeof stairsWidth === 'number' ? stairsWidth : 1.5;
 
-  const actualStairsWidth = stairsWidth === 'full' 
-    ? (isLShape ? Math.min(lLength2, lWidth2) : (side === 'front' || side === 'back' ? length : width))
-    : (typeof stairsWidth === 'number' ? stairsWidth : 1);
+  // Calculate corner base position
+  const getCornerPosition = () => {
+    if (isLShape) {
+      // For L-shape, use inner corner
+      const x3 = -halfL + lLength2;
+      const y2 = -halfW;
+      return { baseX: x3, baseY: y2 };
+    }
+    
+    switch (corner) {
+      case 'back-left': return { baseX: -halfL, baseY: -halfW };
+      case 'back-right': return { baseX: halfL, baseY: -halfW };
+      case 'front-left': return { baseX: -halfL, baseY: halfW };
+      case 'front-right': return { baseX: halfL, baseY: halfW };
+      default: return { baseX: -halfL, baseY: -halfW };
+    }
+  };
+
+  const { baseX, baseY } = getCornerPosition();
 
   const steps = useMemo(() => {
     const stepsArr: JSX.Element[] = [];
-    
-    // Calculate actual step count to reach the bottom
     const actualStepCount = Math.ceil(poolDepth / stepHeight);
     
     for (let i = 0; i < actualStepCount; i++) {
@@ -457,31 +469,33 @@ function StairsMesh({ dimensions, stairs }: { dimensions: PoolDimensions; stairs
       let posX = 0, posY = 0;
       let sizeX = actualStairsWidth, sizeY = stepDepth;
       
-      // For L-shaped pools, stairs go into the inner corner
-      if (isLShape) {
-        // Stairs extend from inner corner towards the main pool area (+Y direction)
-        posX = innerCornerX - actualStairsWidth / 2;
-        posY = innerCornerY + stepZ + stepDepth / 2;
+      // Direction determines which axis the stairs extend along
+      const isAlongLength = direction === 'along-length';
+      
+      // Calculate direction multipliers based on corner
+      const xDir = corner.includes('left') ? 1 : -1;
+      const yDir = corner.includes('back') ? 1 : -1;
+      
+      if (isAlongLength) {
+        // Stairs extend along X axis (length)
+        posX = baseX + xDir * (stepZ + stepDepth / 2);
+        posY = baseY + yDir * (actualStairsWidth / 2);
+        sizeX = stepDepth;
+        sizeY = actualStairsWidth;
+      } else {
+        // Stairs extend along Y axis (width)
+        posX = baseX + xDir * (actualStairsWidth / 2);
+        posY = baseY + yDir * (stepZ + stepDepth / 2);
         sizeX = actualStairsWidth;
         sizeY = stepDepth;
-      } else {
-        // Standard rectangular pool positioning
-        if (side === 'left') {
-          posX = position === 'inside' ? -halfL + stepZ + stepDepth / 2 : -halfL - stepZ - stepDepth / 2;
-          posY = 0;
-          sizeX = stepDepth;
-          sizeY = actualStairsWidth;
-        } else if (side === 'right') {
-          posX = position === 'inside' ? halfL - stepZ - stepDepth / 2 : halfL + stepZ + stepDepth / 2;
-          posY = 0;
-          sizeX = stepDepth;
-          sizeY = actualStairsWidth;
-        } else if (side === 'front') {
-          posX = 0;
-          posY = position === 'inside' ? halfW - stepZ - stepDepth / 2 : halfW + stepZ + stepDepth / 2;
-        } else if (side === 'back') {
-          posX = 0;
-          posY = position === 'inside' ? -halfW + stepZ + stepDepth / 2 : -halfW - stepZ - stepDepth / 2;
+      }
+      
+      // Adjust for inside/outside position
+      if (position === 'outside') {
+        if (isAlongLength) {
+          posX = baseX - xDir * (stepZ + stepDepth / 2);
+        } else {
+          posY = baseY - yDir * (stepZ + stepDepth / 2);
         }
       }
       
@@ -493,25 +507,23 @@ function StairsMesh({ dimensions, stairs }: { dimensions: PoolDimensions; stairs
     }
     
     return stepsArr;
-  }, [stepHeight, stepDepth, actualStairsWidth, side, position, halfL, halfW, poolDepth, isLShape, innerCornerX, innerCornerY, concreteMaterial]);
+  }, [stepHeight, stepDepth, actualStairsWidth, corner, direction, position, baseX, baseY, poolDepth, concreteMaterial]);
 
   return <group>{steps}</group>;
 }
 
 // Wading pool visualization - always in corner, walls extend to pool floor
-// For L-shaped pools, automatically positions in the inner corner
+// Uses corner + direction for 8 possible configurations
 function WadingPoolMesh({ dimensions, wadingPool }: { dimensions: PoolDimensions; wadingPool: WadingPoolConfig }) {
   if (!wadingPool.enabled) return null;
   
   const { shape, length, width, depth, lLength2 = 3, lWidth2 = 2 } = dimensions;
-  const { side, width: wpWidth, length: wpLength, depth: wpDepth } = wadingPool;
+  const { corner, direction, width: wpWidth, length: wpLength, depth: wpDepth } = wadingPool;
   
   const halfL = length / 2;
   const halfW = width / 2;
   
-  // Pool depth for walls that extend to the bottom
   const poolDepth = depth;
-  // Height of the internal walls (from wading pool floor to pool floor)
   const internalWallHeight = poolDepth - wpDepth;
   
   const waterMaterial = useMemo(() => 
@@ -534,61 +546,61 @@ function WadingPoolMesh({ dimensions, wadingPool }: { dimensions: PoolDimensions
       roughness: 0.8,
     }), []);
 
-  // Calculate corner position based on pool shape
   const cornerConfig = useMemo(() => {
-    const sizeX = wpLength;
-    const sizeY = wpWidth;
+    // Size depends on direction
+    const isAlongLength = direction === 'along-length';
+    const sizeX = isAlongLength ? wpWidth : wpLength;
+    const sizeY = isAlongLength ? wpLength : wpWidth;
     
-    // For L-shaped pools, always position in the inner corner (where the L meets)
-    if (shape === 'litera-l') {
-      // Inner corner of L is at the intersection point
-      // Based on L-shape definition: 
-      // Main rectangle: -halfL to halfL (X), -halfW to halfW (Y)
-      // Additional arm extends from x2 to x3, y2 to y3
-      const x3 = -halfL + lLength2; // Inner corner X
-      const y2 = -halfW;            // Inner corner Y
+    const isLShape = shape === 'litera-l';
+    
+    if (isLShape) {
+      const x3 = -halfL + lLength2;
+      const y2 = -halfW;
       
-      // Position wading pool at the inner corner
       return {
         posX: x3 - sizeX / 2,
         posY: y2 + sizeY / 2,
-        wallXSide: -1, // wall on -X side (towards the arm)
-        wallYSide: 1,  // wall on +Y side (towards main pool)
+        wallXSide: -1,
+        wallYSide: 1,
         sizeX,
         sizeY,
       };
     }
     
-    // For rectangular and other shapes, use the selected corner
-    const corners: Record<string, { posX: number; posY: number; wallXSide: number; wallYSide: number }> = {
-      'left': { 
-        posX: -halfL + sizeX / 2, 
-        posY: -halfW + sizeY / 2,
-        wallXSide: 1,
-        wallYSide: 1,
-      },
-      'right': { 
-        posX: halfL - sizeX / 2, 
-        posY: -halfW + sizeY / 2,
-        wallXSide: -1,
-        wallYSide: 1,
-      },
-      'front': { 
-        posX: halfL - sizeX / 2, 
-        posY: halfW - sizeY / 2,
-        wallXSide: -1,
-        wallYSide: -1,
-      },
-      'back': { 
-        posX: -halfL + sizeX / 2, 
-        posY: halfW - sizeY / 2,
-        wallXSide: 1,
-        wallYSide: -1,
-      },
-    };
+    // Calculate position based on corner
+    let posX = 0, posY = 0;
+    let wallXSide = 1, wallYSide = 1;
     
-    return { ...corners[side], sizeX, sizeY };
-  }, [shape, side, halfL, halfW, wpLength, wpWidth, lLength2, lWidth2]);
+    switch (corner) {
+      case 'back-left':
+        posX = -halfL + sizeX / 2;
+        posY = -halfW + sizeY / 2;
+        wallXSide = 1;
+        wallYSide = 1;
+        break;
+      case 'back-right':
+        posX = halfL - sizeX / 2;
+        posY = -halfW + sizeY / 2;
+        wallXSide = -1;
+        wallYSide = 1;
+        break;
+      case 'front-left':
+        posX = -halfL + sizeX / 2;
+        posY = halfW - sizeY / 2;
+        wallXSide = 1;
+        wallYSide = -1;
+        break;
+      case 'front-right':
+        posX = halfL - sizeX / 2;
+        posY = halfW - sizeY / 2;
+        wallXSide = -1;
+        wallYSide = -1;
+        break;
+    }
+    
+    return { posX, posY, wallXSide, wallYSide, sizeX, sizeY };
+  }, [shape, corner, direction, halfL, halfW, wpLength, wpWidth, lLength2]);
 
   const { posX, posY, sizeX, sizeY, wallXSide, wallYSide } = cornerConfig;
 
