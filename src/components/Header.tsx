@@ -2,7 +2,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { useState, useEffect } from 'react';
 import logo from '@/assets/logo.png';
-import { Settings, FileText, History, LogOut, Bell, Clock, AlertTriangle } from 'lucide-react';
+import { Settings, FileText, History, LogOut, Bell, Clock, AlertTriangle, Home } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Popover,
@@ -21,9 +21,10 @@ interface HeaderProps {
   onSettingsClick?: () => void;
   onNewOffer?: () => void;
   editMode?: EditModeInfo;
+  showNavLinks?: boolean;
 }
 
-export function Header({ onSettingsClick, onNewOffer, editMode }: HeaderProps) {
+export function Header({ onSettingsClick, onNewOffer, editMode, showNavLinks = true }: HeaderProps) {
   const navigate = useNavigate();
   const { logout } = useAuth();
   const { companySettings } = useSettings();
@@ -80,7 +81,8 @@ export function Header({ onSettingsClick, onNewOffer, editMode }: HeaderProps) {
             <img 
               src={logo} 
               alt="Pool Prestige" 
-              className="h-8 lg:h-10 w-auto object-contain"
+              className="h-8 lg:h-10 w-auto object-contain cursor-pointer"
+              onClick={() => navigate('/')}
             />
             <div className="hidden sm:block">
               <h1 className="text-base lg:text-lg font-semibold text-header-foreground">Konfigurator Basenów</h1>
@@ -98,6 +100,47 @@ export function Header({ onSettingsClick, onNewOffer, editMode }: HeaderProps) {
           </div>
           
           <nav className="flex items-center gap-1 lg:gap-2">
+            {/* Navigation Links */}
+            {showNavLinks && (
+              <>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => navigate('/')}
+                  className="text-header-foreground/80 hover:text-header-foreground hover:bg-header-foreground/10"
+                >
+                  <Home className="w-4 h-4 lg:mr-2" />
+                  <span className="hidden lg:inline">Dashboard</span>
+                </Button>
+                
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => navigate('/historia')}
+                  className="text-header-foreground/80 hover:text-header-foreground hover:bg-header-foreground/10"
+                >
+                  <History className="w-4 h-4 lg:mr-2" />
+                  <span className="hidden lg:inline">Historia</span>
+                </Button>
+                
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    if (onNewOffer) {
+                      onNewOffer();
+                    } else {
+                      navigate('/nowa-oferta');
+                    }
+                  }}
+                  className="text-header-foreground/80 hover:text-header-foreground hover:bg-header-foreground/10"
+                >
+                  <FileText className="w-4 h-4 lg:mr-2" />
+                  <span className="hidden lg:inline">Nowa oferta</span>
+                </Button>
+              </>
+            )}
+            
             {/* Notification Bell */}
             <Popover>
               <PopoverTrigger asChild>
@@ -180,41 +223,17 @@ export function Header({ onSettingsClick, onNewOffer, editMode }: HeaderProps) {
               )}
             </Button>
             
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => navigate('/historia')}
-              className="text-header-foreground/80 hover:text-header-foreground hover:bg-header-foreground/10"
-            >
-              <History className="w-4 h-4 lg:mr-2" />
-              <span className="hidden lg:inline">Historia</span>
-            </Button>
-            
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => {
-                if (onNewOffer) {
-                  onNewOffer();
-                } else {
-                  navigate('/nowa-oferta');
-                }
-              }}
-              className="text-header-foreground/80 hover:text-header-foreground hover:bg-header-foreground/10"
-            >
-              <FileText className="w-4 h-4 lg:mr-2" />
-              <span className="hidden lg:inline">Nowa oferta</span>
-            </Button>
-            
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={onSettingsClick}
-              className="text-header-foreground/80 hover:text-header-foreground hover:bg-header-foreground/10"
-            >
-              <Settings className="w-4 h-4 lg:mr-2" />
-              <span className="hidden lg:inline">Ustawienia</span>
-            </Button>
+            {onSettingsClick && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={onSettingsClick}
+                className="text-header-foreground/80 hover:text-header-foreground hover:bg-header-foreground/10"
+              >
+                <Settings className="w-4 h-4 lg:mr-2" />
+                <span className="hidden lg:inline">Ustawienia</span>
+              </Button>
+            )}
             
             <Button
               variant="ghost"

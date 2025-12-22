@@ -4,6 +4,7 @@ import { ConfiguratorProvider, useConfigurator } from '@/context/ConfiguratorCon
 import { useSettings } from '@/context/SettingsContext';
 import { Header } from '@/components/Header';
 import { StepNavigation } from '@/components/StepNavigation';
+import { BottomNavigationBar } from '@/components/BottomNavigationBar';
 import { CustomerStep } from '@/components/steps/CustomerStep';
 import { DimensionsStep } from '@/components/steps/DimensionsStep';
 import { FoilStep } from '@/components/steps/FoilStep';
@@ -16,10 +17,12 @@ import { AdditionsStep } from '@/components/steps/AdditionsStep';
 import { SummaryStep } from '@/components/steps/SummaryStep';
 import { SettingsDialog } from '@/components/SettingsDialog';
 import { UnsavedChangesDialog } from '@/components/UnsavedChangesDialog';
+import { useOfferSave } from '@/hooks/useOfferSave';
 import { Toaster, toast } from 'sonner';
 import { getOfferByIdFromDb } from '@/lib/offerDb';
 
 const DRAFT_STORAGE_KEY = 'pool_prestige_draft';
+const TOTAL_STEPS = 10;
 
 interface DraftData {
   draftId: string;
@@ -69,6 +72,7 @@ function ConfiguratorContent() {
   const navigate = useNavigate();
   const { state, dispatch } = useConfigurator();
   const { companySettings, excavationSettings, setCompanySettings, setExcavationSettings, isLoading } = useSettings();
+  const { saveCurrentOffer, isSaving } = useOfferSave();
   const { step } = state;
   
   const [showSettings, setShowSettings] = useState(false);
@@ -76,7 +80,6 @@ function ConfiguratorContent() {
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [showUnsavedDialog, setShowUnsavedDialog] = useState(false);
   const [pendingNavigation, setPendingNavigation] = useState<string | null>(null);
-  const [isSaving, setIsSaving] = useState(false);
 
   // Track changes
   const markAsChanged = useCallback(() => {
@@ -197,17 +200,28 @@ function ConfiguratorContent() {
     }
   };
 
-  const handleSaveAndLeave = () => {
-    setIsSaving(true);
-    // Go to summary step to save
-    goToStep(10);
-    setShowUnsavedDialog(false);
-    if (blocker.state === 'blocked') {
-      blocker.reset();
+  const handleSaveFromDialog = async () => {
+    const result = await saveCurrentOffer('draft');
+    if (result.success) {
+      setHasUnsavedChanges(false);
+      clearDraft();
+      setShowUnsavedDialog(false);
+      
+      if (blocker.state === 'blocked') {
+        blocker.proceed();
+      } else if (pendingNavigation && pendingNavigation !== '/nowa-oferta') {
+        navigate(pendingNavigation);
+      }
     }
     setPendingNavigation(null);
-    setIsSaving(false);
-    toast.info('Przejdź do kroku "Podsumowanie" aby zapisać ofertę');
+  };
+
+  const handleQuickSave = async () => {
+    const result = await saveCurrentOffer('draft');
+    if (result.success) {
+      setHasUnsavedChanges(false);
+      clearDraft();
+    }
   };
 
   const onOfferSaved = () => {
@@ -261,7 +275,7 @@ function ConfiguratorContent() {
   }
 
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen pb-20">
       <Header 
         onNewOffer={handleNewOffer}
         onSettingsClick={() => setShowSettings(true)}
@@ -277,6 +291,18 @@ function ConfiguratorContent() {
         {renderStep()}
       </main>
 
+      {/* Fixed bottom navigation bar */}
+      <BottomNavigationBar
+        currentStep={step}
+        totalSteps={TOTAL_STEPS}
+        onNext={nextStep}
+        onBack={prevStep}
+        onSave={handleQuickSave}
+        isSaving={isSaving}
+        hasChanges={hasUnsavedChanges}
+        isEditMode={state.editMode.isEditing}
+      />
+
       <SettingsDialog
         open={showSettings}
         onClose={() => setShowSettings(false)}
@@ -289,7 +315,7 @@ function ConfiguratorContent() {
       <UnsavedChangesDialog
         open={showUnsavedDialog}
         onDiscard={handleDiscard}
-        onSave={handleSaveAndLeave}
+        onSave={handleSaveFromDialog}
         onContinue={handleContinueEditing}
       />
     </div>
