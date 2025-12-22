@@ -27,10 +27,11 @@ import {
   Search, 
   ArrowLeft,
   FileText,
-  Edit,
   Trash2,
   Loader2,
-  CheckCircle
+  CheckCircle,
+  Pencil,
+  RefreshCw
 } from 'lucide-react';
 import { getQueueOffers, updateOfferStatus, deleteOfferFromDb } from '@/lib/offerDb';
 import { SavedOffer, OfferStatus } from '@/types/offers';
@@ -224,7 +225,7 @@ export default function OfferQueue() {
                   <TableHead>Nr oferty</TableHead>
                   <TableHead>Klient</TableHead>
                   <TableHead>Data zapytania</TableHead>
-                  <TableHead>Termin (Due date)</TableHead>
+                  <TableHead>Termin</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Wartość</TableHead>
                   <TableHead className="text-right">Akcje</TableHead>
@@ -282,6 +283,15 @@ export default function OfferQueue() {
                           <Button
                             variant="ghost"
                             size="icon"
+                            onClick={() => navigate(`/?edit=${offer.id}`)}
+                            title="Edytuj ofertę"
+                            className="text-primary hover:text-primary"
+                          >
+                            <Pencil className="w-4 h-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
                             onClick={() => navigate(`/oferta/${offer.shareUid}`)}
                             title="Podgląd"
                           >
@@ -293,7 +303,7 @@ export default function OfferQueue() {
                             onClick={() => handleStatusChange(offer.id, offer.status === 'draft' ? 'queue' : 'draft')}
                             title={offer.status === 'draft' ? 'Przenieś do kolejki' : 'Zapisz jako draft'}
                           >
-                            <Edit className="w-4 h-4" />
+                            <RefreshCw className="w-4 h-4" />
                           </Button>
                           <Button
                             variant="ghost"

@@ -8,6 +8,14 @@ import {
   OfferItem
 } from '@/types/configurator';
 import { Product } from '@/data/products';
+import { SavedOffer } from '@/types/offers';
+
+export interface EditModeInfo {
+  isEditing: boolean;
+  offerId: string | null;
+  offerNumber: string | null;
+  shareUid: string | null;
+}
 
 type ConfiguratorAction =
   | { type: 'SET_STEP'; payload: number }
@@ -21,6 +29,8 @@ type ConfiguratorAction =
   | { type: 'SET_CALCULATIONS'; payload: ConfiguratorState['calculations'] }
   | { type: 'SET_FOIL_CALCULATION'; payload: ConfiguratorState['foilCalculation'] }
   | { type: 'SET_SECTION'; payload: { section: keyof ConfiguratorState['sections']; data: ConfiguratorSection } }
+  | { type: 'LOAD_OFFER'; payload: { offer: SavedOffer & { shareUid: string } } }
+  | { type: 'CLEAR_EDIT_MODE' }
   | { type: 'RESET' };
 
 const initialDimensions: PoolDimensions = {
@@ -51,7 +61,18 @@ const createEmptySection = (id: string, name: string): ConfiguratorSection => ({
   items: [],
 });
 
-const initialState: ConfiguratorState = {
+const initialEditMode: EditModeInfo = {
+  isEditing: false,
+  offerId: null,
+  offerNumber: null,
+  shareUid: null,
+};
+
+interface ExtendedConfiguratorState extends ConfiguratorState {
+  editMode: EditModeInfo;
+}
+
+const initialState: ExtendedConfiguratorState = {
   step: 1,
   poolType: 'prywatny',
   dimensions: initialDimensions,
@@ -68,9 +89,10 @@ const initialState: ConfiguratorState = {
     atrakcje: createEmptySection('atrakcje', 'Atrakcje'),
     dodatki: createEmptySection('dodatki', 'Dodatki'),
   },
+  editMode: initialEditMode,
 };
 
-function configuratorReducer(state: ConfiguratorState, action: ConfiguratorAction): ConfiguratorState {
+function configuratorReducer(state: ExtendedConfiguratorState, action: ConfiguratorAction): ExtendedConfiguratorState {
   switch (action.type) {
     case 'SET_STEP':
       return { ...state, step: action.payload };
@@ -144,6 +166,47 @@ function configuratorReducer(state: ConfiguratorState, action: ConfiguratorActio
         },
       };
     
+    case 'LOAD_OFFER': {
+      const { offer } = action.payload;
+      // Filter out 'inne' and 'opcje' sections as they are computed
+      const filteredSections: Record<string, ConfiguratorSection> = {};
+      const validSectionKeys = ['wykonczenie', 'uzbrojenie', 'filtracja', 'oswietlenie', 'automatyka', 'atrakcje', 'dodatki'];
+      
+      for (const key of validSectionKeys) {
+        if (offer.sections[key]) {
+          filteredSections[key] = {
+            id: key,
+            name: initialState.sections[key as keyof typeof initialState.sections]?.name || key,
+            items: offer.sections[key].items || [],
+          };
+        } else {
+          filteredSections[key] = createEmptySection(key, initialState.sections[key as keyof typeof initialState.sections]?.name || key);
+        }
+      }
+      
+      return {
+        ...state,
+        step: 1,
+        poolType: offer.poolType,
+        dimensions: offer.dimensions,
+        calculations: offer.calculations,
+        customerData: offer.customerData,
+        sections: filteredSections as ExtendedConfiguratorState['sections'],
+        editMode: {
+          isEditing: true,
+          offerId: offer.id,
+          offerNumber: offer.offerNumber,
+          shareUid: offer.shareUid,
+        },
+      };
+    }
+    
+    case 'CLEAR_EDIT_MODE':
+      return {
+        ...state,
+        editMode: initialEditMode,
+      };
+    
     case 'RESET':
       return initialState;
     
@@ -153,7 +216,7 @@ function configuratorReducer(state: ConfiguratorState, action: ConfiguratorActio
 }
 
 interface ConfiguratorContextType {
-  state: ConfiguratorState;
+  state: ExtendedConfiguratorState;
   dispatch: React.Dispatch<ConfiguratorAction>;
 }
 
