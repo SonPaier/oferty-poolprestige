@@ -176,11 +176,12 @@ function PoolMesh({ dimensions, solid = false }: { dimensions: PoolDimensions; s
         halfL, -halfW, -actualDeepDepth,
       ];
       
+      // Reversed winding order so normals face INTO the pool (for blue inner surface)
       const wallIndices = [
-        0, 3, 2, 0, 2, 1,
-        4, 5, 6, 4, 6, 7,
-        8, 11, 10, 8, 10, 9,
-        12, 13, 14, 12, 14, 15,
+        0, 1, 2, 0, 2, 3,
+        4, 7, 6, 4, 6, 5,
+        8, 9, 10, 8, 10, 11,
+        12, 15, 14, 12, 14, 13,
       ];
       
       wallGeo.setAttribute('position', new THREE.Float32BufferAttribute(wallVerts, 3));
@@ -220,11 +221,12 @@ function PoolMesh({ dimensions, solid = false }: { dimensions: PoolDimensions; s
       ];
       
       shellGeo.setAttribute('position', new THREE.Float32BufferAttribute(shellVerts, 3));
+      // Reversed winding order so normals face OUTWARD (for white exterior)
       shellGeo.setIndex([
-        0, 3, 2, 0, 2, 1,
-        4, 5, 6, 4, 6, 7,
-        8, 11, 10, 8, 10, 9,
-        12, 13, 14, 12, 14, 15,
+        0, 1, 2, 0, 2, 3,
+        4, 7, 6, 4, 6, 5,
+        8, 9, 10, 8, 10, 11,
+        12, 15, 14, 12, 14, 13,
       ]);
       shellGeo.computeVertexNormals();
       
@@ -308,9 +310,10 @@ function PoolMesh({ dimensions, solid = false }: { dimensions: PoolDimensions; s
           curr.x, curr.y, -depth
         );
         
+        // Reversed winding order so normals face INTO the pool
         wallIndices.push(
-          baseIdx, baseIdx + 3, baseIdx + 2,
-          baseIdx, baseIdx + 2, baseIdx + 1
+          baseIdx, baseIdx + 1, baseIdx + 2,
+          baseIdx, baseIdx + 2, baseIdx + 3
         );
       }
       
@@ -368,9 +371,10 @@ function PoolMesh({ dimensions, solid = false }: { dimensions: PoolDimensions; s
           curr.x, curr.y, -outerDepth
         );
         
+        // Reversed winding order so normals face OUTWARD
         shellIndices.push(
-          baseIdx, baseIdx + 3, baseIdx + 2,
-          baseIdx, baseIdx + 2, baseIdx + 1
+          baseIdx, baseIdx + 1, baseIdx + 2,
+          baseIdx, baseIdx + 2, baseIdx + 3
         );
       }
       
@@ -445,7 +449,7 @@ function PoolMesh({ dimensions, solid = false }: { dimensions: PoolDimensions; s
 
   return (
     <group>
-      {/* Outer concrete shell */}
+      {/* Outer concrete shell - WHITE */}
       {shellGeometry && (
         <mesh geometry={shellGeometry} material={concreteMaterial} />
       )}
@@ -455,7 +459,7 @@ function PoolMesh({ dimensions, solid = false }: { dimensions: PoolDimensions; s
         <mesh geometry={rimGeometry} material={concreteMaterial} />
       )}
       
-      {/* Inner walls (blue) */}
+      {/* Inner walls - BLUE */}
       <mesh geometry={wallGeometry} material={wallMaterial} />
       
       {/* Bottom (blue) */}
