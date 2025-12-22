@@ -96,11 +96,16 @@ export interface PoolDimensions {
   customVertices?: CustomPoolVertex[];
   customArea?: number; // Pre-calculated area for custom shape
   customPerimeter?: number; // Pre-calculated perimeter for custom shape
-  // Custom stairs vertices (for custom pool shape)
-  customStairsVertices?: CustomPoolVertex[];
-  customStairsRotation?: number; // Rotation in degrees (0, 90, 180, 270) for stair direction
-  // Custom wading pool vertices (for custom pool shape)
-  customWadingPoolVertices?: CustomPoolVertex[];
+  // Custom stairs - array to support multiple stairs
+  customStairsVertices?: CustomPoolVertex[][]; // Array of stair polygons
+  customStairsRotations?: number[]; // Rotation in degrees (0, 90, 180, 270) for each stair
+  // Legacy single stair support (deprecated but kept for backwards compatibility)
+  customStairsVerticesSingle?: CustomPoolVertex[]; // @deprecated - use customStairsVertices
+  customStairsRotation?: number; // @deprecated - use customStairsRotations
+  // Custom wading pools - array to support multiple wading pools
+  customWadingPoolVertices?: CustomPoolVertex[][]; // Array of wading pool polygons
+  // Legacy single wading pool support (deprecated but kept for backwards compatibility)
+  customWadingPoolVerticesSingle?: CustomPoolVertex[]; // @deprecated - use customWadingPoolVertices
   // Stairs configuration
   stairs: StairsConfig;
   // Wading pool configuration

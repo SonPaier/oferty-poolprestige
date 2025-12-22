@@ -184,6 +184,11 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
     wadingPoolVertices?: CustomPoolVertex[],
     stairsRotation?: number
   ) => {
+    // Convert single vertices to arrays for the new format
+    const stairsArray = stairsVertices && stairsVertices.length >= 3 ? [stairsVertices] : dimensions.customStairsVertices || [];
+    const rotationsArray = stairsRotation !== undefined ? [stairsRotation] : dimensions.customStairsRotations || [];
+    const wadingArray = wadingPoolVertices && wadingPoolVertices.length >= 3 ? [wadingPoolVertices] : dimensions.customWadingPoolVertices || [];
+
     dispatch({
       type: 'SET_DIMENSIONS',
       payload: {
@@ -192,15 +197,15 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
         customVertices: poolVertices,
         customArea: area,
         customPerimeter: perimeter,
-        customStairsVertices: stairsVertices,
-        customWadingPoolVertices: wadingPoolVertices,
-        customStairsRotation: stairsRotation,
+        customStairsVertices: stairsArray,
+        customStairsRotations: rotationsArray,
+        customWadingPoolVertices: wadingArray,
         isIrregular: true,
         // If custom stairs/wading pool drawn, enable them
-        stairs: stairsVertices && stairsVertices.length >= 3 
+        stairs: stairsArray.length > 0
           ? { ...dimensions.stairs, enabled: true }
           : dimensions.stairs,
-        wadingPool: wadingPoolVertices && wadingPoolVertices.length >= 3
+        wadingPool: wadingArray.length > 0
           ? { ...dimensions.wadingPool, enabled: true }
           : dimensions.wadingPool,
       },
@@ -223,9 +228,9 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
             onComplete={handleCustomShapeComplete}
             onCancel={() => setShowCustomDrawer(false)}
             initialPoolVertices={dimensions.customVertices}
-            initialStairsVertices={dimensions.customStairsVertices}
-            initialWadingPoolVertices={dimensions.customWadingPoolVertices}
-            initialStairsRotation={dimensions.customStairsRotation}
+            initialStairsVertices={dimensions.customStairsVertices?.[0]}
+            initialWadingPoolVertices={dimensions.customWadingPoolVertices?.[0]}
+            initialStairsRotation={dimensions.customStairsRotations?.[0]}
           />
         </DialogContent>
       </Dialog>
