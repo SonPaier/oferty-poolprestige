@@ -1029,9 +1029,20 @@ function CustomStairsMesh({ vertices, depth, poolVertices, rotation = 0 }: {
   const stepCount = Math.ceil(depth / stepHeight);
   
   const stepTopMaterial = useMemo(() => 
-    new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.6 }), []);
+    new THREE.MeshStandardMaterial({ 
+      color: '#ffffff', 
+      roughness: 0.6,
+      polygonOffset: true,
+      polygonOffsetFactor: -1,
+      polygonOffsetUnits: -1,
+    }), []);
   const stepFrontMaterial = useMemo(() => 
-    new THREE.MeshStandardMaterial({ color: '#5b9bd5' }), []);
+    new THREE.MeshStandardMaterial({ 
+      color: '#5b9bd5',
+      polygonOffset: true,
+      polygonOffsetFactor: 1,
+      polygonOffsetUnits: 1,
+    }), []);
 
   // Calculate pool center (same as getPoolShape uses for custom pools)
   const poolCenter = useMemo(() => {
