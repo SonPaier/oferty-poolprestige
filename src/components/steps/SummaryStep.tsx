@@ -53,6 +53,7 @@ interface SummaryStepProps {
   onReset: () => void;
   excavationSettings: ExcavationSettings;
   companySettings: CompanySettings;
+  onOfferSaved?: () => void;
 }
 
 // Base prices for "INNE" items (for 77.6 m³ reference volume)
@@ -96,13 +97,14 @@ const sectionLabels: Record<string, string> = {
   dodatki: 'Dodatki',
 };
 
-export function SummaryStep({ onBack, onReset, excavationSettings, companySettings }: SummaryStepProps) {
+export function SummaryStep({ onBack, onReset, excavationSettings, companySettings, onOfferSaved }: SummaryStepProps) {
   const { state, dispatch } = useConfigurator();
   const { customerData, dimensions, calculations, sections, poolType, foilCalculation } = state;
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
   const [isSendingEmail, setIsSendingEmail] = useState(false);
   const [logoBase64, setLogoBase64] = useState<string | null>(null);
   const [savedOfferLink, setSavedOfferLink] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
   
   // VAT rate state (23% default, can change to 8%)
   const [vatRate, setVatRate] = useState<number>(0.23);
@@ -334,77 +336,90 @@ export function SummaryStep({ onBack, onReset, excavationSettings, companySettin
   }, [sections.oswietlenie?.items, sections.automatyka?.items]);
 
 
-  const handleSaveOffer = async (): Promise<string> => {
-    const offerNumber = generateOfferNumber();
-    
-    // Prepare sections with inne items and opcje (optional alternatives) included
-    const sectionsWithInneAndOpcje = {
-      ...Object.fromEntries(
-        Object.entries(sections).map(([key, section]) => [key, { items: section.items }])
-      ),
-      inne: { 
-        items: inneItems.map(item => ({
-          id: item.id,
-          name: item.name,
-          unit: item.unit,
-          quantity: item.quantity,
-          unitPrice: item.unitPrice,
-          discount: item.discount,
-          isCustom: item.isCustom || false,
-        }))
-      },
-      opcje: {
-        items: generateOptions.map(opt => ({
-          name: opt.name,
-          quantity: opt.quantity,
-          priceDifference: opt.priceDifference,
-        }))
-      },
-    };
-    
-    const offer: SavedOffer = {
-      id: crypto.randomUUID(),
-      offerNumber,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      customerData,
-      poolType,
-      dimensions,
-      calculations,
-      sections: sectionsWithInneAndOpcje as Record<string, { items: any[] }>,
-      excavation,
-      totalNet: grandTotalNet,
-      totalGross: grandTotalGross,
-      status: 'sent',
-    };
-
-    // Save to localStorage (backup)
-    saveOffer(offer);
-    
-    // Save to database
-    const dbResult = await saveOfferToDb(offer);
-    
-    if (dbResult) {
-      const offerUrl = `${window.location.origin}/oferta/${dbResult.shareUid}`;
-      setSavedOfferLink(offerUrl);
-      toast.success('Oferta została zapisana', {
-        description: (
-          <div className="flex flex-col gap-2">
-            <span>Numer: {offer.offerNumber}</span>
-            <a href={offerUrl} target="_blank" rel="noopener noreferrer" className="text-primary underline">
-              Otwórz podgląd online
-            </a>
-          </div>
-        ),
-        duration: 10000,
-      });
-    } else {
-      toast.success('Oferta zapisana lokalnie', {
-        description: `Numer: ${offer.offerNumber}. Błąd zapisu do bazy.`,
-      });
+  const handleSaveOffer = async (): Promise<string | null> => {
+    // Prevent duplicate saves
+    if (isSaving) {
+      return null;
     }
+    setIsSaving(true);
     
-    return offerNumber;
+    try {
+      const offerNumber = generateOfferNumber();
+      
+      // Prepare sections with inne items and opcje (optional alternatives) included
+      const sectionsWithInneAndOpcje = {
+        ...Object.fromEntries(
+          Object.entries(sections).map(([key, section]) => [key, { items: section.items }])
+        ),
+        inne: { 
+          items: inneItems.map(item => ({
+            id: item.id,
+            name: item.name,
+            unit: item.unit,
+            quantity: item.quantity,
+            unitPrice: item.unitPrice,
+            discount: item.discount,
+            isCustom: item.isCustom || false,
+          }))
+        },
+        opcje: {
+          items: generateOptions.map(opt => ({
+            name: opt.name,
+            quantity: opt.quantity,
+            priceDifference: opt.priceDifference,
+          }))
+        },
+      };
+      
+      const offer: SavedOffer = {
+        id: crypto.randomUUID(),
+        offerNumber,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        customerData,
+        poolType,
+        dimensions,
+        calculations,
+        sections: sectionsWithInneAndOpcje as Record<string, { items: any[] }>,
+        excavation,
+        totalNet: grandTotalNet,
+        totalGross: grandTotalGross,
+        status: 'sent',
+      };
+
+      // Save to localStorage (backup)
+      saveOffer(offer);
+      
+      // Save to database
+      const dbResult = await saveOfferToDb(offer);
+      
+      if (dbResult) {
+        const offerUrl = `${window.location.origin}/oferta/${dbResult.shareUid}`;
+        setSavedOfferLink(offerUrl);
+        toast.success('Oferta została zapisana', {
+          description: (
+            <div className="flex flex-col gap-2">
+              <span>Numer: {offer.offerNumber}</span>
+              <a href={offerUrl} target="_blank" rel="noopener noreferrer" className="text-primary underline">
+                Otwórz podgląd online
+              </a>
+            </div>
+          ),
+          duration: 10000,
+        });
+      } else {
+        toast.success('Oferta zapisana lokalnie', {
+          description: `Numer: ${offer.offerNumber}. Błąd zapisu do bazy.`,
+        });
+      }
+      
+      // Notify parent that offer was saved
+      onOfferSaved?.();
+      
+      return offerNumber;
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const normalizeBase64 = (input: string) => (input.includes(',') ? input.split(',')[1] : input);
