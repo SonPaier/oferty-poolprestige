@@ -34,7 +34,8 @@ import {
   ChevronRight,
   ChevronsLeft,
   ChevronsRight,
-  Filter
+  Filter,
+  Pencil
 } from 'lucide-react';
 import { SavedOffer } from '@/types/offers';
 import { getOffersFromDb, deleteOfferFromDb } from '@/lib/offerDb';
@@ -524,6 +525,15 @@ export default function OfferHistory() {
                   </div>
 
                   <div className="flex items-center gap-2">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => navigate(`/?edit=${offer.id}`)}
+                      className="text-primary hover:text-primary"
+                      title="Edytuj ofertę"
+                    >
+                      <Pencil className="w-4 h-4" />
+                    </Button>
                     <Button
                       variant="ghost"
                       size="sm"

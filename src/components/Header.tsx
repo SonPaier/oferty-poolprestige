@@ -14,12 +14,15 @@ import { getOverdueOffersCount, getQueueOffers } from '@/lib/offerDb';
 import { format } from 'date-fns';
 import { pl } from 'date-fns/locale';
 
+import { EditModeInfo } from '@/context/ConfiguratorContext';
+
 interface HeaderProps {
   onSettingsClick?: () => void;
   onNewOffer?: () => void;
+  editMode?: EditModeInfo;
 }
 
-export function Header({ onSettingsClick, onNewOffer }: HeaderProps) {
+export function Header({ onSettingsClick, onNewOffer, editMode }: HeaderProps) {
   const navigate = useNavigate();
   const { logout } = useAuth();
   const [overdueCount, setOverdueCount] = useState(0);
@@ -81,6 +84,15 @@ export function Header({ onSettingsClick, onNewOffer }: HeaderProps) {
               <h1 className="text-base lg:text-lg font-semibold text-header-foreground">Konfigurator Basenów</h1>
               <p className="text-xs text-header-foreground/70">Profesjonalne wyceny i oferty</p>
             </div>
+            
+            {/* Edit mode indicator */}
+            {editMode?.isEditing && (
+              <div className="flex items-center gap-2 ml-4 px-3 py-1.5 bg-yellow-500/20 border border-yellow-500/30 rounded-lg">
+                <span className="text-xs font-medium text-yellow-400">
+                  Edycja: {editMode.offerNumber}
+                </span>
+              </div>
+            )}
           </div>
           
           <nav className="flex items-center gap-1 lg:gap-2">

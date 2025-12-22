@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { ConfiguratorProvider, useConfigurator } from '@/context/ConfiguratorContext';
 import { useSettings } from '@/context/SettingsContext';
 import { Header } from '@/components/Header';
@@ -15,13 +16,46 @@ import { AdditionsStep } from '@/components/steps/AdditionsStep';
 import { SummaryStep } from '@/components/steps/SummaryStep';
 import { SettingsDialog } from '@/components/SettingsDialog';
 import { Toaster, toast } from 'sonner';
+import { getOfferByIdFromDb } from '@/lib/offerDb';
 
 function ConfiguratorContent() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const { state, dispatch } = useConfigurator();
   const { companySettings, excavationSettings, setCompanySettings, setExcavationSettings, isLoading } = useSettings();
   const { step } = state;
   
   const [showSettings, setShowSettings] = useState(false);
+  const [loadingOffer, setLoadingOffer] = useState(false);
+
+  // Load offer for editing if edit param is present
+  useEffect(() => {
+    const editId = searchParams.get('edit');
+    if (editId && !state.editMode.isEditing) {
+      loadOfferForEdit(editId);
+    }
+  }, [searchParams]);
+
+  const loadOfferForEdit = async (offerId: string) => {
+    setLoadingOffer(true);
+    try {
+      const offer = await getOfferByIdFromDb(offerId);
+      if (offer) {
+        dispatch({ type: 'LOAD_OFFER', payload: { offer } });
+        toast.success(`Załadowano ofertę ${offer.offerNumber} do edycji`);
+        // Clear the URL param but keep us on the page
+        setSearchParams({});
+      } else {
+        toast.error('Nie znaleziono oferty');
+        setSearchParams({});
+      }
+    } catch (error) {
+      console.error('Error loading offer:', error);
+      toast.error('Błąd ładowania oferty');
+      setSearchParams({});
+    } finally {
+      setLoadingOffer(false);
+    }
+  };
 
   const handleSaveCompanySettings = async (settings: typeof companySettings) => {
     await setCompanySettings(settings);
@@ -37,7 +71,10 @@ function ConfiguratorContent() {
 
   const nextStep = () => goToStep(step + 1);
   const prevStep = () => goToStep(step - 1);
-  const resetConfigurator = () => dispatch({ type: 'RESET' });
+  const resetConfigurator = () => {
+    dispatch({ type: 'RESET' });
+    setSearchParams({});
+  };
 
   const renderStep = () => {
     switch (step) {
@@ -66,10 +103,12 @@ function ConfiguratorContent() {
     }
   };
 
-  if (isLoading) {
+  if (isLoading || loadingOffer) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <div className="text-muted-foreground">Ładowanie ustawień...</div>
+        <div className="text-muted-foreground">
+          {loadingOffer ? 'Ładowanie oferty...' : 'Ładowanie ustawień...'}
+        </div>
       </div>
     );
   }
@@ -79,6 +118,7 @@ function ConfiguratorContent() {
       <Header 
         onNewOffer={resetConfigurator}
         onSettingsClick={() => setShowSettings(true)}
+        editMode={state.editMode}
       />
       
       <main className="container mx-auto px-4 py-6">
