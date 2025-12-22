@@ -553,17 +553,20 @@ function Scene({ dimensions, calculations, showFoilLayout, rollWidth }: Pool3DVi
       <directionalLight position={[10, 10, 10]} intensity={0.8} />
       <directionalLight position={[-5, 5, -5]} intensity={0.3} />
       
-      {/* Pool mesh - solid when showing foil, transparent otherwise */}
-      <PoolMesh dimensions={dimensions} solid={showFoilLayout} />
-      <DimensionLines dimensions={dimensions} />
-      
-      {/* Water only when not showing foil layout */}
-      {calculations && !showFoilLayout && (
-        <WaterSurface dimensions={dimensions} waterDepth={calculations.waterDepth} />
-      )}
-      
-      {/* Foil lines instead of filled strips */}
-      {showFoilLayout && <FoilLines dimensions={dimensions} rollWidth={rollWidth} />}
+      {/* Rotate entire pool so it lies flat (Z becomes depth going down, Y goes back) */}
+      <group rotation={[-Math.PI / 2, 0, 0]}>
+        {/* Pool mesh - solid when showing foil, transparent otherwise */}
+        <PoolMesh dimensions={dimensions} solid={showFoilLayout} />
+        <DimensionLines dimensions={dimensions} />
+        
+        {/* Water only when not showing foil layout */}
+        {calculations && !showFoilLayout && (
+          <WaterSurface dimensions={dimensions} waterDepth={calculations.waterDepth} />
+        )}
+        
+        {/* Foil lines instead of filled strips */}
+        {showFoilLayout && <FoilLines dimensions={dimensions} rollWidth={rollWidth} />}
+      </group>
       
       <OrbitControls 
         enablePan={true}
@@ -571,7 +574,7 @@ function Scene({ dimensions, calculations, showFoilLayout, rollWidth }: Pool3DVi
         enableRotate={true}
         minDistance={2}
         maxDistance={Math.max(dimensions.length, dimensions.width) * 4}
-        target={[0, 0, -dimensions.depth / 2]}
+        target={[0, -dimensions.depth / 2, 0]}
       />
     </>
   );
