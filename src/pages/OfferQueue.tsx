@@ -150,25 +150,18 @@ export default function OfferQueue() {
     <div className="min-h-screen bg-background">
       <Header 
         onSettingsClick={() => setSettingsOpen(true)} 
-        onNewOffer={() => navigate('/')}
       />
       
       <main className="container mx-auto px-4 lg:px-6 py-6">
         <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-4">
-            <Button variant="ghost" size="sm" onClick={() => navigate('/')}>
-              <ArrowLeft className="w-4 h-4 mr-2" />
-              Powrót
-            </Button>
-            <div>
-              <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
-                <Clock className="w-6 h-6 text-primary" />
-                Kolejka ofert
-              </h1>
-              <p className="text-sm text-muted-foreground">
-                Oferty oczekujące na wysłanie
-              </p>
-            </div>
+          <div>
+            <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
+              <Clock className="w-6 h-6 text-primary" />
+              Kolejka ofert
+            </h1>
+            <p className="text-sm text-muted-foreground">
+              Oferty oczekujące na wysłanie
+            </p>
           </div>
           
           {overdueCount > 0 && (
@@ -282,7 +275,7 @@ export default function OfferQueue() {
                           <Button
                             variant="ghost"
                             size="icon"
-                            onClick={() => navigate(`/?edit=${offer.id}`)}
+                            onClick={() => navigate(`/nowa-oferta?edit=${offer.id}`)}
                             title="Edytuj ofertę"
                             className="text-primary hover:text-primary"
                           >
