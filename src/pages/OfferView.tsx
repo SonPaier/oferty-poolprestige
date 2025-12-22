@@ -72,7 +72,14 @@ const sectionLabels: Record<string, string> = {
   oswietlenie: 'Oświetlenie',
   atrakcje: 'Atrakcje',
   dodatki: 'Dodatki',
+  filtracja: 'Filtracja',
 };
+
+// Capitalize first letter of each word
+function capitalize(text: string): string {
+  if (!text) return text;
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
 
 // Helper to convert OfferItem or InneItemData to DisplayItem
 function toDisplayItem(item: OfferItem | InneItemData, index: number): DisplayItem {
@@ -478,7 +485,7 @@ export default function OfferView() {
                             <div className="flex items-start justify-between gap-2">
                               <div>
                                 <h4 className="font-medium">
-                                  {displayItem.name}
+                                  {capitalize(displayItem.name)}
                                 </h4>
                                 {displayItem.symbol && (
                                   <p className="text-xs text-muted-foreground font-mono">
@@ -565,7 +572,7 @@ export default function OfferView() {
                         <div className="flex items-start justify-between gap-2">
                           <div>
                             <h4 className={`font-medium ${!isSelected ? 'text-muted-foreground' : ''}`}>
-                              {item.name}
+                              {capitalize(item.name)}
                             </h4>
                             <p className="text-xs text-muted-foreground mt-1">
                               {item.quantity} szt.
