@@ -333,8 +333,8 @@ export function SummaryStep({ onBack, onReset, excavationSettings }: SummaryStep
   const handleSaveOffer = async (): Promise<string> => {
     const offerNumber = generateOfferNumber();
     
-    // Prepare sections with inne items included
-    const sectionsWithInne = {
+    // Prepare sections with inne items and opcje (optional alternatives) included
+    const sectionsWithInneAndOpcje = {
       ...Object.fromEntries(
         Object.entries(sections).map(([key, section]) => [key, { items: section.items }])
       ),
@@ -349,6 +349,13 @@ export function SummaryStep({ onBack, onReset, excavationSettings }: SummaryStep
           isCustom: item.isCustom || false,
         }))
       },
+      opcje: {
+        items: generateOptions.map(opt => ({
+          name: opt.name,
+          quantity: opt.quantity,
+          priceDifference: opt.priceDifference,
+        }))
+      },
     };
     
     const offer: SavedOffer = {
@@ -360,7 +367,7 @@ export function SummaryStep({ onBack, onReset, excavationSettings }: SummaryStep
       poolType,
       dimensions,
       calculations,
-      sections: sectionsWithInne as Record<string, { items: any[] }>,
+      sections: sectionsWithInneAndOpcje as Record<string, { items: any[] }>,
       excavation,
       totalNet: grandTotalNet,
       totalGross: grandTotalGross,
