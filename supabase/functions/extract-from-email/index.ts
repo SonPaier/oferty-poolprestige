@@ -5,6 +5,12 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+interface Attachment {
+  name: string;
+  type: string;
+  url: string;
+}
+
 interface ExtractedData {
   customerData: {
     companyName?: string;
@@ -32,16 +38,20 @@ serve(async (req) => {
   }
 
   try {
-    const { emailContent } = await req.json();
+    const { emailContent, attachments } = await req.json() as { 
+      emailContent?: string; 
+      attachments?: Attachment[] 
+    };
     
-    if (!emailContent || typeof emailContent !== 'string') {
+    if ((!emailContent || typeof emailContent !== 'string') && (!attachments || attachments.length === 0)) {
       return new Response(
-        JSON.stringify({ error: "Email content is required" }),
+        JSON.stringify({ error: "Email content or attachments are required" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    console.log("Extracting data from email content, length:", emailContent.length);
+    console.log("Extracting data from email content, length:", emailContent?.length || 0);
+    console.log("Attachments:", attachments?.length || 0);
 
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) {
@@ -49,7 +59,7 @@ serve(async (req) => {
     }
 
     const systemPrompt = `Jesteś asystentem firmy Pool Prestige, specjalizującej się w budowie basenów.
-Twoim zadaniem jest wyekstrahowanie danych z treści maila lub wiadomości od klienta.
+Twoim zadaniem jest wyekstrahowanie danych z treści maila lub wiadomości od klienta oraz z załączników (obrazków, PDF-ów, plików Excel).
 
 Zwróć dane w formacie JSON z następującą strukturą:
 {
@@ -78,7 +88,44 @@ Zasady:
 - Wymiary basenu mogą być podane w różnych formatach: "8x4", "8 na 4 metrów", "8m x 4m" itp.
 - Jeśli podano tylko jeden wymiar głębokości, użyj go jako głębokość głęboką, a płytką ustaw na 1.2m
 - Typ basenu: prywatny (dom jednorodzinny), polprywatny (pensjonat, mały hotel), hotelowy (duży hotel, obiekt publiczny)
+- Analizuj również obrazki (mogą zawierać rysunki techniczne z wymiarami)
+- Analizuj pliki Excel/CSV które mogą zawierać tabele z danymi
 - Zwracaj TYLKO poprawny JSON, bez żadnego dodatkowego tekstu`;
+
+    // Build messages with images if present
+    const userContent: any[] = [];
+    
+    if (emailContent?.trim()) {
+      userContent.push({
+        type: "text",
+        text: `Wyekstrahuj dane z poniższej wiadomości:\n\n${emailContent}`
+      });
+    } else {
+      userContent.push({
+        type: "text",
+        text: "Wyekstrahuj dane z załączonych plików:"
+      });
+    }
+    
+    // Add image attachments for vision analysis
+    if (attachments && attachments.length > 0) {
+      for (const attachment of attachments) {
+        if (attachment.type.startsWith('image/')) {
+          userContent.push({
+            type: "image_url",
+            image_url: {
+              url: attachment.url
+            }
+          });
+        } else {
+          // For non-image files, just mention them
+          userContent.push({
+            type: "text",
+            text: `\n\n[Załącznik: ${attachment.name} (${attachment.type})]`
+          });
+        }
+      }
+    }
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -90,7 +137,7 @@ Zasady:
         model: "google/gemini-2.5-flash",
         messages: [
           { role: "system", content: systemPrompt },
-          { role: "user", content: `Wyekstrahuj dane z poniższej wiadomości:\n\n${emailContent}` }
+          { role: "user", content: userContent }
         ],
       }),
     });
