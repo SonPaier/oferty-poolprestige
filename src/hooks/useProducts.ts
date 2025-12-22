@@ -65,3 +65,77 @@ export function useProductsCount() {
 export function getDbProductPriceInPLN(product: DbProduct): number {
   return product.currency === 'EUR' ? product.price * EUR_TO_PLN : product.price;
 }
+
+export interface FoilOption {
+  id: string;
+  symbol: string;
+  name: string;
+  color: string;
+  price: number;
+  currency: 'PLN' | 'EUR';
+  width: number;
+  type: 'tradycyjna' | 'strukturalna';
+}
+
+// Extract color from foil name
+function extractFoilColor(name: string): string {
+  const colorPatterns = [
+    { pattern: /niebieska/i, color: 'niebieska' },
+    { pattern: /biała/i, color: 'biała' },
+    { pattern: /turkus/i, color: 'turkus' },
+    { pattern: /szara|szary/i, color: 'szara' },
+    { pattern: /piaskow/i, color: 'piaskowa' },
+    { pattern: /persja/i, color: 'persja niebieska' },
+    { pattern: /bizancjum/i, color: 'bizancjum niebieska' },
+    { pattern: /marble/i, color: 'marble' },
+    { pattern: /vanity/i, color: 'vanity' },
+    { pattern: /greek/i, color: 'greek' },
+    { pattern: /carrara/i, color: 'carrara' },
+    { pattern: /antracyt/i, color: 'antracyt' },
+  ];
+
+  for (const { pattern, color } of colorPatterns) {
+    if (pattern.test(name)) return color;
+  }
+  return 'standard';
+}
+
+// Extract width from foil name
+function extractFoilWidth(name: string): number {
+  if (name.includes('2,05') || name.includes('2.05')) return 2.05;
+  if (name.includes('1,65') || name.includes('1.65')) return 1.65;
+  return 1.65; // default
+}
+
+export function useFoilProducts() {
+  return useQuery({
+    queryKey: ['foil-products'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('products')
+        .select('*')
+        .or('name.ilike.%Folia Alkorplan 2000%,name.ilike.%Folia Alkorplan 3000%')
+        .gt('price', 0)
+        .order('name');
+
+      if (error) {
+        console.error('Error fetching foil products:', error);
+        throw error;
+      }
+
+      const foils: FoilOption[] = (data || []).map(row => ({
+        id: row.id,
+        symbol: row.symbol,
+        name: row.name,
+        color: extractFoilColor(row.name),
+        price: row.price,
+        currency: row.currency as 'PLN' | 'EUR',
+        width: extractFoilWidth(row.name),
+        type: row.name.includes('3000') ? 'strukturalna' : 'tradycyjna',
+      }));
+
+      return foils;
+    },
+    staleTime: 10 * 60 * 1000, // Cache for 10 minutes
+  });
+}

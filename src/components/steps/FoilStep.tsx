@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useConfigurator } from '@/context/ConfiguratorContext';
 import { useSettings } from '@/context/SettingsContext';
 import { Button } from '@/components/ui/button';
@@ -7,28 +7,68 @@ import { Label } from '@/components/ui/label';
 import { ProductCard } from '@/components/ProductCard';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ArrowLeft, Palette, Info, Calculator, CheckCircle, Eye, Box } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { ArrowLeft, Palette, Info, Calculator, CheckCircle, Eye, Box, Loader2 } from 'lucide-react';
 import { products, Product, getPriceInPLN } from '@/data/products';
 import { formatPrice, calculateFoilOptimization, FoilOptimizationResult } from '@/lib/calculations';
 import { OfferItem } from '@/types/configurator';
 import { poolShapeLabels } from '@/types/configurator';
 import { FoilLayoutVisualization } from '@/components/FoilLayoutVisualization';
 import { Pool3DVisualization } from '@/components/Pool3DVisualization';
+import { useFoilProducts, FoilOption } from '@/hooks/useProducts';
 
 interface FoilStepProps {
   onNext: () => void;
   onBack: () => void;
 }
 
+// Color display names
+const colorLabels: Record<string, string> = {
+  'niebieska': 'Niebieska',
+  'biała': 'Biała',
+  'turkus': 'Turkus',
+  'szara': 'Szara',
+  'piaskowa': 'Piaskowa',
+  'persja niebieska': 'Persja Niebieska',
+  'bizancjum niebieska': 'Bizancjum Niebieska',
+  'marble': 'Marble',
+  'vanity': 'Vanity',
+  'greek': 'Greek',
+  'carrara': 'Carrara',
+  'antracyt': 'Antracyt',
+  'standard': 'Standard',
+};
+
+// Color hex values for visual indicator
+const colorHex: Record<string, string> = {
+  'niebieska': '#3B82F6',
+  'biała': '#F8FAFC',
+  'turkus': '#14B8A6',
+  'szara': '#6B7280',
+  'piaskowa': '#D4A574',
+  'persja niebieska': '#1E40AF',
+  'bizancjum niebieska': '#312E81',
+  'marble': '#E2E8F0',
+  'vanity': '#C084FC',
+  'greek': '#0EA5E9',
+  'carrara': '#F1F5F9',
+  'antracyt': '#374151',
+  'standard': '#60A5FA',
+};
+
 export function FoilStep({ onNext, onBack }: FoilStepProps) {
   const { state, dispatch } = useConfigurator();
   const { companySettings } = useSettings();
   const { foilType, foilCalculation, dimensions, sections } = state;
+  
+  // Fetch foils from database
+  const { data: dbFoils, isLoading: foilsLoading } = useFoilProducts();
 
   const foilProducts = products.filter(p => p.category === 'folia');
   const [selectedFoil, setSelectedFoil] = useState<Product | null>(
     sections.wykonczenie.items[0]?.product || null
   );
+  const [selectedColor, setSelectedColor] = useState<string>('niebieska');
 
   useEffect(() => {
     // Recalculate foil when type changes
@@ -63,14 +103,46 @@ export function FoilStep({ onNext, onBack }: FoilStepProps) {
     });
   };
 
-  const traditionalFoils = foilProducts.filter(
-    p => p.specs?.typ === 'tradycyjna' || !p.specs?.typ
-  );
-  const structuralFoils = foilProducts.filter(
-    p => p.specs?.typ === 'strukturalna' || p.specs?.typ === 'antyposlizgowa'
-  );
+  // Get available colors from database foils
+  const availableColors = useMemo(() => {
+    if (!dbFoils) return [];
+    const foilsOfType = dbFoils.filter(f => f.type === foilType);
+    const colors = [...new Set(foilsOfType.map(f => f.color))];
+    return colors.sort();
+  }, [dbFoils, foilType]);
 
-  const displayedFoils = foilType === 'tradycyjna' ? traditionalFoils : structuralFoils;
+  // Get foils for selected color (from database if available, otherwise from local)
+  const displayedFoils = useMemo(() => {
+    if (dbFoils && dbFoils.length > 0) {
+      // Filter by type and color, then convert to Product format
+      const filtered = dbFoils.filter(f => 
+        f.type === foilType && f.color === selectedColor
+      );
+      
+      // If no exact color match, use all of that type
+      const foilsToUse = filtered.length > 0 ? filtered : dbFoils.filter(f => f.type === foilType);
+      
+      return foilsToUse.map(f => ({
+        id: f.id,
+        symbol: f.symbol,
+        name: f.name,
+        price: f.price,
+        currency: f.currency,
+        category: 'folia' as const,
+        specs: { szerokosc: f.width, typ: f.type, grubosc: 1.5 },
+      }));
+    }
+    
+    // Fallback to local products
+    const traditionalFoils = foilProducts.filter(
+      p => p.specs?.typ === 'tradycyjna' || !p.specs?.typ
+    );
+    const structuralFoils = foilProducts.filter(
+      p => p.specs?.typ === 'strukturalna' || p.specs?.typ === 'antyposlizgowa'
+    );
+    return foilType === 'tradycyjna' ? traditionalFoils : structuralFoils;
+  }, [dbFoils, foilType, selectedColor, foilProducts]);
+
   const calc = foilCalculation as FoilOptimizationResult | null;
 
   // Determine best option
@@ -86,6 +158,13 @@ export function FoilStep({ onNext, onBack }: FoilStepProps) {
   };
   
   const bestOption = getBestOption();
+
+  // Set first available color when type changes
+  useEffect(() => {
+    if (availableColors.length > 0 && !availableColors.includes(selectedColor)) {
+      setSelectedColor(availableColors[0]);
+    }
+  }, [availableColors, selectedColor]);
 
   return (
     <div className="animate-slide-up">
@@ -133,6 +212,46 @@ export function FoilStep({ onNext, onBack }: FoilStepProps) {
               </Label>
             </div>
           </RadioGroup>
+
+          {/* Color selection */}
+          {availableColors.length > 0 && (
+            <div className="mt-6">
+              <h3 className="text-base font-medium mb-3">Kolor folii</h3>
+              <Select value={selectedColor} onValueChange={setSelectedColor}>
+                <SelectTrigger className="w-full">
+                  <SelectValue>
+                    <div className="flex items-center gap-2">
+                      <div 
+                        className="w-4 h-4 rounded-full border border-border"
+                        style={{ backgroundColor: colorHex[selectedColor] || '#60A5FA' }}
+                      />
+                      {colorLabels[selectedColor] || selectedColor}
+                    </div>
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {availableColors.map(color => (
+                    <SelectItem key={color} value={color}>
+                      <div className="flex items-center gap-2">
+                        <div 
+                          className="w-4 h-4 rounded-full border border-border"
+                          style={{ backgroundColor: colorHex[color] || '#60A5FA' }}
+                        />
+                        {colorLabels[color] || color}
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
+          {foilsLoading && (
+            <div className="mt-4 flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="w-4 h-4 animate-spin" />
+              Ładowanie folii z bazy...
+            </div>
+          )}
 
           {calc && (
             <div className="mt-6 p-4 rounded-lg bg-accent/10 border border-accent/20">
