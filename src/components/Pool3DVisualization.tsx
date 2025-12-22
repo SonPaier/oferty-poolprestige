@@ -126,7 +126,7 @@ function PoolMesh({ dimensions, solid = false }: { dimensions: PoolDimensions; s
   const isRectangular = shape === 'prostokatny' || shape === 'prostokatny-schodki-zewnetrzne' || shape === 'prostokatny-schodki-narozne';
 
   // Create geometry for walls and bottom
-  const { wallGeometry, bottomGeometry, edges, shellGeometry } = useMemo(() => {
+  const { wallGeometry, bottomGeometry, edges, shellGeometry, rimGeometry } = useMemo(() => {
     if (isRectangular) {
       // Custom geometry for rectangular pools with optional slope
       const wallGeo = new THREE.BufferGeometry();
@@ -195,7 +195,7 @@ function PoolMesh({ dimensions, solid = false }: { dimensions: PoolDimensions; s
       const outerDepth = depth + bottomThickness;
       const outerDeepDepth = actualDeepDepth + bottomThickness;
       
-      // Outer shell walls
+      // Outer shell walls only
       const shellVerts = [
         // Back outer wall
         -outerHalfL, -outerHalfW, 0,
@@ -217,10 +217,6 @@ function PoolMesh({ dimensions, solid = false }: { dimensions: PoolDimensions; s
         outerHalfL, outerHalfW, 0,
         outerHalfL, outerHalfW, -outerDeepDepth,
         outerHalfL, -outerHalfW, -outerDeepDepth,
-        // Top rim (between inner and outer)
-        // Back rim
-        -halfL, -halfW, 0, -outerHalfL, -outerHalfW, 0, -outerHalfL, outerHalfW, 0, -halfL, halfW, 0,
-        halfL, -halfW, 0, outerHalfL, -outerHalfW, 0, outerHalfL, outerHalfW, 0, halfL, halfW, 0,
       ];
       
       shellGeo.setAttribute('position', new THREE.Float32BufferAttribute(shellVerts, 3));
@@ -231,6 +227,40 @@ function PoolMesh({ dimensions, solid = false }: { dimensions: PoolDimensions; s
         12, 13, 14, 12, 14, 15,
       ]);
       shellGeo.computeVertexNormals();
+      
+      // Create top rim geometry (connects inner and outer walls at top)
+      const rimGeo = new THREE.BufferGeometry();
+      const rimVerts = [
+        // Back rim
+        -halfL, -halfW, 0,
+        halfL, -halfW, 0,
+        outerHalfL, -outerHalfW, 0,
+        -outerHalfL, -outerHalfW, 0,
+        // Front rim
+        -halfL, halfW, 0,
+        halfL, halfW, 0,
+        outerHalfL, outerHalfW, 0,
+        -outerHalfL, outerHalfW, 0,
+        // Left rim
+        -halfL, -halfW, 0,
+        -halfL, halfW, 0,
+        -outerHalfL, outerHalfW, 0,
+        -outerHalfL, -outerHalfW, 0,
+        // Right rim
+        halfL, -halfW, 0,
+        halfL, halfW, 0,
+        outerHalfL, outerHalfW, 0,
+        outerHalfL, -outerHalfW, 0,
+      ];
+      
+      rimGeo.setAttribute('position', new THREE.Float32BufferAttribute(rimVerts, 3));
+      rimGeo.setIndex([
+        0, 1, 2, 0, 2, 3,  // Back rim
+        4, 7, 6, 4, 6, 5,  // Front rim
+        8, 11, 10, 8, 10, 9,  // Left rim
+        12, 13, 14, 12, 14, 15,  // Right rim
+      ]);
+      rimGeo.computeVertexNormals();
       
       // Create edges
       const edgePoints: [number, number, number][][] = [
@@ -256,7 +286,7 @@ function PoolMesh({ dimensions, solid = false }: { dimensions: PoolDimensions; s
         [[-halfL, halfW, 0], [-halfL, halfW, -depth]],
       ];
       
-      return { wallGeometry: wallGeo, bottomGeometry: bottomGeo, edges: edgePoints, shellGeometry: shellGeo };
+      return { wallGeometry: wallGeo, bottomGeometry: bottomGeo, edges: edgePoints, shellGeometry: shellGeo, rimGeometry: rimGeo };
     } else {
       // For other shapes (oval, L-shape, custom)
       const shapeObj = new THREE.Shape(shape2D);
@@ -349,6 +379,35 @@ function PoolMesh({ dimensions, solid = false }: { dimensions: PoolDimensions; s
       shellGeo.setIndex(shellIndices);
       shellGeo.computeVertexNormals();
       
+      // Create rim geometry for non-rectangular shapes
+      const rimPositions: number[] = [];
+      const rimIndices: number[] = [];
+      
+      for (let i = 0; i < numPoints; i++) {
+        const innerCurr = shape2D[i];
+        const innerNext = shape2D[(i + 1) % numPoints];
+        const outerCurr = outerShape2D[i];
+        const outerNext = outerShape2D[(i + 1) % numPoints];
+        
+        const baseIdx = i * 4;
+        rimPositions.push(
+          innerCurr.x, innerCurr.y, 0,
+          innerNext.x, innerNext.y, 0,
+          outerNext.x, outerNext.y, 0,
+          outerCurr.x, outerCurr.y, 0
+        );
+        
+        rimIndices.push(
+          baseIdx, baseIdx + 1, baseIdx + 2,
+          baseIdx, baseIdx + 2, baseIdx + 3
+        );
+      }
+      
+      const rimGeo = new THREE.BufferGeometry();
+      rimGeo.setAttribute('position', new THREE.Float32BufferAttribute(rimPositions, 3));
+      rimGeo.setIndex(rimIndices);
+      rimGeo.computeVertexNormals();
+      
       const edgePoints: [number, number, number][][] = [];
       
       // Inner top rim
@@ -380,7 +439,7 @@ function PoolMesh({ dimensions, solid = false }: { dimensions: PoolDimensions; s
         edgePoints.push([[pt.x, pt.y, 0], [pt.x, pt.y, -depth]]);
       }
       
-      return { wallGeometry: wallGeo, bottomGeometry: bottomGeo, edges: edgePoints, shellGeometry: shellGeo };
+      return { wallGeometry: wallGeo, bottomGeometry: bottomGeo, edges: edgePoints, shellGeometry: shellGeo, rimGeometry: rimGeo };
     }
   }, [shape, length, width, depth, actualDeepDepth, hasSlope, shape2D, isRectangular]);
 
@@ -391,10 +450,15 @@ function PoolMesh({ dimensions, solid = false }: { dimensions: PoolDimensions; s
         <mesh geometry={shellGeometry} material={concreteMaterial} />
       )}
       
-      {/* Walls */}
+      {/* Top rim (white, connects inner and outer walls) */}
+      {rimGeometry && (
+        <mesh geometry={rimGeometry} material={concreteMaterial} />
+      )}
+      
+      {/* Inner walls (blue) */}
       <mesh geometry={wallGeometry} material={wallMaterial} />
       
-      {/* Bottom */}
+      {/* Bottom (blue) */}
       {isRectangular ? (
         <mesh geometry={bottomGeometry!} material={bottomMaterial} />
       ) : (
