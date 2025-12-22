@@ -4,7 +4,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { User, Building, Mail, Phone, MapPin, Sparkles, Loader2, Paperclip, X, FileText, Image as ImageIcon, FileSpreadsheet } from 'lucide-react';
+import { User, Building, Mail, Phone, MapPin, Sparkles, Loader2, Paperclip, X, FileText, Image as ImageIcon, FileSpreadsheet, Download, Pencil, Check, Calendar } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
@@ -23,6 +23,7 @@ interface UploadedFile {
   size: number;
   url: string;
   path: string;
+  uploadedAt?: string;
 }
 
 const formatFileSize = (bytes: number) => {
@@ -50,6 +51,8 @@ export function CustomerStep({ onNext }: CustomerStepProps) {
   const [isExtracting, setIsExtracting] = useState(false);
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
   const [isUploading, setIsUploading] = useState(false);
+  const [editingFileId, setEditingFileId] = useState<string | null>(null);
+  const [editingFileName, setEditingFileName] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Load attachments from customerData when editing existing offer
@@ -125,7 +128,8 @@ export function CustomerStep({ onNext }: CustomerStepProps) {
         type: file.type,
         size: file.size,
         url: urlData.publicUrl,
-        path: data.path
+        path: data.path,
+        uploadedAt: new Date().toISOString()
       });
     }
     
@@ -144,6 +148,43 @@ export function CustomerStep({ onNext }: CustomerStepProps) {
   const removeFile = async (path: string) => {
     await supabase.storage.from('offer-attachments').remove([path]);
     setUploadedFiles(prev => prev.filter(f => f.path !== path));
+  };
+
+  const startEditFileName = (file: UploadedFile) => {
+    setEditingFileId(file.path);
+    // Remove extension for editing
+    const lastDot = file.name.lastIndexOf('.');
+    setEditingFileName(lastDot > 0 ? file.name.substring(0, lastDot) : file.name);
+  };
+
+  const saveFileName = (path: string) => {
+    const file = uploadedFiles.find(f => f.path === path);
+    if (!file || !editingFileName.trim()) {
+      setEditingFileId(null);
+      return;
+    }
+    
+    // Get original extension
+    const lastDot = file.name.lastIndexOf('.');
+    const extension = lastDot > 0 ? file.name.substring(lastDot) : '';
+    const newName = editingFileName.trim() + extension;
+    
+    setUploadedFiles(prev => prev.map(f => 
+      f.path === path ? { ...f, name: newName } : f
+    ));
+    setEditingFileId(null);
+    toast.success('Nazwa pliku zmieniona');
+  };
+
+  const formatUploadDate = (dateString?: string) => {
+    if (!dateString) return '';
+    return new Date(dateString).toLocaleDateString('pl-PL', {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
   };
 
   const handleExtractFromEmail = async () => {
@@ -305,22 +346,87 @@ export function CustomerStep({ onNext }: CustomerStepProps) {
               {uploadedFiles.map((file) => (
                 <div 
                   key={file.path}
-                  className="flex items-center gap-2 p-2 bg-muted/50 rounded-md text-sm"
+                  className="flex items-center gap-2 p-2 bg-muted/50 rounded-md text-sm group"
                 >
                   {getFileIcon(file.type)}
-                  <span className="flex-1 truncate">{file.name}</span>
-                  <span className="text-muted-foreground text-xs">
+                  
+                  {editingFileId === file.path ? (
+                    <div className="flex-1 flex items-center gap-1">
+                      <Input
+                        value={editingFileName}
+                        onChange={(e) => setEditingFileName(e.target.value)}
+                        className="h-7 text-sm py-0"
+                        autoFocus
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') saveFileName(file.path);
+                          if (e.key === 'Escape') setEditingFileId(null);
+                        }}
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6 text-green-500"
+                        onClick={() => saveFileName(file.path)}
+                      >
+                        <Check className="w-3 h-3" />
+                      </Button>
+                    </div>
+                  ) : (
+                    <a 
+                      href={file.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex-1 truncate hover:text-primary hover:underline transition-colors"
+                      title="Pobierz plik"
+                    >
+                      {file.name}
+                    </a>
+                  )}
+                  
+                  <span className="text-muted-foreground text-xs hidden sm:inline">
                     {formatFileSize(file.size)}
                   </span>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    className="h-6 w-6"
-                    onClick={() => removeFile(file.path)}
-                  >
-                    <X className="w-3 h-3" />
-                  </Button>
+                  
+                  {file.uploadedAt && (
+                    <span className="text-muted-foreground text-xs hidden md:flex items-center gap-1">
+                      <Calendar className="w-3 h-3" />
+                      {formatUploadDate(file.uploadedAt)}
+                    </span>
+                  )}
+                  
+                  <div className="flex items-center gap-0.5">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
+                      onClick={() => window.open(file.url, '_blank')}
+                      title="Pobierz"
+                    >
+                      <Download className="w-3 h-3" />
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
+                      onClick={() => startEditFileName(file)}
+                      title="Zmień nazwę"
+                    >
+                      <Pencil className="w-3 h-3" />
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6 text-destructive"
+                      onClick={() => removeFile(file.path)}
+                      title="Usuń"
+                    >
+                      <X className="w-3 h-3" />
+                    </Button>
+                  </div>
                 </div>
               ))}
             </div>
