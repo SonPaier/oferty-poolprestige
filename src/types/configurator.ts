@@ -119,6 +119,7 @@ export interface CompanySettings {
   volumeCoefficientPercent: number; // 3% per m³ scaling for "INNE" section
   notesTemplate: string;
   paymentTermsTemplate: string;
+  dueDays: number; // Termin odpowiedzi na ofertę (dni)
 }
 
 export interface EmailTemplateSettings {
@@ -149,6 +150,7 @@ export const defaultCompanySettings: CompanySettings = {
   volumeCoefficientPercent: 3,
   notesTemplate: 'Oferta ważna 30 dni od daty wystawienia.',
   paymentTermsTemplate: 'Zaliczka 30% przy zamówieniu, pozostałe 70% przed montażem.',
+  dueDays: 3,
 };
 
 export const poolTypeLabels: Record<PoolType, string> = {
