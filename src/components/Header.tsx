@@ -1,7 +1,9 @@
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '@/context/AuthContext';
 import logo from '@/assets/logo.png';
-import { Settings, FileText, History } from 'lucide-react';
+import { Settings, FileText, History, LogOut } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { toast } from 'sonner';
 
 interface HeaderProps {
   onSettingsClick?: () => void;
@@ -10,6 +12,13 @@ interface HeaderProps {
 
 export function Header({ onSettingsClick, onNewOffer }: HeaderProps) {
   const navigate = useNavigate();
+  const { logout } = useAuth();
+  
+  const handleLogout = () => {
+    logout();
+    toast.success('Wylogowano');
+    navigate('/login', { replace: true });
+  };
   
   return (
     <header className="bg-header border-b border-header/80 sticky top-0 z-50 shadow-lg">
@@ -56,6 +65,16 @@ export function Header({ onSettingsClick, onNewOffer }: HeaderProps) {
             >
               <Settings className="w-4 h-4 lg:mr-2" />
               <span className="hidden lg:inline">Ustawienia</span>
+            </Button>
+            
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleLogout}
+              className="text-header-foreground/80 hover:text-header-foreground hover:bg-header-foreground/10"
+            >
+              <LogOut className="w-4 h-4 lg:mr-2" />
+              <span className="hidden lg:inline">Wyloguj</span>
             </Button>
           </nav>
         </div>
