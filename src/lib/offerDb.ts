@@ -233,6 +233,25 @@ export async function deleteOfferFromDb(id: string): Promise<boolean> {
   return true;
 }
 
+// Get recently edited offers (updated_at different from created_at)
+export async function getRecentlyEditedOffers(limit: number = 5): Promise<(SavedOffer & { shareUid: string })[]> {
+  const { data, error } = await supabase
+    .from('offers')
+    .select('*')
+    .order('updated_at', { ascending: false })
+    .limit(limit);
+
+  if (error) {
+    console.error('Error fetching recently edited offers:', error);
+    return [];
+  }
+
+  // Filter to only include offers where updated_at > created_at (actually edited)
+  return (data || [])
+    .filter(row => new Date(row.updated_at).getTime() > new Date(row.created_at).getTime() + 1000)
+    .map((row) => dbToSavedOffer(row as unknown as DbOffer));
+}
+
 // Search offers
 export async function searchOffersInDb(query: string): Promise<(SavedOffer & { shareUid: string })[]> {
   const allOffers = await getOffersFromDb();
