@@ -1,3 +1,4 @@
+import { useNavigate } from 'react-router-dom';
 import logo from '@/assets/logo.png';
 import { Settings, FileText, History } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -5,10 +6,11 @@ import { Button } from '@/components/ui/button';
 interface HeaderProps {
   onSettingsClick?: () => void;
   onNewOffer?: () => void;
-  onHistoryClick?: () => void;
 }
 
-export function Header({ onSettingsClick, onNewOffer, onHistoryClick }: HeaderProps) {
+export function Header({ onSettingsClick, onNewOffer }: HeaderProps) {
+  const navigate = useNavigate();
+  
   return (
     <header className="bg-header border-b border-header/80 sticky top-0 z-50 shadow-lg">
       <div className="container mx-auto px-4 lg:px-6 py-3 lg:py-4">
@@ -29,7 +31,7 @@ export function Header({ onSettingsClick, onNewOffer, onHistoryClick }: HeaderPr
             <Button
               variant="ghost"
               size="sm"
-              onClick={onHistoryClick}
+              onClick={() => navigate('/historia')}
               className="text-header-foreground/80 hover:text-header-foreground hover:bg-header-foreground/10"
             >
               <History className="w-4 h-4 lg:mr-2" />

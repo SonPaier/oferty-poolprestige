@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { ConfiguratorProvider, useConfigurator } from '@/context/ConfiguratorContext';
 import { Header } from '@/components/Header';
 import { StepNavigation } from '@/components/StepNavigation';
@@ -13,16 +13,14 @@ import { ExcavationStep } from '@/components/steps/ExcavationStep';
 import { AdditionsStep } from '@/components/steps/AdditionsStep';
 import { SummaryStep } from '@/components/steps/SummaryStep';
 import { SettingsDialog } from '@/components/SettingsDialog';
-import { OfferHistoryDialog } from '@/components/OfferHistoryDialog';
-import { ExcavationSettings, defaultExcavationSettings, SavedOffer } from '@/types/offers';
-import { Toaster, toast } from 'sonner';
+import { ExcavationSettings, defaultExcavationSettings } from '@/types/offers';
+import { Toaster } from 'sonner';
 
 function ConfiguratorContent() {
   const { state, dispatch, companySettings, setCompanySettings } = useConfigurator();
   const { step } = state;
   
   const [showSettings, setShowSettings] = useState(false);
-  const [showHistory, setShowHistory] = useState(false);
   const [excavationSettings, setExcavationSettings] = useState<ExcavationSettings>(() => {
     try {
       const saved = localStorage.getItem('pool_prestige_excavation_settings');
@@ -44,49 +42,6 @@ function ConfiguratorContent() {
   const nextStep = () => goToStep(step + 1);
   const prevStep = () => goToStep(step - 1);
   const resetConfigurator = () => dispatch({ type: 'RESET' });
-
-  const handleViewOffer = (offer: SavedOffer) => {
-    // Load offer into state
-    dispatch({ type: 'SET_CUSTOMER_DATA', payload: offer.customerData });
-    dispatch({ type: 'SET_POOL_TYPE', payload: offer.poolType });
-    dispatch({ type: 'SET_DIMENSIONS', payload: offer.dimensions });
-    dispatch({ type: 'SET_CALCULATIONS', payload: offer.calculations });
-    
-    Object.entries(offer.sections).forEach(([key, section]) => {
-      dispatch({
-        type: 'SET_SECTION',
-        payload: {
-          section: key as any,
-          data: { id: key, name: key, items: section.items },
-        },
-      });
-    });
-    
-    dispatch({ type: 'SET_STEP', payload: 10 });
-    setShowHistory(false);
-    toast.success('Oferta załadowana', { description: offer.offerNumber });
-  };
-
-  const handleCopyOffer = (offer: SavedOffer) => {
-    // Load offer but start fresh
-    dispatch({ type: 'SET_CUSTOMER_DATA', payload: { ...offer.customerData, contactPerson: '', phone: '', email: '' } });
-    dispatch({ type: 'SET_POOL_TYPE', payload: offer.poolType });
-    dispatch({ type: 'SET_DIMENSIONS', payload: offer.dimensions });
-    
-    Object.entries(offer.sections).forEach(([key, section]) => {
-      dispatch({
-        type: 'SET_SECTION',
-        payload: {
-          section: key as any,
-          data: { id: key, name: key, items: section.items },
-        },
-      });
-    });
-    
-    dispatch({ type: 'SET_STEP', payload: 1 });
-    setShowHistory(false);
-    toast.success('Oferta skopiowana', { description: 'Uzupełnij dane nowego klienta' });
-  };
 
   const renderStep = () => {
     switch (step) {
@@ -120,7 +75,6 @@ function ConfiguratorContent() {
       <Header 
         onNewOffer={resetConfigurator}
         onSettingsClick={() => setShowSettings(true)}
-        onHistoryClick={() => setShowHistory(true)}
       />
       
       <main className="container mx-auto px-4 py-6">
@@ -139,13 +93,6 @@ function ConfiguratorContent() {
         onSaveCompanySettings={setCompanySettings}
         excavationSettings={excavationSettings}
         onSaveExcavationSettings={saveExcavationSettings}
-      />
-
-      <OfferHistoryDialog
-        open={showHistory}
-        onClose={() => setShowHistory(false)}
-        onViewOffer={handleViewOffer}
-        onCopyOffer={handleCopyOffer}
       />
     </div>
   );
