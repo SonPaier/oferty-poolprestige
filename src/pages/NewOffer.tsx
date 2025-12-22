@@ -81,21 +81,51 @@ function ConfiguratorContent() {
   const [showUnsavedDialog, setShowUnsavedDialog] = useState(false);
   const [pendingNavigation, setPendingNavigation] = useState<string | null>(null);
 
-  // Track changes
-  const markAsChanged = useCallback(() => {
-    if (!hasUnsavedChanges) {
-      setHasUnsavedChanges(true);
-    }
-    // Auto-save draft
-    saveDraft(state);
-  }, [hasUnsavedChanges, state]);
+  // Track initial state for comparison
+  const [initialStateSnapshot, setInitialStateSnapshot] = useState<string | null>(null);
 
-  // Save draft whenever state changes
+  // Create snapshot of relevant state for comparison
+  const createStateSnapshot = useCallback((s: typeof state) => {
+    return JSON.stringify({
+      customerData: s.customerData,
+      dimensions: s.dimensions,
+      sections: s.sections,
+      poolType: s.poolType,
+      foilType: s.foilType,
+    });
+  }, []);
+
+  // Set initial snapshot when offer is loaded or component mounts
   useEffect(() => {
-    if (step > 1 || state.customerData.contactPerson) {
-      markAsChanged();
+    if (state.editMode.isEditing && !initialStateSnapshot) {
+      setInitialStateSnapshot(createStateSnapshot(state));
     }
-  }, [state, markAsChanged, step]);
+  }, [state.editMode.isEditing, initialStateSnapshot, createStateSnapshot, state]);
+
+  // Check if there are actual changes
+  useEffect(() => {
+    if (!initialStateSnapshot && !state.editMode.isEditing) {
+      // For new offers, check if anything meaningful was entered
+      const hasContent = Boolean(state.customerData.contactPerson) || 
+                         Object.values(state.sections).some(s => s.items.length > 0);
+      if (hasContent !== hasUnsavedChanges) {
+        setHasUnsavedChanges(hasContent);
+      }
+      if (hasContent) {
+        saveDraft(state);
+      }
+    } else if (initialStateSnapshot) {
+      // For editing, compare with initial snapshot
+      const currentSnapshot = createStateSnapshot(state);
+      const changed = currentSnapshot !== initialStateSnapshot;
+      if (changed !== hasUnsavedChanges) {
+        setHasUnsavedChanges(changed);
+      }
+      if (changed) {
+        saveDraft(state);
+      }
+    }
+  }, [state, initialStateSnapshot, createStateSnapshot, hasUnsavedChanges]);
 
   // Navigation blocker
   const blocker = useBlocker(
@@ -130,7 +160,16 @@ function ConfiguratorContent() {
         dispatch({ type: 'LOAD_OFFER', payload: { offer } });
         toast.success(`Załadowano ofertę ${offer.offerNumber} do edycji`);
         setSearchParams({});
-        setHasUnsavedChanges(false); // Just loaded, no changes yet
+        setHasUnsavedChanges(false);
+        // Set initial snapshot after loading
+        setInitialStateSnapshot(createStateSnapshot({
+          ...state,
+          customerData: offer.customerData,
+          dimensions: offer.dimensions,
+          sections: offer.sections as typeof state.sections,
+          poolType: offer.poolType,
+          foilType: (offer as any).foilType || state.foilType,
+        }));
       } else {
         toast.error('Nie znaleziono oferty');
         setSearchParams({});

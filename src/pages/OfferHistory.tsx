@@ -44,7 +44,7 @@ import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { pl } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
-import logo from '@/assets/logo.png';
+import { Header } from '@/components/Header';
 
 type OfferWithShare = SavedOffer & { shareUid?: string };
 
@@ -228,35 +228,7 @@ export default function OfferHistory() {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="bg-header border-b border-header/80 sticky top-0 z-50 shadow-lg">
-        <div className="container mx-auto px-4 lg:px-6 py-3 lg:py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3 lg:gap-4">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => navigate('/')}
-                className="text-header-foreground/80 hover:text-header-foreground hover:bg-header-foreground/10"
-              >
-                <ArrowLeft className="w-4 h-4 mr-2" />
-                Powrót
-              </Button>
-            </div>
-            
-            <div className="flex items-center gap-3">
-              <FileText className="w-5 h-5 text-header-foreground" />
-              <h1 className="text-lg font-semibold text-header-foreground">Historia Ofert</h1>
-            </div>
-            
-            <img 
-              src={logo} 
-              alt="Pool Prestige" 
-              className="h-8 lg:h-10 w-auto object-contain"
-            />
-          </div>
-        </div>
-      </header>
+      <Header />
 
       <main className="container mx-auto px-4 py-6 space-y-6">
         {/* Filters */}
