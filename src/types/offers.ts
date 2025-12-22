@@ -2,6 +2,7 @@ import { OfferItem, CustomerData, PoolDimensions, PoolType, PoolCalculations } f
 
 export interface SavedOffer {
   id: string;
+  shareUid?: string;
   offerNumber: string;
   createdAt: string;
   updatedAt: string;

@@ -14,6 +14,54 @@ export type Database = {
   }
   public: {
     Tables: {
+      offers: {
+        Row: {
+          calculations: Json | null
+          created_at: string
+          customer_data: Json
+          dimensions: Json
+          excavation: Json
+          id: string
+          offer_number: string
+          pool_type: string
+          sections: Json
+          share_uid: string
+          total_gross: number
+          total_net: number
+          updated_at: string
+        }
+        Insert: {
+          calculations?: Json | null
+          created_at?: string
+          customer_data: Json
+          dimensions: Json
+          excavation: Json
+          id?: string
+          offer_number: string
+          pool_type: string
+          sections: Json
+          share_uid: string
+          total_gross?: number
+          total_net?: number
+          updated_at?: string
+        }
+        Update: {
+          calculations?: Json | null
+          created_at?: string
+          customer_data?: Json
+          dimensions?: Json
+          excavation?: Json
+          id?: string
+          offer_number?: string
+          pool_type?: string
+          sections?: Json
+          share_uid?: string
+          total_gross?: number
+          total_net?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       products: {
         Row: {
           category: string | null
