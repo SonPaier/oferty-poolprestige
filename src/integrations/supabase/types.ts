@@ -26,6 +26,7 @@ export type Database = {
           pool_type: string
           sections: Json
           share_uid: string
+          status: string
           total_gross: number
           total_net: number
           updated_at: string
@@ -41,6 +42,7 @@ export type Database = {
           pool_type: string
           sections: Json
           share_uid: string
+          status?: string
           total_gross?: number
           total_net?: number
           updated_at?: string
@@ -56,6 +58,7 @@ export type Database = {
           pool_type?: string
           sections?: Json
           share_uid?: string
+          status?: string
           total_gross?: number
           total_net?: number
           updated_at?: string

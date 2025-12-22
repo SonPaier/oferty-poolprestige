@@ -1,5 +1,7 @@
 import { OfferItem, CustomerData, PoolDimensions, PoolType, PoolCalculations } from './configurator';
 
+export type OfferStatus = 'queue' | 'draft' | 'sent';
+
 export interface SavedOffer {
   id: string;
   shareUid?: string;
@@ -14,6 +16,7 @@ export interface SavedOffer {
   excavation: ExcavationData;
   totalNet: number;
   totalGross: number;
+  status: OfferStatus;
 }
 
 export interface ExcavationData {
