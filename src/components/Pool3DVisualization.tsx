@@ -2,7 +2,7 @@ import { useRef, useMemo, Suspense } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, Html, Line } from '@react-three/drei';
 import * as THREE from 'three';
-import { PoolDimensions, PoolCalculations, StairsConfig, WadingPoolConfig } from '@/types/configurator';
+import { PoolDimensions, PoolCalculations, StairsConfig, WadingPoolConfig, CustomPoolVertex } from '@/types/configurator';
 import { planFoilLayout, FoilStrip, ROLL_WIDTH_NARROW, ROLL_WIDTH_WIDE } from '@/lib/foilPlanner';
 
 // Wall thickness constant (20cm)
@@ -1018,8 +1018,108 @@ function WaterSurface({ dimensions, waterDepth }: { dimensions: PoolDimensions; 
   );
 }
 
+// Custom stairs mesh (from drawn vertices)
+function CustomStairsMesh({ vertices, depth }: { vertices: CustomPoolVertex[]; depth: number }) {
+  const stepHeight = 0.29;
+  const stepCount = Math.ceil(depth / stepHeight);
+  
+  const stepTopMaterial = useMemo(() => 
+    new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.6 }), []);
+  const stepFrontMaterial = useMemo(() => 
+    new THREE.MeshStandardMaterial({ color: '#5b9bd5' }), []);
+
+  // Calculate centroid for positioning
+  const centroid = useMemo(() => {
+    const cx = vertices.reduce((sum, v) => sum + v.x, 0) / vertices.length;
+    const cy = vertices.reduce((sum, v) => sum + v.y, 0) / vertices.length;
+    return { x: cx, y: cy };
+  }, [vertices]);
+
+  // Calculate bounding box for step sizing
+  const bounds = useMemo(() => {
+    const xs = vertices.map(v => v.x);
+    const ys = vertices.map(v => v.y);
+    return {
+      minX: Math.min(...xs), maxX: Math.max(...xs),
+      minY: Math.min(...ys), maxY: Math.max(...ys),
+    };
+  }, [vertices]);
+
+  const steps = useMemo(() => {
+    const stepsArr: JSX.Element[] = [];
+    const sizeX = bounds.maxX - bounds.minX;
+    const sizeY = bounds.maxY - bounds.minY;
+    const stepDepthSize = Math.min(sizeX, sizeY) / stepCount;
+
+    for (let i = 0; i < stepCount; i++) {
+      const stepTop = -i * stepHeight;
+      const stepBottom = -depth;
+      const thisStepHeight = Math.abs(stepTop - stepBottom);
+      const posZ = (stepTop + stepBottom) / 2;
+      const scale = 1 - (i * 0.1);
+
+      stepsArr.push(
+        <group key={i} position={[centroid.x, centroid.y, posZ]}>
+          <mesh material={stepFrontMaterial}>
+            <boxGeometry args={[sizeX * scale, sizeY * scale, thisStepHeight]} />
+          </mesh>
+          <mesh position={[0, 0, thisStepHeight / 2 - 0.01]} material={stepTopMaterial}>
+            <boxGeometry args={[sizeX * scale, sizeY * scale, 0.02]} />
+          </mesh>
+        </group>
+      );
+    }
+    return stepsArr;
+  }, [stepCount, stepHeight, depth, bounds, centroid, stepTopMaterial, stepFrontMaterial]);
+
+  return <group>{steps}</group>;
+}
+
+// Custom wading pool mesh (from drawn vertices)
+function CustomWadingPoolMesh({ vertices, wadingDepth, poolDepth }: { 
+  vertices: CustomPoolVertex[]; 
+  wadingDepth: number;
+  poolDepth: number;
+}) {
+  const waterMaterial = useMemo(() => 
+    new THREE.MeshStandardMaterial({ color: '#5b9bd5', transparent: true, opacity: 0.7 }), []);
+  const wallMaterial = useMemo(() => 
+    new THREE.MeshStandardMaterial({ color: '#5b9bd5' }), []);
+
+  const shape2D = useMemo(() => vertices.map(v => new THREE.Vector2(v.x, v.y)), [vertices]);
+  const shapeObj = useMemo(() => new THREE.Shape(shape2D), [shape2D]);
+  const floorGeo = useMemo(() => new THREE.ShapeGeometry(shapeObj), [shapeObj]);
+
+  const centroid = useMemo(() => {
+    const cx = vertices.reduce((sum, v) => sum + v.x, 0) / vertices.length;
+    const cy = vertices.reduce((sum, v) => sum + v.y, 0) / vertices.length;
+    return { x: cx, y: cy };
+  }, [vertices]);
+
+  const bounds = useMemo(() => {
+    const xs = vertices.map(v => v.x);
+    const ys = vertices.map(v => v.y);
+    return { sizeX: Math.max(...xs) - Math.min(...xs), sizeY: Math.max(...ys) - Math.min(...ys) };
+  }, [vertices]);
+
+  return (
+    <group>
+      {/* Floor */}
+      <mesh position={[0, 0, -wadingDepth]} geometry={floorGeo} material={wallMaterial} />
+      {/* Water */}
+      <mesh position={[centroid.x, centroid.y, -wadingDepth / 2]} material={waterMaterial}>
+        <boxGeometry args={[bounds.sizeX * 0.95, bounds.sizeY * 0.95, wadingDepth - 0.02]} />
+      </mesh>
+    </group>
+  );
+}
+
 // Main scene
 function Scene({ dimensions, calculations, showFoilLayout, rollWidth }: Pool3DVisualizationProps & { rollWidth: number }) {
+  const isCustomShape = dimensions.shape === 'wlasny';
+  const hasCustomStairs = isCustomShape && dimensions.customStairsVertices && dimensions.customStairsVertices.length >= 3;
+  const hasCustomWadingPool = isCustomShape && dimensions.customWadingPoolVertices && dimensions.customWadingPoolVertices.length >= 3;
+
   return (
     <>
       <ambientLight intensity={0.7} />
@@ -1032,13 +1132,27 @@ function Scene({ dimensions, calculations, showFoilLayout, rollWidth }: Pool3DVi
         <PoolMesh dimensions={dimensions} solid={showFoilLayout} />
         <DimensionLines dimensions={dimensions} />
         
-        {/* Stairs */}
-        {dimensions.stairs?.enabled && (
+        {/* Custom stairs from drawn vertices */}
+        {hasCustomStairs && (
+          <CustomStairsMesh vertices={dimensions.customStairsVertices!} depth={dimensions.depth} />
+        )}
+        
+        {/* Regular stairs (for non-custom shapes) */}
+        {!hasCustomStairs && dimensions.stairs?.enabled && (
           <StairsMesh dimensions={dimensions} stairs={dimensions.stairs} />
         )}
         
-        {/* Wading pool */}
-        {dimensions.wadingPool?.enabled && (
+        {/* Custom wading pool from drawn vertices */}
+        {hasCustomWadingPool && (
+          <CustomWadingPoolMesh 
+            vertices={dimensions.customWadingPoolVertices!} 
+            wadingDepth={dimensions.wadingPool?.depth || 0.4}
+            poolDepth={dimensions.depth}
+          />
+        )}
+        
+        {/* Regular wading pool (for non-custom shapes) */}
+        {!hasCustomWadingPool && dimensions.wadingPool?.enabled && (
           <WadingPoolMesh dimensions={dimensions} wadingPool={dimensions.wadingPool} />
         )}
         

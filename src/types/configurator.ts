@@ -96,6 +96,10 @@ export interface PoolDimensions {
   customVertices?: CustomPoolVertex[];
   customArea?: number; // Pre-calculated area for custom shape
   customPerimeter?: number; // Pre-calculated perimeter for custom shape
+  // Custom stairs vertices (for custom pool shape)
+  customStairsVertices?: CustomPoolVertex[];
+  // Custom wading pool vertices (for custom pool shape)
+  customWadingPoolVertices?: CustomPoolVertex[];
   // Stairs configuration
   stairs: StairsConfig;
   // Wading pool configuration

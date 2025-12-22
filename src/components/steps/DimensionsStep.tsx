@@ -176,16 +176,31 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
     updateDimension('shape', shape);
   };
 
-  const handleCustomShapeComplete = (vertices: CustomPoolVertex[], area: number, perimeter: number) => {
+  const handleCustomShapeComplete = (
+    poolVertices: CustomPoolVertex[], 
+    area: number, 
+    perimeter: number,
+    stairsVertices?: CustomPoolVertex[],
+    wadingPoolVertices?: CustomPoolVertex[]
+  ) => {
     dispatch({
       type: 'SET_DIMENSIONS',
       payload: {
         ...dimensions,
         shape: 'wlasny',
-        customVertices: vertices,
+        customVertices: poolVertices,
         customArea: area,
         customPerimeter: perimeter,
+        customStairsVertices: stairsVertices,
+        customWadingPoolVertices: wadingPoolVertices,
         isIrregular: true,
+        // If custom stairs/wading pool drawn, enable them
+        stairs: stairsVertices && stairsVertices.length >= 3 
+          ? { ...dimensions.stairs, enabled: true }
+          : dimensions.stairs,
+        wadingPool: wadingPoolVertices && wadingPoolVertices.length >= 3
+          ? { ...dimensions.wadingPool, enabled: true }
+          : dimensions.wadingPool,
       },
     });
     setShowCustomDrawer(false);
@@ -205,7 +220,9 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
           <CustomPoolDrawer
             onComplete={handleCustomShapeComplete}
             onCancel={() => setShowCustomDrawer(false)}
-            initialVertices={dimensions.customVertices}
+            initialPoolVertices={dimensions.customVertices}
+            initialStairsVertices={dimensions.customStairsVertices}
+            initialWadingPoolVertices={dimensions.customWadingPoolVertices}
           />
         </DialogContent>
       </Dialog>
