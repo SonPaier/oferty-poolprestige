@@ -1,10 +1,7 @@
 import {
   AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
-  AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
@@ -26,39 +23,39 @@ export function UnsavedChangesDialog({
 }: UnsavedChangesDialogProps) {
   return (
     <AlertDialog open={open}>
-      <AlertDialogContent>
+      <AlertDialogContent className="max-w-md">
         <AlertDialogHeader>
           <AlertDialogTitle>Niezapisane zmiany</AlertDialogTitle>
           <AlertDialogDescription>
             Masz niezapisane zmiany w ofercie. Co chcesz zrobić?
           </AlertDialogDescription>
         </AlertDialogHeader>
-        <AlertDialogFooter className="flex-col gap-2 sm:flex-row">
+        <div className="flex flex-col gap-2 mt-4">
           <Button
-            variant="destructive"
-            onClick={onDiscard}
-            className="w-full sm:w-auto"
+            variant="default"
+            onClick={onContinue}
+            className="w-full justify-start"
           >
-            <Trash2 className="w-4 h-4 mr-2" />
-            Porzuć zmiany
+            <ArrowLeft className="w-4 h-4 mr-2" />
+            Kontynuuj edycję
           </Button>
           <Button
             variant="outline"
             onClick={onSave}
-            className="w-full sm:w-auto"
+            className="w-full justify-start"
           >
             <Save className="w-4 h-4 mr-2" />
             Zapisz zmiany
           </Button>
           <Button
-            variant="default"
-            onClick={onContinue}
-            className="w-full sm:w-auto"
+            variant="destructive"
+            onClick={onDiscard}
+            className="w-full justify-start"
           >
-            <ArrowLeft className="w-4 h-4 mr-2" />
-            Kontynuuj edycję
+            <Trash2 className="w-4 h-4 mr-2" />
+            Porzuć zmiany
           </Button>
-        </AlertDialogFooter>
+        </div>
       </AlertDialogContent>
     </AlertDialog>
   );
