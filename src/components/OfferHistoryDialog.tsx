@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { 
   Dialog, 
   DialogContent, 
@@ -16,9 +16,12 @@ import {
   FileText,
   User,
   Phone,
-  Mail
+  Mail,
+  Link2,
+  ExternalLink
 } from 'lucide-react';
-import { SavedOffer, getOffers, searchOffers, deleteOffer } from '@/types/offers';
+import { SavedOffer } from '@/types/offers';
+import { getOffersFromDb, deleteOfferFromDb, searchOffersInDb } from '@/lib/offerDb';
 import { formatPrice } from '@/lib/calculations';
 import { toast } from 'sonner';
 
@@ -36,18 +39,55 @@ export function OfferHistoryDialog({
   onCopyOffer 
 }: OfferHistoryDialogProps) {
   const [searchQuery, setSearchQuery] = useState('');
-  const [offers, setOffers] = useState<SavedOffer[]>(getOffers());
+  const [offers, setOffers] = useState<(SavedOffer & { shareUid?: string })[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (open) {
+      loadOffers();
+    }
+  }, [open]);
+
+  const loadOffers = async () => {
+    setLoading(true);
+    const dbOffers = await getOffersFromDb();
+    setOffers(dbOffers);
+    setLoading(false);
+  };
 
   const filteredOffers = useMemo(() => {
-    return searchOffers(searchQuery);
+    if (!searchQuery.trim()) return offers;
+    const lowerQuery = searchQuery.toLowerCase().trim();
+    
+    return offers.filter(offer => {
+      const { customerData, offerNumber, createdAt } = offer;
+      return (
+        offerNumber.toLowerCase().includes(lowerQuery) ||
+        customerData.contactPerson.toLowerCase().includes(lowerQuery) ||
+        customerData.companyName?.toLowerCase().includes(lowerQuery) ||
+        customerData.email?.toLowerCase().includes(lowerQuery) ||
+        customerData.phone?.includes(lowerQuery) ||
+        createdAt.includes(lowerQuery)
+      );
+    });
   }, [searchQuery, offers]);
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     if (confirm('Czy na pewno chcesz usunąć tę ofertę?')) {
-      deleteOffer(id);
-      setOffers(getOffers());
-      toast.success('Oferta została usunięta');
+      const success = await deleteOfferFromDb(id);
+      if (success) {
+        await loadOffers();
+        toast.success('Oferta została usunięta');
+      } else {
+        toast.error('Błąd usuwania oferty');
+      }
     }
+  };
+
+  const copyOfferLink = (shareUid: string) => {
+    const url = `${window.location.origin}/oferta/${shareUid}`;
+    navigator.clipboard.writeText(url);
+    toast.success('Link skopiowany do schowka');
   };
 
   const formatDate = (dateString: string) => {
@@ -81,7 +121,11 @@ export function OfferHistoryDialog({
         </div>
 
         <div className="flex-1 overflow-y-auto space-y-3">
-          {filteredOffers.length === 0 ? (
+          {loading ? (
+            <div className="text-center py-12 text-muted-foreground">
+              Ładowanie...
+            </div>
+          ) : filteredOffers.length === 0 ? (
             <div className="text-center py-12 text-muted-foreground">
               <FileText className="w-12 h-12 mx-auto mb-3 opacity-50" />
               <p>Brak zapisanych ofert</p>
@@ -139,6 +183,29 @@ export function OfferHistoryDialog({
                         Brutto: {formatPrice(offer.totalGross)}
                       </span>
                     </div>
+
+                    {/* Link do oferty */}
+                    {offer.shareUid && (
+                      <div className="mt-2 flex items-center gap-2">
+                        <Link2 className="w-3 h-3 text-muted-foreground" />
+                        <a 
+                          href={`/oferta/${offer.shareUid}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs text-primary hover:underline flex items-center gap-1"
+                        >
+                          Podgląd online <ExternalLink className="w-3 h-3" />
+                        </a>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 px-2 text-xs"
+                          onClick={() => copyOfferLink(offer.shareUid!)}
+                        >
+                          Kopiuj link
+                        </Button>
+                      </div>
+                    )}
                   </div>
 
                   <div className="flex items-center gap-2">
