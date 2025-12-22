@@ -3,6 +3,7 @@ import { Canvas } from '@react-three/fiber';
 import { OrbitControls, Html, Line } from '@react-three/drei';
 import * as THREE from 'three';
 import { PoolDimensions, PoolCalculations } from '@/types/configurator';
+import { planFoilLayout, FoilStrip, ROLL_WIDTH_NARROW, ROLL_WIDTH_WIDE } from '@/lib/foilPlanner';
 
 interface Pool3DVisualizationProps {
   dimensions: PoolDimensions;
@@ -286,88 +287,137 @@ function PoolMesh({ dimensions, solid = false }: { dimensions: PoolDimensions; s
   );
 }
 
-// Foil lines visualization - dashed red lines showing where foil strips go
+// Foil lines visualization using the new foil planner
 function FoilLines({ dimensions, rollWidth }: { dimensions: PoolDimensions; rollWidth: number }) {
   const { length, width, depth, depthDeep, hasSlope } = dimensions;
-  const OVERLAP = 0.1;
-  const effectiveWidth = rollWidth - OVERLAP;
   const actualDeep = hasSlope && depthDeep ? depthDeep : depth;
   
-  const lines = useMemo(() => {
-    const result: { points: [number, number, number][]; }[] = [];
+  // Use the new foil planner for proper strip layout
+  const foilPlan = useMemo(() => planFoilLayout(dimensions, 20), [dimensions]);
+  
+  // Generate strip lines from the plan
+  const stripLines = useMemo(() => {
+    const lines: { points: [number, number, number][]; isSeam: boolean }[] = [];
     
-    // Bottom foil lines - parallel to length axis, spacing = rollWidth
-    let currentY = -width / 2 + rollWidth;
-    while (currentY < width / 2) {
-      const z1 = hasSlope ? -depth : -depth;
-      const z2 = hasSlope ? -actualDeep : -depth;
-      result.push({
-        points: [
-          [-length / 2, currentY, z1 - 0.01],
-          [length / 2, currentY, z2 - 0.01]
-        ]
-      });
-      currentY += effectiveWidth;
+    // Group strips by surface for proper visualization
+    const bottomStrips = foilPlan.strips.filter(s => s.surface === 'bottom');
+    const wallStrips = foilPlan.strips.filter(s => s.surface.startsWith('wall'));
+    
+    // === BOTTOM STRIPS ===
+    // Strips go across the pool perpendicular to the longer side
+    const longerSide = Math.max(length, width);
+    const shorterSide = Math.min(length, width);
+    const isLengthLonger = length >= width;
+    
+    // Calculate strip positions for visualization
+    let currentPos = -shorterSide / 2;
+    const effectiveWidth = rollWidth - 0.05; // 5cm overlap for bottom
+    
+    while (currentPos < shorterSide / 2) {
+      const nextPos = Math.min(currentPos + rollWidth, shorterSide / 2);
+      const linePos = currentPos + (rollWidth / 2);
+      
+      if (linePos > -shorterSide / 2 && linePos < shorterSide / 2) {
+        if (isLengthLonger) {
+          // Line goes along X, positioned in Y
+          lines.push({
+            points: [
+              [-longerSide / 2, linePos, -depth - 0.01],
+              [longerSide / 2, linePos, hasSlope ? -actualDeep - 0.01 : -depth - 0.01]
+            ],
+            isSeam: currentPos > -shorterSide / 2 // Not a seam for first strip
+          });
+        } else {
+          // Line goes along Y, positioned in X
+          lines.push({
+            points: [
+              [linePos, -longerSide / 2, -depth - 0.01],
+              [linePos, longerSide / 2, hasSlope ? -actualDeep - 0.01 : -depth - 0.01]
+            ],
+            isSeam: currentPos > -shorterSide / 2
+          });
+        }
+      }
+      
+      currentPos += effectiveWidth;
     }
     
-    // Back wall lines (-Y side)
-    let currentX = -length / 2 + rollWidth;
-    while (currentX < length / 2) {
-      const t = (currentX + length / 2) / length;
-      const zBottom = hasSlope ? -(depth + t * (actualDeep - depth)) : -depth;
-      result.push({
-        points: [
-          [currentX, -width / 2 + 0.01, 0],
-          [currentX, -width / 2 + 0.01, zBottom]
-        ]
-      });
-      currentX += effectiveWidth;
+    // === WALL STRIPS ===
+    // Horizontal strips on walls (preferred per guidelines)
+    const wallHeight = depth;
+    const deepWallHeight = actualDeep;
+    const effectiveWallWidth = rollWidth - 0.10; // 10cm overlap for walls
+    
+    // Front wall (+Y) - horizontal lines
+    let currentZ = 0;
+    while (currentZ < wallHeight) {
+      const lineZ = -currentZ - (rollWidth / 2);
+      if (lineZ > -wallHeight && lineZ < 0) {
+        lines.push({
+          points: [
+            [-length / 2, width / 2 - 0.01, lineZ],
+            [length / 2, width / 2 - 0.01, lineZ]
+          ],
+          isSeam: currentZ > 0
+        });
+      }
+      currentZ += effectiveWallWidth;
     }
     
-    // Front wall lines (+Y side)
-    currentX = -length / 2 + rollWidth;
-    while (currentX < length / 2) {
-      const t = (currentX + length / 2) / length;
-      const zBottom = hasSlope ? -(depth + t * (actualDeep - depth)) : -depth;
-      result.push({
-        points: [
-          [currentX, width / 2 - 0.01, 0],
-          [currentX, width / 2 - 0.01, zBottom]
-        ]
-      });
-      currentX += effectiveWidth;
+    // Back wall (-Y) - horizontal lines
+    currentZ = 0;
+    while (currentZ < wallHeight) {
+      const lineZ = -currentZ - (rollWidth / 2);
+      if (lineZ > -wallHeight && lineZ < 0) {
+        lines.push({
+          points: [
+            [-length / 2, -width / 2 + 0.01, lineZ],
+            [length / 2, -width / 2 + 0.01, lineZ]
+          ],
+          isSeam: currentZ > 0
+        });
+      }
+      currentZ += effectiveWallWidth;
     }
     
-    // Left wall lines (-X side)
-    currentY = -width / 2 + rollWidth;
-    while (currentY < width / 2) {
-      result.push({
-        points: [
-          [-length / 2 + 0.01, currentY, 0],
-          [-length / 2 + 0.01, currentY, -depth]
-        ]
-      });
-      currentY += effectiveWidth;
+    // Left wall (-X) - horizontal lines (shallow side)
+    currentZ = 0;
+    while (currentZ < wallHeight) {
+      const lineZ = -currentZ - (rollWidth / 2);
+      if (lineZ > -wallHeight && lineZ < 0) {
+        lines.push({
+          points: [
+            [-length / 2 + 0.01, -width / 2, lineZ],
+            [-length / 2 + 0.01, width / 2, lineZ]
+          ],
+          isSeam: currentZ > 0
+        });
+      }
+      currentZ += effectiveWallWidth;
     }
     
-    // Right wall lines (+X side)
-    currentY = -width / 2 + rollWidth;
-    while (currentY < width / 2) {
-      result.push({
-        points: [
-          [length / 2 - 0.01, currentY, 0],
-          [length / 2 - 0.01, currentY, -actualDeep]
-        ]
-      });
-      currentY += effectiveWidth;
+    // Right wall (+X) - horizontal lines (deep side)
+    currentZ = 0;
+    while (currentZ < deepWallHeight) {
+      const lineZ = -currentZ - (rollWidth / 2);
+      if (lineZ > -deepWallHeight && lineZ < 0) {
+        lines.push({
+          points: [
+            [length / 2 - 0.01, -width / 2, lineZ],
+            [length / 2 - 0.01, width / 2, lineZ]
+          ],
+          isSeam: currentZ > 0
+        });
+      }
+      currentZ += effectiveWallWidth;
     }
     
-    return result;
-  }, [length, width, depth, actualDeep, hasSlope, rollWidth, effectiveWidth]);
+    return lines;
+  }, [dimensions, rollWidth, foilPlan, length, width, depth, actualDeep, hasSlope]);
 
   return (
     <>
-      {lines.map((line, i) => (
+      {stripLines.map((line, i) => (
         <Line
           key={i}
           points={line.points}
