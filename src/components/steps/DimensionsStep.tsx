@@ -442,11 +442,10 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
               <Pool3DVisualization 
                 dimensions={dimensions}
                 calculations={calculations}
-                showFoilLayout={true}
-                rollWidth={1.65}
+                showFoilLayout={false}
               />
               <p className="text-xs text-muted-foreground text-center">
-                Wizualizacja w skali z liniami wymiarowymi i układem folii
+                Widok niecki basenu z liniami wymiarowymi
               </p>
             </TabsContent>
             
