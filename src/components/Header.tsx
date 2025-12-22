@@ -2,13 +2,20 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { useState, useEffect } from 'react';
 import logo from '@/assets/logo.png';
-import { Settings, FileText, History, LogOut, Bell, Clock, AlertTriangle, Home } from 'lucide-react';
+import { Settings, FileText, History, LogOut, Bell, Clock, AlertTriangle, Home, User } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { toast } from 'sonner';
 import { getQueueOffers } from '@/lib/offerDb';
 import { format } from 'date-fns';
@@ -223,27 +230,34 @@ export function Header({ onSettingsClick, onNewOffer, editMode, showNavLinks = t
               )}
             </Button>
             
-            {onSettingsClick && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={onSettingsClick}
-                className="text-header-foreground/80 hover:text-header-foreground hover:bg-header-foreground/10"
-              >
-                <Settings className="w-4 h-4 lg:mr-2" />
-                <span className="hidden lg:inline">Ustawienia</span>
-              </Button>
-            )}
-            
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={handleLogout}
-              className="text-header-foreground/80 hover:text-header-foreground hover:bg-header-foreground/10"
-            >
-              <LogOut className="w-4 h-4 lg:mr-2" />
-              <span className="hidden lg:inline">Wyloguj</span>
-            </Button>
+            {/* Account Dropdown */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-header-foreground/80 hover:text-header-foreground hover:bg-header-foreground/10"
+                >
+                  <User className="w-4 h-4 lg:mr-2" />
+                  <span className="hidden lg:inline">Konto</span>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-48 bg-popover">
+                {onSettingsClick && (
+                  <>
+                    <DropdownMenuItem onClick={onSettingsClick} className="cursor-pointer">
+                      <Settings className="w-4 h-4 mr-2" />
+                      Ustawienia
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                  </>
+                )}
+                <DropdownMenuItem onClick={handleLogout} className="cursor-pointer text-destructive focus:text-destructive">
+                  <LogOut className="w-4 h-4 mr-2" />
+                  Wyloguj
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </nav>
         </div>
       </div>
