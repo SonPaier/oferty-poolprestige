@@ -30,8 +30,8 @@
     --muted: 210 25% 94%;
     --muted-foreground: 220 15% 45%;
 
-    /* Cyan accent */
-    --accent: 185 70% 38%;
+    /* Use primary as accent for consistency */
+    --accent: 190 80% 42%;
     --accent-foreground: 0 0% 100%;
 
     --destructive: 0 72% 51%;
