@@ -124,9 +124,12 @@ export function SummaryStep({ onBack, onReset, excavationSettings, companySettin
   const totalPoolArea = wallArea + bottomArea;
   const volumeCoefficient = companySettings.volumeCoefficientPercent || 3;
   
-  // Calculate volume scaling factor
-  const volumeScaleFactor = 1 + ((volume - BASE_VOLUME) / BASE_VOLUME) * (volumeCoefficient / 100) * (volume > BASE_VOLUME ? 1 : -1);
-  const actualScaleFactor = 1 + ((volume - BASE_VOLUME) * volumeCoefficient / 100);
+  // Calculate volume scaling factor - proportional to volume ratio
+  // Formula: basePrice * (currentVolume / baseVolume) with coefficient adjustment
+  // Ensures prices are always positive and scale proportionally
+  const volumeRatio = volume / BASE_VOLUME;
+  // Apply coefficient: 1 + (ratio - 1) * coefficient/100, but clamp to minimum 0.3 to avoid negative/zero prices
+  const actualScaleFactor = Math.max(0.3, 1 + (volumeRatio - 1) * (volumeCoefficient / 100));
   
   // Initialize INNE items
   const [inneItems, setInneItems] = useState<InneItem[]>(() => {
