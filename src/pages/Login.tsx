@@ -39,14 +39,16 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center p-4">
-      <div className="glass-card w-full max-w-md p-8 space-y-6">
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-800 flex items-center justify-center p-4">
+      <div className="glass-card w-full max-w-md p-8 space-y-6 bg-card/95 backdrop-blur-sm">
         <div className="text-center space-y-4">
-          <img 
-            src={logo} 
-            alt="Pool Prestige" 
-            className="h-16 mx-auto object-contain"
-          />
+          <div className="bg-slate-800 rounded-lg p-4 inline-block">
+            <img 
+              src={logo} 
+              alt="Pool Prestige" 
+              className="h-16 mx-auto object-contain"
+            />
+          </div>
           <div>
             <h1 className="text-2xl font-bold text-foreground">Konfigurator Basenów</h1>
             <p className="text-muted-foreground text-sm mt-1">Panel administracyjny</p>

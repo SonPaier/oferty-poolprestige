@@ -34,7 +34,7 @@ import {
 } from 'lucide-react';
 import { getPriceInPLN, products } from '@/data/products';
 import { formatPrice } from '@/lib/calculations';
-import { OfferItem, ConfiguratorSection } from '@/types/configurator';
+import { OfferItem, ConfiguratorSection, CompanySettings } from '@/types/configurator';
 import { ExcavationSettings, calculateExcavation, generateOfferNumber, saveOffer, SavedOffer } from '@/types/offers';
 import { saveOfferToDb } from '@/lib/offerDb';
 import { supabase } from '@/integrations/supabase/client';
@@ -52,6 +52,7 @@ interface SummaryStepProps {
   onBack: () => void;
   onReset: () => void;
   excavationSettings: ExcavationSettings;
+  companySettings: CompanySettings;
 }
 
 // Base prices for "INNE" items (for 77.6 m³ reference volume)
@@ -95,8 +96,8 @@ const sectionLabels: Record<string, string> = {
   dodatki: 'Dodatki',
 };
 
-export function SummaryStep({ onBack, onReset, excavationSettings }: SummaryStepProps) {
-  const { state, dispatch, companySettings } = useConfigurator();
+export function SummaryStep({ onBack, onReset, excavationSettings, companySettings }: SummaryStepProps) {
+  const { state, dispatch } = useConfigurator();
   const { customerData, dimensions, calculations, sections, poolType, foilCalculation } = state;
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
   const [isSendingEmail, setIsSendingEmail] = useState(false);

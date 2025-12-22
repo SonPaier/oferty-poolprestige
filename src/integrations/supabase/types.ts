@@ -104,6 +104,30 @@ export type Database = {
         }
         Relationships: []
       }
+      settings: {
+        Row: {
+          company_settings: Json
+          created_at: string
+          excavation_settings: Json
+          id: string
+          updated_at: string
+        }
+        Insert: {
+          company_settings?: Json
+          created_at?: string
+          excavation_settings?: Json
+          id?: string
+          updated_at?: string
+        }
+        Update: {
+          company_settings?: Json
+          created_at?: string
+          excavation_settings?: Json
+          id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
