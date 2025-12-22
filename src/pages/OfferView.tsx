@@ -20,8 +20,11 @@ import {
   MapPin,
   Pencil,
   Copy,
-  ArrowLeft
+  ArrowLeft,
+  FileDown
 } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -130,6 +133,7 @@ export default function OfferView() {
   const [error, setError] = useState<string | null>(null);
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
   const [optionalSelections, setOptionalSelections] = useState<Record<string, boolean>>({});
+  const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
 
   useEffect(() => {
     const loadOffer = async () => {
@@ -182,6 +186,115 @@ export default function OfferView() {
       ...prev,
       [key]: !prev[key]
     }));
+  };
+
+  const base64ToBlob = (base64: string, mimeType: string): Blob => {
+    const byteCharacters = atob(base64);
+    const byteNumbers = new Array(byteCharacters.length);
+    for (let i = 0; i < byteCharacters.length; i++) {
+      byteNumbers[i] = byteCharacters.charCodeAt(i);
+    }
+    const byteArray = new Uint8Array(byteNumbers);
+    return new Blob([byteArray], { type: mimeType });
+  };
+
+  const handleDownloadPDF = async () => {
+    if (!offer) return;
+    
+    setIsGeneratingPDF(true);
+    try {
+      const vatRate = 0.23;
+      
+      // Prepare sections for PDF
+      const sectionsForPdf: Record<string, { name: string; items: any[] }> = {};
+      
+      Object.entries(offer.sections).forEach(([key, section]) => {
+        if (key === 'opcje') return;
+        
+        const sectionData = section as { name?: string; items?: any[] };
+        const items = sectionData.items || [];
+        sectionsForPdf[key] = {
+          name: sectionData.name || sectionLabels[key] || key,
+          items: items.map((item: any, idx: number) => {
+            const displayItem = toDisplayItem(item, idx);
+            return {
+              name: displayItem.name,
+              symbol: displayItem.symbol || '',
+              quantity: displayItem.quantity,
+              unit: displayItem.unit,
+              unitPrice: displayItem.unitPrice,
+              discount: displayItem.discount,
+              totalPrice: displayItem.unitPrice * displayItem.quantity * (displayItem.discount / 100),
+            };
+          }),
+        };
+      });
+      
+      const pdfData = {
+        offerNumber: offer.offerNumber,
+        customer: {
+          companyName: offer.customerData.companyName || '',
+          contactPerson: offer.customerData.contactPerson,
+          email: offer.customerData.email || '',
+          phone: offer.customerData.phone || '',
+          address: offer.customerData.address || '',
+          city: offer.customerData.city || '',
+          postalCode: offer.customerData.postalCode || '',
+          nip: offer.customerData.nip || '',
+        },
+        pool: {
+          type: poolTypeLabels[offer.poolType as PoolType] || offer.poolType,
+          dimensions: offer.dimensions,
+          calculations: offer.calculations,
+        },
+        excavation: offer.excavation,
+        sections: sectionsForPdf,
+        totals: {
+          grandTotalNet: calculatedTotals.net,
+          vatRate: vatRate * 100,
+          vatAmount: calculatedTotals.net * vatRate,
+          grandTotalGross: calculatedTotals.gross,
+        },
+        notes: '',
+        paymentTerms: 30,
+      };
+      
+      const { data, error } = await supabase.functions.invoke('generate-pdf', {
+        body: pdfData,
+      });
+      
+      if (error) {
+        console.error('PDF generation error:', error);
+        toast.error('Błąd generowania PDF');
+        return;
+      }
+      
+      const pdfBase64 = (data as any)?.pdfBase64;
+      const filename = (data as any)?.filename;
+      
+      if (!pdfBase64) {
+        toast.error('Błąd generowania PDF');
+        return;
+      }
+      
+      const pdfBlob = base64ToBlob(pdfBase64, 'application/pdf');
+      const url = URL.createObjectURL(pdfBlob);
+      
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename || `Oferta_${offer.offerNumber.replace(/\//g, '-')}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      
+      toast.success('PDF pobrany');
+    } catch (err) {
+      console.error('PDF download error:', err);
+      toast.error('Błąd pobierania PDF');
+    } finally {
+      setIsGeneratingPDF(false);
+    }
   };
 
   // Calculate total with optional selections
@@ -629,36 +742,55 @@ export default function OfferView() {
               <p className="text-lg font-medium">{formatPrice(calculatedTotals.gross - calculatedTotals.net)}</p>
             </div>
             
-            {/* Admin actions */}
-            {isAuthenticated && offer && (
+            {/* Actions */}
+            {offer && (
               <div className="flex items-center gap-2">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => navigate(-1)}
-                >
-                  <ArrowLeft className="w-4 h-4 mr-2" />
-                  Wróć
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => navigate(`/nowa-oferta?edit=${offer.id}`)}
-                >
-                  <Pencil className="w-4 h-4 mr-2" />
-                  Edytuj
-                </Button>
+                {isAuthenticated && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => navigate(-1)}
+                  >
+                    <ArrowLeft className="w-4 h-4 mr-2" />
+                    Wróć
+                  </Button>
+                )}
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => {
-                    // TODO: Implement duplicate - for now just navigate to new offer
-                    navigate('/nowa-oferta');
-                  }}
+                  onClick={handleDownloadPDF}
+                  disabled={isGeneratingPDF}
                 >
-                  <Copy className="w-4 h-4 mr-2" />
-                  Duplikuj
+                  {isGeneratingPDF ? (
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  ) : (
+                    <FileDown className="w-4 h-4 mr-2" />
+                  )}
+                  Pobierz PDF
                 </Button>
+                {isAuthenticated && (
+                  <>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => navigate(`/nowa-oferta?edit=${offer.id}`)}
+                    >
+                      <Pencil className="w-4 h-4 mr-2" />
+                      Edytuj
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        // TODO: Implement duplicate - for now just navigate to new offer
+                        navigate('/nowa-oferta');
+                      }}
+                    >
+                      <Copy className="w-4 h-4 mr-2" />
+                      Duplikuj
+                    </Button>
+                  </>
+                )}
               </div>
             )}
             
