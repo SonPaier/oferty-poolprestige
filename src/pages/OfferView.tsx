@@ -734,16 +734,7 @@ export default function OfferView() {
       <footer className="fixed bottom-0 left-0 right-0 bg-background/95 backdrop-blur-sm border-t border-border">
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-between gap-4">
-            <div>
-              <p className="text-sm text-muted-foreground">Suma netto</p>
-              <p className="text-lg font-semibold">{formatPrice(calculatedTotals.net)}</p>
-            </div>
-            <div className="text-center hidden sm:block">
-              <p className="text-sm text-muted-foreground">VAT 23%</p>
-              <p className="text-lg font-medium">{formatPrice(calculatedTotals.gross - calculatedTotals.net)}</p>
-            </div>
-            
-            {/* Actions */}
+            {/* Actions - left side */}
             {offer && (
               <div className="flex items-center gap-2">
                 {isAuthenticated && (
@@ -795,9 +786,20 @@ export default function OfferView() {
               </div>
             )}
             
-            <div className="text-right">
-              <p className="text-sm text-muted-foreground">Suma brutto</p>
-              <p className="text-2xl font-bold text-primary">{formatPrice(calculatedTotals.gross)}</p>
+            {/* Amounts - right side */}
+            <div className="flex items-center gap-6 ml-auto">
+              <div className="hidden sm:block">
+                <p className="text-sm text-muted-foreground">Suma netto</p>
+                <p className="text-lg font-semibold">{formatPrice(calculatedTotals.net)}</p>
+              </div>
+              <div className="text-center hidden md:block">
+                <p className="text-sm text-muted-foreground">VAT 23%</p>
+                <p className="text-lg font-medium">{formatPrice(calculatedTotals.gross - calculatedTotals.net)}</p>
+              </div>
+              <div className="text-right">
+                <p className="text-sm text-muted-foreground">Suma brutto</p>
+                <p className="text-2xl font-bold text-primary">{formatPrice(calculatedTotals.gross)}</p>
+              </div>
             </div>
           </div>
         </div>
