@@ -7,14 +7,18 @@ import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { 
   Ruler, 
   Droplets, 
   ArrowLeft,
   Info,
   Waves,
-  Pencil
+  Pencil,
+  Box,
+  Calculator
 } from 'lucide-react';
+import { Pool3DVisualization } from '@/components/Pool3DVisualization';
 import { PoolType, PoolShape, PoolOverflowType, poolTypeLabels, poolShapeLabels, overflowTypeLabels, nominalLoadByType, CustomPoolVertex } from '@/types/configurator';
 import { calculatePoolMetrics, calculateFoilOptimization } from '@/lib/calculations';
 import { CustomPoolDrawer } from '@/components/CustomPoolDrawer';
@@ -377,81 +381,108 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
           </div>
         </div>
 
-        {/* Right: Calculations summary */}
+        {/* Right: 3D Visualization & Calculations */}
         <div className="glass-card p-6">
-          <div className="flex items-center gap-2 mb-4">
-            <Droplets className="w-5 h-5 text-primary" />
-            <h3 className="text-base font-medium">Obliczenia</h3>
-          </div>
-
-          {calculations && (
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="p-4 rounded-lg bg-primary/10 border border-primary/20">
-                  <p className="text-xs text-muted-foreground uppercase tracking-wide">Objętość</p>
-                  <p className="text-2xl font-bold text-primary">
-                    {calculations.volume.toFixed(1)} <span className="text-sm font-normal">m³</span>
-                  </p>
-                </div>
-                
-                <div className="p-4 rounded-lg bg-muted/50 border border-border">
-                  <p className="text-xs text-muted-foreground uppercase tracking-wide">Powierzchnia lustra</p>
-                  <p className="text-2xl font-bold">
-                    {calculations.surfaceArea.toFixed(1)} <span className="text-sm font-normal">m²</span>
-                  </p>
-                </div>
+          <Tabs defaultValue="3d" className="w-full">
+            <TabsList className="grid w-full grid-cols-2 mb-4">
+              <TabsTrigger value="3d" className="flex items-center gap-2">
+                <Box className="w-4 h-4" />
+                Wizualizacja 3D
+              </TabsTrigger>
+              <TabsTrigger value="calculations" className="flex items-center gap-2">
+                <Calculator className="w-4 h-4" />
+                Obliczenia
+              </TabsTrigger>
+            </TabsList>
+            
+            <TabsContent value="3d" className="space-y-4">
+              <Pool3DVisualization 
+                dimensions={dimensions}
+                calculations={calculations}
+                showFoilLayout={true}
+                rollWidth={1.65}
+              />
+              <p className="text-xs text-muted-foreground text-center">
+                Wizualizacja w skali z liniami wymiarowymi i układem folii
+              </p>
+            </TabsContent>
+            
+            <TabsContent value="calculations">
+              <div className="flex items-center gap-2 mb-4">
+                <Droplets className="w-5 h-5 text-primary" />
+                <h3 className="text-base font-medium">Obliczenia</h3>
               </div>
 
-              <div className="grid grid-cols-2 gap-3 text-sm">
-                <div className="flex justify-between p-3 rounded-lg bg-muted/30">
-                  <span className="text-muted-foreground">Powierzchnia ścian</span>
-                  <span className="font-medium">{calculations.wallArea.toFixed(1)} m²</span>
-                </div>
-                <div className="flex justify-between p-3 rounded-lg bg-muted/30">
-                  <span className="text-muted-foreground">Obwód</span>
-                  <span className="font-medium">{calculations.perimeterLength.toFixed(1)} m</span>
-                </div>
-                <div className="flex justify-between p-3 rounded-lg bg-muted/30">
-                  <span className="text-muted-foreground">Głębokość wody</span>
-                  <span className="font-medium">{calculations.waterDepth.toFixed(2)} m</span>
-                </div>
-                <div className="flex justify-between p-3 rounded-lg bg-muted/30">
-                  <span className="text-muted-foreground">Typ przelewu</span>
-                  <span className="font-medium">{overflowTypeLabels[dimensions.overflowType]}</span>
-                </div>
-              </div>
-
-              <div className="p-4 rounded-lg bg-accent/10 border border-accent/20">
-                <div className="flex items-start gap-2">
-                  <Info className="w-4 h-4 text-accent mt-0.5" />
-                  <div>
-                    <p className="text-sm font-medium text-accent">Wydajność filtracji (DIN)</p>
-                    <p className="text-2xl font-bold mt-1">
-                      {calculations.requiredFlow.toFixed(1)} <span className="text-sm font-normal">m³/h</span>
-                    </p>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Formuła: (0.37 × {calculations.volume.toFixed(1)}) / {nominalLoadByType[poolType]}
-                      {isPublicPool && dimensions.attractions > 0 && ` + (6 × ${dimensions.attractions})`}
-                    </p>
+              {calculations && (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="p-4 rounded-lg bg-primary/10 border border-primary/20">
+                      <p className="text-xs text-muted-foreground uppercase tracking-wide">Objętość</p>
+                      <p className="text-2xl font-bold text-primary">
+                        {calculations.volume.toFixed(1)} <span className="text-sm font-normal">m³</span>
+                      </p>
+                    </div>
+                    
+                    <div className="p-4 rounded-lg bg-muted/50 border border-border">
+                      <p className="text-xs text-muted-foreground uppercase tracking-wide">Powierzchnia lustra</p>
+                      <p className="text-2xl font-bold">
+                        {calculations.surfaceArea.toFixed(1)} <span className="text-sm font-normal">m²</span>
+                      </p>
+                    </div>
                   </div>
-                </div>
-              </div>
 
-              {state.foilCalculation && (
-                <div className="p-4 rounded-lg bg-muted/30 border border-border">
-                  <p className="text-sm font-medium mb-2">Szacunkowe zapotrzebowanie folii</p>
-                  <p className="text-lg font-bold">
-                    {state.foilCalculation.totalArea.toFixed(1)} m²
-                  </p>
-                  {dimensions.isIrregular && (
-                    <p className="text-xs text-warning mt-1">
-                      + {companySettings.irregularSurchargePercent}% za kształt nieregularny
-                    </p>
+                  <div className="grid grid-cols-2 gap-3 text-sm">
+                    <div className="flex justify-between p-3 rounded-lg bg-muted/30">
+                      <span className="text-muted-foreground">Powierzchnia ścian</span>
+                      <span className="font-medium">{calculations.wallArea.toFixed(1)} m²</span>
+                    </div>
+                    <div className="flex justify-between p-3 rounded-lg bg-muted/30">
+                      <span className="text-muted-foreground">Obwód</span>
+                      <span className="font-medium">{calculations.perimeterLength.toFixed(1)} m</span>
+                    </div>
+                    <div className="flex justify-between p-3 rounded-lg bg-muted/30">
+                      <span className="text-muted-foreground">Głębokość wody</span>
+                      <span className="font-medium">{calculations.waterDepth.toFixed(2)} m</span>
+                    </div>
+                    <div className="flex justify-between p-3 rounded-lg bg-muted/30">
+                      <span className="text-muted-foreground">Typ przelewu</span>
+                      <span className="font-medium">{overflowTypeLabels[dimensions.overflowType]}</span>
+                    </div>
+                  </div>
+
+                  <div className="p-4 rounded-lg bg-accent/10 border border-accent/20">
+                    <div className="flex items-start gap-2">
+                      <Info className="w-4 h-4 text-accent mt-0.5" />
+                      <div>
+                        <p className="text-sm font-medium text-accent">Wydajność filtracji (DIN)</p>
+                        <p className="text-2xl font-bold mt-1">
+                          {calculations.requiredFlow.toFixed(1)} <span className="text-sm font-normal">m³/h</span>
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Formuła: (0.37 × {calculations.volume.toFixed(1)}) / {nominalLoadByType[poolType]}
+                          {isPublicPool && dimensions.attractions > 0 && ` + (6 × ${dimensions.attractions})`}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {state.foilCalculation && (
+                    <div className="p-4 rounded-lg bg-muted/30 border border-border">
+                      <p className="text-sm font-medium mb-2">Szacunkowe zapotrzebowanie folii</p>
+                      <p className="text-lg font-bold">
+                        {state.foilCalculation.totalArea.toFixed(1)} m²
+                      </p>
+                      {dimensions.isIrregular && (
+                        <p className="text-xs text-warning mt-1">
+                          + {companySettings.irregularSurchargePercent}% za kształt nieregularny
+                        </p>
+                      )}
+                    </div>
                   )}
                 </div>
               )}
-            </div>
-          )}
+            </TabsContent>
+          </Tabs>
         </div>
       </div>
 
