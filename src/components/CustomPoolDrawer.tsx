@@ -3,7 +3,7 @@ import { Canvas as FabricCanvas, Circle, Line, Polygon, Text, FabricObject } fro
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Trash2, RotateCcw, Check, MousePointer, Plus, Grid3X3, Footprints, Baby, Waves } from 'lucide-react';
+import { Trash2, RotateCcw, Check, MousePointer, Plus, Grid3X3, Footprints, Baby, Waves, ArrowDown, RotateCw } from 'lucide-react';
 import { toast } from 'sonner';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
@@ -23,12 +23,14 @@ interface CustomPoolDrawerProps {
     area: number, 
     perimeter: number,
     stairsVertices?: Point[],
-    wadingPoolVertices?: Point[]
+    wadingPoolVertices?: Point[],
+    stairsRotation?: number
   ) => void;
   onCancel: () => void;
   initialPoolVertices?: Point[];
   initialStairsVertices?: Point[];
   initialWadingPoolVertices?: Point[];
+  initialStairsRotation?: number;
 }
 
 const GRID_SIZE = 50; // pixels per meter
@@ -53,7 +55,8 @@ export function CustomPoolDrawer({
   onCancel, 
   initialPoolVertices,
   initialStairsVertices,
-  initialWadingPoolVertices 
+  initialWadingPoolVertices,
+  initialStairsRotation 
 }: CustomPoolDrawerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fabricRef = useRef<FabricCanvas | null>(null);
@@ -62,6 +65,9 @@ export function CustomPoolDrawer({
   const [poolVertices, setPoolVertices] = useState<Point[]>(initialPoolVertices || []);
   const [stairsVertices, setStairsVertices] = useState<Point[]>(initialStairsVertices || []);
   const [wadingPoolVertices, setWadingPoolVertices] = useState<Point[]>(initialWadingPoolVertices || []);
+  
+  // Stairs rotation (0, 90, 180, 270 degrees) - indicates entry direction
+  const [stairsRotation, setStairsRotation] = useState<number>(initialStairsRotation || 0);
   
   const [currentMode, setCurrentMode] = useState<DrawingMode>('pool');
   const [isDrawing, setIsDrawing] = useState(!initialPoolVertices || initialPoolVertices.length < 3);
@@ -481,8 +487,23 @@ export function CustomPoolDrawer({
       area, 
       perimeter,
       stairsVertices.length >= 3 ? stairsVertices : undefined,
-      wadingPoolVertices.length >= 3 ? wadingPoolVertices : undefined
+      wadingPoolVertices.length >= 3 ? wadingPoolVertices : undefined,
+      stairsVertices.length >= 3 ? stairsRotation : undefined
     );
+  };
+
+  const handleRotateStairs = () => {
+    setStairsRotation((prev) => (prev + 90) % 360);
+  };
+
+  const getRotationLabel = (rotation: number): string => {
+    switch (rotation) {
+      case 0: return 'Wejście od góry ↓';
+      case 90: return 'Wejście od lewej →';
+      case 180: return 'Wejście od dołu ↑';
+      case 270: return 'Wejście od prawej ←';
+      default: return '';
+    }
   };
 
   const updateVertexCoordinate = (index: number, axis: 'x' | 'y', value: number) => {
@@ -539,6 +560,12 @@ export function CustomPoolDrawer({
           )}
         </div>
         <div className="flex gap-2">
+          {currentMode === 'stairs' && stairsVertices.length >= 3 && (
+            <Button variant="secondary" size="sm" onClick={handleRotateStairs}>
+              <RotateCw className="w-4 h-4 mr-1" />
+              {getRotationLabel(stairsRotation)}
+            </Button>
+          )}
           <Button variant="outline" size="sm" onClick={handleReset}>
             <RotateCcw className="w-4 h-4 mr-1" />
             Reset {MODE_LABELS[currentMode]}
