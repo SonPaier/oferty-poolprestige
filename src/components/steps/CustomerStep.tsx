@@ -288,7 +288,7 @@ export function CustomerStep({ onNext }: CustomerStepProps) {
       <div className="section-header">
         <User className="w-5 h-5 text-primary" />
         Dane klienta
-      </div)
+      </div>
 
       {/* AI Extraction Input */}
       <div className="glass-card p-4 mb-6">
