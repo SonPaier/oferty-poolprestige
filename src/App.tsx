@@ -1,5 +1,4 @@
-import { Toaster } from "@/components/ui/toaster";
-import { Toaster as Sonner } from "@/components/ui/sonner";
+import { Toaster } from "sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createBrowserRouter, RouterProvider } from "react-router-dom";
@@ -77,8 +76,7 @@ const App = () => (
     <TooltipProvider>
       <AuthProvider>
         <SettingsProvider>
-          <Toaster />
-          <Sonner />
+          <Toaster position="top-right" richColors duration={2000} />
           <RouterProvider router={router} />
         </SettingsProvider>
       </AuthProvider>
