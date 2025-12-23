@@ -353,6 +353,7 @@ function ConfiguratorContent() {
         isSaving={isSaving}
         hasChanges={hasUnsavedChanges}
         isEditMode={state.editMode.isEditing}
+        sourceEmail={state.customerData.sourceEmail}
       />
 
       <SettingsDialog
