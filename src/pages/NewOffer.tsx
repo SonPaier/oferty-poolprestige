@@ -18,7 +18,7 @@ import { SummaryStep } from '@/components/steps/SummaryStep';
 import { SettingsDialog } from '@/components/SettingsDialog';
 import { UnsavedChangesDialog } from '@/components/UnsavedChangesDialog';
 import { useOfferSave } from '@/hooks/useOfferSave';
-import { Toaster, toast } from 'sonner';
+import { toast } from 'sonner';
 import { getOfferByIdFromDb } from '@/lib/offerDb';
 
 const DRAFT_STORAGE_KEY = 'pool_prestige_draft';
@@ -379,7 +379,6 @@ const NewOffer = () => {
   return (
     <ConfiguratorProvider>
       <ConfiguratorContent />
-      <Toaster position="top-right" richColors />
     </ConfiguratorProvider>
   );
 };
