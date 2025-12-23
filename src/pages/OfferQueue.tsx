@@ -227,6 +227,25 @@ export default function OfferQueue() {
                 {filteredOffers.map((offer) => {
                   const { dueDate, daysUntilDue, isOverdue } = getDueDateInfo(offer.createdAt, dueDays);
                   
+                  const visitedKey = 'poolprestige.visitedOffers.v1';
+                  let isNew = false;
+                  try {
+                    const visited = JSON.parse(localStorage.getItem(visitedKey) || '[]') as string[];
+                    isNew = !visited.includes(offer.id);
+                  } catch {
+                    isNew = true;
+                  }
+
+                  const markVisited = () => {
+                    try {
+                      const visited = JSON.parse(localStorage.getItem(visitedKey) || '[]') as string[];
+                      const next = Array.from(new Set([...visited, offer.id]));
+                      localStorage.setItem(visitedKey, JSON.stringify(next));
+                    } catch {
+                      localStorage.setItem(visitedKey, JSON.stringify([offer.id]));
+                    }
+                  };
+
                   return (
                     <TableRow 
                       key={offer.id}
@@ -237,7 +256,15 @@ export default function OfferQueue() {
                           {isOverdue && (
                             <AlertTriangle className="w-4 h-4 text-destructive" />
                           )}
-                          {offer.offerNumber}
+                          <span>{offer.offerNumber}</span>
+                          {isNew && (
+                            <Badge 
+                              variant="secondary" 
+                              className="bg-primary/15 text-primary border border-primary/30"
+                            >
+                              Nowa
+                            </Badge>
+                          )}
                         </div>
                       </TableCell>
                       <TableCell>
@@ -275,7 +302,10 @@ export default function OfferQueue() {
                           <Button
                             variant="ghost"
                             size="icon"
-                            onClick={() => navigate(`/nowa-oferta?edit=${offer.id}`)}
+                            onClick={() => {
+                              markVisited();
+                              navigate(`/nowa-oferta?edit=${offer.id}`);
+                            }}
                             title="Edytuj ofertę"
                             className="text-primary hover:text-primary"
                           >
@@ -284,7 +314,10 @@ export default function OfferQueue() {
                           <Button
                             variant="ghost"
                             size="icon"
-                            onClick={() => navigate(`/oferta/${offer.shareUid}`)}
+                            onClick={() => {
+                              markVisited();
+                              navigate(`/oferta/${offer.shareUid}`);
+                            }}
                             title="Podgląd"
                           >
                             <FileText className="w-4 h-4" />
@@ -320,6 +353,7 @@ export default function OfferQueue() {
                     </TableRow>
                   );
                 })}
+
               </TableBody>
             </Table>
           )}
