@@ -6,19 +6,39 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, svix-id, svix-timestamp, svix-signature",
 };
 
-// Flexible payload structure for Zapier
+// Flexible payload structure for Zapier Email Parser
 interface EmailPayload {
-  // Direct Zapier fields (flat structure) - based on screenshot
+  // Zapier Email Parser nested structure
+  email?: {
+    sender?: {
+      email?: string;
+      name?: string;
+    };
+    recipient?: string;
+    subject?: string;
+    body_plain?: string;
+    body_html?: string;
+    attachment?: unknown; // File object from Zapier
+    cc?: string;
+    reply_to?: string;
+  };
+  mailbox?: {
+    address?: string;
+    template?: string;
+  };
+  parse?: {
+    payload?: string;
+  };
+  // Direct flat fields (alternative format)
   from?: string;
   to?: string;
   subject?: string;
-  text?: string;           // Body Plain in Zapier
-  html?: string;           // Body Html in Zapier
-  attachment_urls?: string | string[]; // Can be single URL or array
-  // Alternative field names
+  text?: string;
+  html?: string;
   body_plain?: string;
   body_html?: string;
-  attachments?: string;    // Comma-separated URLs
+  attachment_urls?: string | string[];
+  attachments?: string;
 }
 
 serve(async (req: Request): Promise<Response> => {
@@ -32,17 +52,19 @@ serve(async (req: Request): Promise<Response> => {
     
     console.log("📧 Raw payload received:", JSON.stringify(payload, null, 2));
     
-    // Normalize data - handle Zapier flat structure
+    // Normalize data - handle both Zapier Email Parser nested structure and flat structure
     const emailData = {
-      from: payload.from || "",
-      to: payload.to || "",
-      subject: payload.subject || "(brak tematu)",
-      text: payload.text || payload.body_plain || "",
-      html: payload.html || payload.body_html || "",
+      from: payload.email?.sender?.email || payload.from || "",
+      fromName: payload.email?.sender?.name || "",
+      to: payload.email?.recipient || payload.to || "",
+      subject: payload.email?.subject || payload.subject || "(brak tematu)",
+      text: payload.email?.body_plain || payload.text || payload.body_plain || payload.parse?.payload || "",
+      html: payload.email?.body_html || payload.html || payload.body_html || "",
     };
 
     console.log("📧 Normalized email data:", {
       from: emailData.from,
+      fromName: emailData.fromName,
       to: emailData.to,
       subject: emailData.subject,
       textLength: emailData.text?.length || 0,
@@ -57,7 +79,7 @@ serve(async (req: Request): Promise<Response> => {
           success: false, 
           error: "Missing 'from' field",
           received_keys: Object.keys(payload),
-          hint: "Make sure Zapier is sending 'from' field with the sender email"
+          hint: "Expected email.sender.email or from field"
         }),
         { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
       );
@@ -77,20 +99,23 @@ serve(async (req: Request): Promise<Response> => {
       path: string;
     }> = [];
 
-    // Handle Zapier-style attachments (URLs)
+    // Handle Zapier-style attachments (URLs) - check multiple formats
     let attachmentUrls: string[] = [];
     
-    // Handle different formats from Zapier
     if (payload.attachment_urls) {
       if (Array.isArray(payload.attachment_urls)) {
         attachmentUrls = payload.attachment_urls.filter(Boolean);
       } else if (typeof payload.attachment_urls === 'string') {
-        // Can be single URL or comma-separated
         attachmentUrls = payload.attachment_urls.split(',').map(url => url.trim()).filter(Boolean);
       }
     } else if (payload.attachments && typeof payload.attachments === 'string') {
-      // Comma-separated URLs
       attachmentUrls = payload.attachments.split(',').map(url => url.trim()).filter(Boolean);
+    }
+
+    // Note: Zapier's email.attachment is a File Object, not a URL
+    // This would need special handling through Zapier's file hydration
+    if (payload.email?.attachment) {
+      console.log("📎 Zapier attachment detected (File Object) - requires URL mapping in Zapier");
     }
 
     console.log(`📎 Found ${attachmentUrls.length} attachment URLs to process`);
@@ -105,7 +130,6 @@ serve(async (req: Request): Promise<Response> => {
 
           console.log(`📥 Downloading attachment from: ${attachmentUrl}`);
 
-          // Download the attachment
           const response = await fetch(attachmentUrl);
           if (!response.ok) {
             console.error(`❌ Failed to download attachment from ${attachmentUrl}: ${response.status}`);
@@ -115,13 +139,11 @@ serve(async (req: Request): Promise<Response> => {
           const contentType = response.headers.get('content-type') || 'application/octet-stream';
           const contentDisposition = response.headers.get('content-disposition') || '';
           
-          // Try to extract filename from content-disposition or URL
           let filename = 'attachment';
           const filenameMatch = contentDisposition.match(/filename[*]?=["']?([^"';\n]+)/i);
           if (filenameMatch) {
             filename = filenameMatch[1];
           } else {
-            // Extract from URL
             try {
               const urlParts = new URL(attachmentUrl);
               const pathParts = urlParts.pathname.split('/');
@@ -174,7 +196,7 @@ serve(async (req: Request): Promise<Response> => {
 
     // Extract customer data from email
     const emailContent = emailData.text || emailData.html || "";
-    const customerData = extractCustomerData(emailData.from, emailContent);
+    const customerData = extractCustomerData(emailData.from, emailData.fromName, emailContent);
 
     // Generate offer number
     const now = new Date();
@@ -215,7 +237,6 @@ serve(async (req: Request): Promise<Response> => {
       },
       customer_data: {
         ...customerData,
-        // Store original email content for AI extraction later
         sourceEmail: emailContent.substring(0, 10000),
         emailSubject: emailData.subject,
         attachments: uploadedAttachments,
@@ -271,7 +292,7 @@ serve(async (req: Request): Promise<Response> => {
 });
 
 // Helper function to extract customer data from email
-function extractCustomerData(from: string, content: string): {
+function extractCustomerData(fromEmail: string, fromName: string, content: string): {
   companyName: string;
   contactPerson: string;
   email: string;
@@ -280,13 +301,8 @@ function extractCustomerData(from: string, content: string): {
   city: string;
   postalCode: string;
 } {
-  // Extract email from "Name <email@example.com>" format
-  const emailMatch = from.match(/<(.+)>/) || [null, from];
-  const email = emailMatch[1] || from;
-  
-  // Extract name from "Name <email@example.com>" format
-  const nameMatch = from.match(/^([^<]+)/);
-  const contactPerson = nameMatch ? nameMatch[1].trim() : "";
+  const email = fromEmail;
+  const contactPerson = fromName || "";
 
   // Try to find phone number in content
   const phoneMatch = content.match(/(?:\+48|48)?[\s.-]?(\d{3})[\s.-]?(\d{3})[\s.-]?(\d{3})/);
