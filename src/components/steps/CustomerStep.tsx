@@ -74,6 +74,14 @@ export function CustomerStep({ onNext }: CustomerStepProps) {
     }
   }, [uploadedFiles]);
 
+  // Prefill AI extraction textarea with saved email (np. forward z Zapier)
+  useEffect(() => {
+    const source = customerData.sourceEmail || '';
+    if (!source.trim()) return;
+
+    setEmailInput((prev) => (prev.trim() ? prev : source));
+  }, [customerData.sourceEmail]);
+
   const updateField = (field: keyof typeof customerData, value: string) => {
     dispatch({
       type: 'SET_CUSTOMER_DATA',
@@ -265,8 +273,6 @@ export function CustomerStep({ onNext }: CustomerStepProps) {
       toast.success('Dane wyekstrahowane', {
         description: 'Sprawdź i uzupełnij brakujące pola',
       });
-
-      setEmailInput('');
     } catch (err) {
       console.error('Extract error:', err);
       toast.error('Błąd połączenia');
@@ -282,22 +288,7 @@ export function CustomerStep({ onNext }: CustomerStepProps) {
       <div className="section-header">
         <User className="w-5 h-5 text-primary" />
         Dane klienta
-      </div>
-
-      {/* Saved Source Email Display */}
-      {customerData.sourceEmail && (
-        <div className="glass-card p-4 mb-6 border-l-4 border-l-primary/50">
-          <div className="flex items-center gap-2 mb-3">
-            <Mail className="w-5 h-5 text-primary" />
-            <h3 className="font-medium">Treść zapytania</h3>
-          </div>
-          <div className="bg-muted/50 rounded-md p-3 max-h-[150px] overflow-y-auto">
-            <pre className="text-sm whitespace-pre-wrap font-sans text-muted-foreground">
-              {customerData.sourceEmail}
-            </pre>
-          </div>
-        </div>
-      )}
+      </div)
 
       {/* AI Extraction Input */}
       <div className="glass-card p-4 mb-6">

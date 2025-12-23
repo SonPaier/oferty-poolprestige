@@ -115,7 +115,7 @@ export async function getQueueOffers(): Promise<(SavedOffer & { shareUid: string
     .from('offers')
     .select('*')
     .in('status', ['queue', 'draft'])
-    .order('created_at', { ascending: true });
+    .order('created_at', { ascending: false });
 
   if (error) {
     console.error('Error fetching queue offers:', error);
