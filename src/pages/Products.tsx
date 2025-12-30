@@ -11,7 +11,6 @@ import { DbProduct, getDbProductPriceInPLN } from '@/hooks/useProducts';
 import { ProductEditDialog } from '@/components/ProductEditDialog';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
-import * as XLSX from 'xlsx';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 
 export default function Products() {
@@ -56,12 +55,12 @@ export default function Products() {
     try {
       const { data: allProducts, error } = await supabase
         .from('products')
-        .select('symbol, name, price, currency, description, stock_quantity, category')
+        .select('symbol, name, price, currency, description, stock_quantity, category, foil_category, foil_width')
         .order('name');
 
       if (error) throw error;
 
-      const headers = ['Symbol', 'Nazwa', 'Cena', 'Waluta', 'Opis', 'Stan magazynowy', 'Kategoria'];
+      const headers = ['Symbol', 'Nazwa', 'Cena', 'Waluta', 'Opis', 'Stan magazynowy', 'Kategoria', 'Kategoria folii', 'Szerokość folii'];
       const csvRows = [
         headers.join(';'),
         ...(allProducts || []).map(p => [
@@ -72,6 +71,8 @@ export default function Products() {
           p.description || '',
           p.stock_quantity || 0,
           p.category || '',
+          (p as any).foil_category || '',
+          (p as any).foil_width || '',
         ].map(v => `"${String(v).replace(/"/g, '""')}"`).join(';')),
       ];
 
@@ -90,32 +91,51 @@ export default function Products() {
     }
   };
 
-  // Import from XLSX
-  const handleImportXLSX = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Import from CSV
+  const handleImportCSV = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     setIsImporting(true);
     try {
-      const buffer = await file.arrayBuffer();
-      const workbook = XLSX.read(buffer, { type: 'array' });
-      const sheetName = workbook.SheetNames[0];
-      const sheet = workbook.Sheets[sheetName];
-      const jsonData = XLSX.utils.sheet_to_json(sheet, { header: 1 }) as unknown[][];
-
-      // Skip header row
-      const products = jsonData.slice(1).map((row: unknown[]) => ({
-        symbol: String(row[0] || '').trim(),
-        name: String(row[1] || '').trim(),
-        price: parseFloat(String(row[2] || 0)) || 0,
-        currency: (String(row[3] || 'PLN').toUpperCase() === 'EUR' ? 'EUR' : 'PLN'),
-        description: String(row[4] || '').trim() || null,
-        stock_quantity: parseInt(String(row[5] || 0)) || 0,
-        category: String(row[6] || '').trim() || null,
-      })).filter(p => p.symbol);
+      const text = await file.text();
+      const lines = text.split('\n').filter(line => line.trim());
+      
+      // Skip header row, parse CSV
+      const products = lines.slice(1).map(line => {
+        // Parse CSV with semicolon separator and quoted values
+        const values: string[] = [];
+        let current = '';
+        let inQuotes = false;
+        
+        for (let i = 0; i < line.length; i++) {
+          const char = line[i];
+          if (char === '"') {
+            inQuotes = !inQuotes;
+          } else if (char === ';' && !inQuotes) {
+            values.push(current.trim());
+            current = '';
+          } else {
+            current += char;
+          }
+        }
+        values.push(current.trim());
+        
+        return {
+          symbol: values[0] || '',
+          name: values[1] || '',
+          price: parseFloat(values[2] || '0') || 0,
+          currency: (values[3]?.toUpperCase() === 'EUR' ? 'EUR' : 'PLN'),
+          description: values[4] || null,
+          stock_quantity: parseInt(values[5] || '0') || 0,
+          category: values[6] || null,
+          foil_category: values[7] || null,
+          foil_width: values[8] ? parseFloat(values[8]) : null,
+        };
+      }).filter(p => p.symbol);
 
       if (importMode === 'partial') {
-        // Partial update - only update existing products
+        // Partial update - only update existing products by symbol
         let updated = 0;
         for (const product of products) {
           const { error } = await supabase
@@ -127,6 +147,8 @@ export default function Products() {
               description: product.description,
               stock_quantity: product.stock_quantity,
               category: product.category,
+              foil_category: product.foil_category,
+              foil_width: product.foil_width,
             })
             .eq('symbol', product.symbol);
           
@@ -248,7 +270,7 @@ export default function Products() {
                   ) : (
                     <Upload className="w-4 h-4 mr-2" />
                   )}
-                  Import XLSX
+                  Import CSV
                 </Button>
                 <Button
                   variant="outline"
@@ -265,9 +287,9 @@ export default function Products() {
                 <input
                   ref={fileInputRef}
                   type="file"
-                  accept=".xlsx,.xls"
+                  accept=".csv"
                   className="hidden"
-                  onChange={handleImportXLSX}
+                  onChange={handleImportCSV}
                 />
               </div>
             </div>

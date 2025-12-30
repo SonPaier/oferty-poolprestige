@@ -144,6 +144,20 @@ export interface AttachmentInfo {
   path: string;
 }
 
+export interface ContactPerson {
+  name: string;
+  email: string;
+  phone: string;
+  role?: string; // np. "Właściciel", "Kierownik budowy"
+}
+
+export interface InvestmentAddress {
+  enabled: boolean;
+  address: string;
+  city: string;
+  postalCode: string;
+}
+
 export interface CustomerData {
   companyName: string;
   contactPerson: string;
@@ -153,8 +167,11 @@ export interface CustomerData {
   city: string;
   postalCode: string;
   nip?: string;
-  sourceEmail?: string; // Original email content used for this offer
-  attachments?: AttachmentInfo[]; // Uploaded attachments
+  sourceEmail?: string;
+  attachments?: AttachmentInfo[];
+  // New fields
+  additionalContacts?: ContactPerson[];
+  investmentAddress?: InvestmentAddress;
 }
 
 export interface OfferItem {

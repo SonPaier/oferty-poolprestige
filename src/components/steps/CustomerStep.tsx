@@ -4,9 +4,11 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { User, Building, Mail, Phone, MapPin, Sparkles, Loader2, Paperclip, X, FileText, Image as ImageIcon, FileSpreadsheet, Download, Pencil, Check, Calendar } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
+import { User, Building, Mail, Phone, MapPin, Sparkles, Loader2, Paperclip, X, FileText, Image as ImageIcon, FileSpreadsheet, Download, Pencil, Check, Calendar, Plus, Trash2, MapPinned, UserPlus } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { ContactPerson, InvestmentAddress } from '@/types/configurator';
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 const MAX_FILES = 5;
@@ -55,12 +57,32 @@ export function CustomerStep({ onNext }: CustomerStepProps) {
   const [editingFileName, setEditingFileName] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Additional contacts state
+  const [additionalContacts, setAdditionalContacts] = useState<ContactPerson[]>(
+    customerData.additionalContacts || []
+  );
+
+  // Investment address state
+  const [investmentAddress, setInvestmentAddress] = useState<InvestmentAddress>(
+    customerData.investmentAddress || { enabled: false, address: '', city: '', postalCode: '' }
+  );
+
   // Load attachments from customerData when editing existing offer
   useEffect(() => {
     if (customerData.attachments && customerData.attachments.length > 0 && uploadedFiles.length === 0) {
       setUploadedFiles(customerData.attachments as UploadedFile[]);
     }
   }, [customerData.attachments]);
+
+  // Sync additional contacts and investment address
+  useEffect(() => {
+    if (customerData.additionalContacts) {
+      setAdditionalContacts(customerData.additionalContacts);
+    }
+    if (customerData.investmentAddress) {
+      setInvestmentAddress(customerData.investmentAddress);
+    }
+  }, [customerData.additionalContacts, customerData.investmentAddress]);
 
   // Save attachments to customerData whenever they change
   useEffect(() => {
@@ -74,11 +96,30 @@ export function CustomerStep({ onNext }: CustomerStepProps) {
     }
   }, [uploadedFiles]);
 
-  // Prefill AI extraction textarea with saved email (np. forward z Zapier)
+  // Save additional contacts when they change
+  useEffect(() => {
+    if (JSON.stringify(additionalContacts) !== JSON.stringify(customerData.additionalContacts)) {
+      dispatch({
+        type: 'SET_CUSTOMER_DATA',
+        payload: { ...customerData, additionalContacts },
+      });
+    }
+  }, [additionalContacts]);
+
+  // Save investment address when it changes
+  useEffect(() => {
+    if (JSON.stringify(investmentAddress) !== JSON.stringify(customerData.investmentAddress)) {
+      dispatch({
+        type: 'SET_CUSTOMER_DATA',
+        payload: { ...customerData, investmentAddress },
+      });
+    }
+  }, [investmentAddress]);
+
+  // Prefill AI extraction textarea with saved email
   useEffect(() => {
     const source = customerData.sourceEmail || '';
     if (!source.trim()) return;
-
     setEmailInput((prev) => (prev.trim() ? prev : source));
   }, [customerData.sourceEmail]);
 
@@ -87,6 +128,30 @@ export function CustomerStep({ onNext }: CustomerStepProps) {
       type: 'SET_CUSTOMER_DATA',
       payload: { ...customerData, [field]: value },
     });
+  };
+
+  // Contact person handlers
+  const addContact = () => {
+    setAdditionalContacts([...additionalContacts, { name: '', email: '', phone: '', role: '' }]);
+  };
+
+  const updateContact = (index: number, field: keyof ContactPerson, value: string) => {
+    const updated = [...additionalContacts];
+    updated[index] = { ...updated[index], [field]: value };
+    setAdditionalContacts(updated);
+  };
+
+  const removeContact = (index: number) => {
+    setAdditionalContacts(additionalContacts.filter((_, i) => i !== index));
+  };
+
+  // Investment address handlers
+  const toggleInvestmentAddress = (enabled: boolean) => {
+    setInvestmentAddress({ ...investmentAddress, enabled });
+  };
+
+  const updateInvestmentField = (field: keyof InvestmentAddress, value: string) => {
+    setInvestmentAddress({ ...investmentAddress, [field]: value });
   };
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -164,7 +229,6 @@ export function CustomerStep({ onNext }: CustomerStepProps) {
 
   const startEditFileName = (file: UploadedFile) => {
     setEditingFileId(file.path);
-    // Remove extension for editing
     const lastDot = file.name.lastIndexOf('.');
     setEditingFileName(lastDot > 0 ? file.name.substring(0, lastDot) : file.name);
   };
@@ -176,7 +240,6 @@ export function CustomerStep({ onNext }: CustomerStepProps) {
       return;
     }
     
-    // Get original extension
     const lastDot = file.name.lastIndexOf('.');
     const extension = lastDot > 0 ? file.name.substring(lastDot) : '';
     const newName = editingFileName.trim() + extension;
@@ -207,7 +270,6 @@ export function CustomerStep({ onNext }: CustomerStepProps) {
 
     setIsExtracting(true);
     try {
-      // Prepare file info for AI
       const fileInfo = uploadedFiles.map(f => ({
         name: f.name,
         type: f.type,
@@ -231,7 +293,6 @@ export function CustomerStep({ onNext }: CustomerStepProps) {
 
       console.log('Extracted data:', data);
 
-      // Update customer data with extracted info and save source email
       const extracted = data.customerData || {};
       dispatch({
         type: 'SET_CUSTOMER_DATA',
@@ -245,11 +306,10 @@ export function CustomerStep({ onNext }: CustomerStepProps) {
           city: extracted.city || customerData.city,
           postalCode: extracted.postalCode || customerData.postalCode,
           nip: extracted.nip || customerData.nip,
-          sourceEmail: emailInput, // Save original email content
+          sourceEmail: emailInput,
         },
       });
 
-      // Update pool dimensions if found
       if (data.poolDimensions) {
         const dims = data.poolDimensions;
         if (dims.length || dims.width) {
@@ -265,7 +325,6 @@ export function CustomerStep({ onNext }: CustomerStepProps) {
         }
       }
 
-      // Update pool type if found
       if (data.poolType) {
         dispatch({ type: 'SET_POOL_TYPE', payload: data.poolType });
       }
@@ -449,6 +508,7 @@ export function CustomerStep({ onNext }: CustomerStepProps) {
       </div>
       
       <div className="glass-card p-6 space-y-6">
+        {/* Company info */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="space-y-2">
             <Label htmlFor="companyName" className="flex items-center gap-2">
@@ -476,89 +536,229 @@ export function CustomerStep({ onNext }: CustomerStepProps) {
               className="input-field"
             />
           </div>
+        </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="contactPerson" className="flex items-center gap-2">
-              <User className="w-4 h-4 text-muted-foreground" />
-              Osoba kontaktowa *
-            </Label>
-            <Input
-              id="contactPerson"
-              value={customerData.contactPerson}
-              onChange={(e) => updateField('contactPerson', e.target.value)}
-              placeholder="Imię i nazwisko"
-              className="input-field"
-              required
-            />
-          </div>
+        {/* Primary contact */}
+        <div className="border-t pt-6">
+          <h3 className="font-medium mb-4 flex items-center gap-2">
+            <User className="w-4 h-4" />
+            Główna osoba kontaktowa
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="contactPerson">Imię i nazwisko *</Label>
+              <Input
+                id="contactPerson"
+                value={customerData.contactPerson}
+                onChange={(e) => updateField('contactPerson', e.target.value)}
+                placeholder="Imię i nazwisko"
+                className="input-field"
+                required
+              />
+            </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="phone" className="flex items-center gap-2">
-              <Phone className="w-4 h-4 text-muted-foreground" />
-              Telefon
-            </Label>
-            <Input
-              id="phone"
-              type="tel"
-              value={customerData.phone}
-              onChange={(e) => updateField('phone', e.target.value)}
-              placeholder="+48 123 456 789"
-              className="input-field"
-            />
-          </div>
+            <div className="space-y-2">
+              <Label htmlFor="email" className="flex items-center gap-2">
+                <Mail className="w-4 h-4 text-muted-foreground" />
+                Email
+              </Label>
+              <Input
+                id="email"
+                type="email"
+                value={customerData.email}
+                onChange={(e) => updateField('email', e.target.value)}
+                placeholder="email@example.com"
+                className="input-field"
+              />
+            </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="email" className="flex items-center gap-2">
-              <Mail className="w-4 h-4 text-muted-foreground" />
-              Email
-            </Label>
-            <Input
-              id="email"
-              type="email"
-              value={customerData.email}
-              onChange={(e) => updateField('email', e.target.value)}
-              placeholder="email@example.com"
-              className="input-field"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="city" className="flex items-center gap-2">
-              <MapPin className="w-4 h-4 text-muted-foreground" />
-              Miasto
-            </Label>
-            <Input
-              id="city"
-              value={customerData.city}
-              onChange={(e) => updateField('city', e.target.value)}
-              placeholder="Miejscowość"
-              className="input-field"
-            />
-          </div>
-
-          <div className="md:col-span-2 space-y-2">
-            <Label htmlFor="address">Adres</Label>
-            <Input
-              id="address"
-              value={customerData.address}
-              onChange={(e) => updateField('address', e.target.value)}
-              placeholder="Ulica, numer domu"
-              className="input-field"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="postalCode">Kod pocztowy</Label>
-            <Input
-              id="postalCode"
-              value={customerData.postalCode}
-              onChange={(e) => updateField('postalCode', e.target.value)}
-              placeholder="00-000"
-              className="input-field"
-            />
+            <div className="space-y-2">
+              <Label htmlFor="phone" className="flex items-center gap-2">
+                <Phone className="w-4 h-4 text-muted-foreground" />
+                Telefon
+              </Label>
+              <Input
+                id="phone"
+                type="tel"
+                value={customerData.phone}
+                onChange={(e) => updateField('phone', e.target.value)}
+                placeholder="+48 123 456 789"
+                className="input-field"
+              />
+            </div>
           </div>
         </div>
 
+        {/* Additional contacts */}
+        <div className="border-t pt-6">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-medium flex items-center gap-2">
+              <UserPlus className="w-4 h-4" />
+              Dodatkowe osoby kontaktowe
+            </h3>
+            <Button variant="outline" size="sm" onClick={addContact}>
+              <Plus className="w-4 h-4 mr-1" />
+              Dodaj osobę
+            </Button>
+          </div>
+
+          {additionalContacts.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              Brak dodatkowych osób kontaktowych
+            </p>
+          ) : (
+            <div className="space-y-3">
+              {additionalContacts.map((contact, index) => (
+                <div key={index} className="p-4 bg-muted/30 rounded-lg border">
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-sm font-medium text-muted-foreground">
+                      Osoba #{index + 2}
+                    </span>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 text-destructive"
+                      onClick={() => removeContact(index)}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                    <div className="space-y-1">
+                      <Label className="text-xs">Imię i nazwisko</Label>
+                      <Input
+                        value={contact.name}
+                        onChange={(e) => updateContact(index, 'name', e.target.value)}
+                        placeholder="Imię i nazwisko"
+                        className="h-9"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">Email</Label>
+                      <Input
+                        type="email"
+                        value={contact.email}
+                        onChange={(e) => updateContact(index, 'email', e.target.value)}
+                        placeholder="email@example.com"
+                        className="h-9"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">Telefon</Label>
+                      <Input
+                        type="tel"
+                        value={contact.phone}
+                        onChange={(e) => updateContact(index, 'phone', e.target.value)}
+                        placeholder="+48 123 456 789"
+                        className="h-9"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">Rola (opcjonalnie)</Label>
+                      <Input
+                        value={contact.role || ''}
+                        onChange={(e) => updateContact(index, 'role', e.target.value)}
+                        placeholder="np. Kierownik budowy"
+                        className="h-9"
+                      />
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Customer address */}
+        <div className="border-t pt-6">
+          <h3 className="font-medium mb-4 flex items-center gap-2">
+            <MapPin className="w-4 h-4" />
+            Adres klienta
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="md:col-span-2 space-y-2">
+              <Label htmlFor="address">Ulica, numer</Label>
+              <Input
+                id="address"
+                value={customerData.address}
+                onChange={(e) => updateField('address', e.target.value)}
+                placeholder="Ulica, numer domu"
+                className="input-field"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="postalCode">Kod pocztowy</Label>
+              <Input
+                id="postalCode"
+                value={customerData.postalCode}
+                onChange={(e) => updateField('postalCode', e.target.value)}
+                placeholder="00-000"
+                className="input-field"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="city">Miasto</Label>
+              <Input
+                id="city"
+                value={customerData.city}
+                onChange={(e) => updateField('city', e.target.value)}
+                placeholder="Miejscowość"
+                className="input-field"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Investment address */}
+        <div className="border-t pt-6">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-medium flex items-center gap-2">
+              <MapPinned className="w-4 h-4" />
+              Adres inwestycji
+            </h3>
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-muted-foreground">
+                {investmentAddress.enabled ? 'Inny niż adres klienta' : 'Taki sam jak adres klienta'}
+              </span>
+              <Switch
+                checked={investmentAddress.enabled}
+                onCheckedChange={toggleInvestmentAddress}
+              />
+            </div>
+          </div>
+
+          {investmentAddress.enabled && (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 animate-slide-up">
+              <div className="md:col-span-2 space-y-2">
+                <Label>Ulica, numer</Label>
+                <Input
+                  value={investmentAddress.address}
+                  onChange={(e) => updateInvestmentField('address', e.target.value)}
+                  placeholder="Ulica, numer domu"
+                  className="input-field"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Kod pocztowy</Label>
+                <Input
+                  value={investmentAddress.postalCode}
+                  onChange={(e) => updateInvestmentField('postalCode', e.target.value)}
+                  placeholder="00-000"
+                  className="input-field"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Miasto</Label>
+                <Input
+                  value={investmentAddress.city}
+                  onChange={(e) => updateInvestmentField('city', e.target.value)}
+                  placeholder="Miejscowość"
+                  className="input-field"
+                />
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
