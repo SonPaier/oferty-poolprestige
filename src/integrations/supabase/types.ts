@@ -109,6 +109,8 @@ export type Database = {
           created_at: string
           currency: string
           description: string | null
+          foil_category: string | null
+          foil_width: number | null
           id: string
           image_id: string | null
           name: string
@@ -122,6 +124,8 @@ export type Database = {
           created_at?: string
           currency?: string
           description?: string | null
+          foil_category?: string | null
+          foil_width?: number | null
           id?: string
           image_id?: string | null
           name: string
@@ -135,6 +139,8 @@ export type Database = {
           created_at?: string
           currency?: string
           description?: string | null
+          foil_category?: string | null
+          foil_width?: number | null
           id?: string
           image_id?: string | null
           name?: string
