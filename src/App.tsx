@@ -9,6 +9,7 @@ import Dashboard from "./pages/Dashboard";
 import NewOffer from "./pages/NewOffer";
 import Login from "./pages/Login";
 import ImportProducts from "./pages/ImportProducts";
+import Products from "./pages/Products";
 import OfferView from "./pages/OfferView";
 import OfferHistory from "./pages/OfferHistory";
 import OfferQueue from "./pages/OfferQueue";
@@ -62,6 +63,14 @@ const router = createBrowserRouter([
     element: (
       <ProtectedRoute>
         <ImportProducts />
+      </ProtectedRoute>
+    ),
+  },
+  {
+    path: "/produkty",
+    element: (
+      <ProtectedRoute>
+        <Products />
       </ProtectedRoute>
     ),
   },

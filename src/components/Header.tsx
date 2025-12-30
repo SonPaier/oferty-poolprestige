@@ -2,7 +2,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { useState, useEffect } from 'react';
 import logo from '@/assets/logo.png';
-import { Settings, FileText, History, LogOut, Bell, Clock, AlertTriangle, Home, User } from 'lucide-react';
+import { Settings, FileText, History, LogOut, Bell, Clock, AlertTriangle, Home, User, Package } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Popover,
@@ -144,6 +144,16 @@ export function Header({ onSettingsClick, onNewOffer, editMode, showNavLinks = t
                 >
                   <FileText className="w-4 h-4 lg:mr-2" />
                   <span className="hidden lg:inline">Nowa oferta</span>
+                </Button>
+                
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => navigate('/produkty')}
+                  className="text-header-foreground/80 hover:text-header-foreground hover:bg-header-foreground/10"
+                >
+                  <Package className="w-4 h-4 lg:mr-2" />
+                  <span className="hidden lg:inline">Produkty</span>
                 </Button>
               </>
             )}
