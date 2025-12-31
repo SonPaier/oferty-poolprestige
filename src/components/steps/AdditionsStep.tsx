@@ -1,13 +1,14 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { ArrowLeft, ArrowRight, Search, Plus, Minus, Trash2, Package, Loader2 } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Search, Plus, Minus, Trash2, Package, Loader2, Info } from 'lucide-react';
 import { useConfigurator } from '@/context/ConfiguratorContext';
 import { useProducts, useProductsCount, DbProduct, getDbProductPriceInPLN } from '@/hooks/useProducts';
 import { Product } from '@/data/products';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { supabase } from '@/integrations/supabase/client';
 
 interface AdditionsStepProps {
   onNext: () => void;
@@ -33,6 +34,69 @@ export function AdditionsStep({ onNext, onBack }: AdditionsStepProps) {
   const { state, dispatch } = useConfigurator();
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
+  const laddersAddedRef = useRef(false);
+
+  // Check if pool has stairs
+  const hasStairs = state.dimensions.customStairsVertices && 
+                    state.dimensions.customStairsVertices.length > 2;
+
+  // Auto-add ladders if no stairs (only once on mount)
+  useEffect(() => {
+    if (hasStairs || laddersAddedRef.current) return;
+    
+    // Check if ladders already added
+    const hasLadders = state.sections.dodatki.items.some(item => 
+      item.product.name.toLowerCase().includes('drabinka') ||
+      item.product.name.toLowerCase().includes('ladder')
+    );
+    
+    if (hasLadders) {
+      laddersAddedRef.current = true;
+      return;
+    }
+    
+    // Search for ladders in database and add them
+    const addLadders = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('products')
+          .select('*')
+          .ilike('name', '%drabinka%')
+          .gt('price', 0)
+          .limit(1);
+        
+        if (error || !data || data.length === 0) return;
+        
+        const ladderProduct: Product = {
+          id: data[0].id,
+          symbol: data[0].symbol,
+          name: data[0].name,
+          price: data[0].price,
+          currency: data[0].currency as 'PLN' | 'EUR',
+          description: data[0].description || undefined,
+          category: 'akcesoria',
+        };
+        
+        dispatch({
+          type: 'ADD_ITEM',
+          payload: {
+            section: 'dodatki',
+            item: {
+              id: `dodatek-drabinka-${Date.now()}`,
+              product: ladderProduct,
+              quantity: 1,
+            },
+          },
+        });
+        
+        laddersAddedRef.current = true;
+      } catch (err) {
+        console.error('Error adding ladders:', err);
+      }
+    };
+    
+    addLadders();
+  }, [hasStairs, state.sections.dodatki.items, dispatch]);
 
   // Debounce search query
   useEffect(() => {
@@ -126,6 +190,21 @@ export function AdditionsStep({ onNext, onBack }: AdditionsStepProps) {
           {addedItems.length} pozycji
         </Badge>
       </div>
+
+      {/* Info about auto-added ladders */}
+      {!hasStairs && (
+        <div className="p-4 rounded-lg bg-accent/10 border border-accent/20">
+          <div className="flex items-start gap-2">
+            <Info className="w-4 h-4 text-accent mt-0.5" />
+            <div className="text-sm">
+              <p className="font-medium">Drabinka dodana automatycznie</p>
+              <p className="text-muted-foreground">
+                Ponieważ basen nie ma schodów, drabinka została automatycznie dodana do oferty.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="grid lg:grid-cols-2 gap-6">
         {/* Search Section */}

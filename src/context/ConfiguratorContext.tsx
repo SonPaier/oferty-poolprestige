@@ -111,6 +111,8 @@ const initialState: ExtendedConfiguratorState = {
     automatyka: createEmptySection('automatyka', 'Automatyka'),
     atrakcje: createEmptySection('atrakcje', 'Atrakcje'),
     dodatki: createEmptySection('dodatki', 'Dodatki'),
+    roboty_ziemne: { ...createEmptySection('roboty_ziemne', 'Roboty ziemne'), scope: 'our' },
+    prace_budowlane: { ...createEmptySection('prace_budowlane', 'Prace budowlane'), scope: 'our' },
   },
   editMode: initialEditMode,
 };
