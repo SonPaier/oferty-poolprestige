@@ -5,6 +5,7 @@ import { createBrowserRouter, RouterProvider } from "react-router-dom";
 import { AuthProvider } from "@/context/AuthContext";
 import { SettingsProvider } from "@/context/SettingsContext";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
+import { AppLayout } from "@/components/AppLayout";
 import Dashboard from "./pages/Dashboard";
 import NewOffer from "./pages/NewOffer";
 import Login from "./pages/Login";
@@ -30,7 +31,9 @@ const router = createBrowserRouter([
     path: "/",
     element: (
       <ProtectedRoute>
-        <Dashboard />
+        <AppLayout>
+          <Dashboard />
+        </AppLayout>
       </ProtectedRoute>
     ),
   },
@@ -38,7 +41,9 @@ const router = createBrowserRouter([
     path: "/nowa-oferta",
     element: (
       <ProtectedRoute>
-        <NewOffer />
+        <AppLayout>
+          <NewOffer />
+        </AppLayout>
       </ProtectedRoute>
     ),
   },
@@ -46,7 +51,9 @@ const router = createBrowserRouter([
     path: "/historia",
     element: (
       <ProtectedRoute>
-        <OfferHistory />
+        <AppLayout>
+          <OfferHistory />
+        </AppLayout>
       </ProtectedRoute>
     ),
   },
@@ -54,7 +61,9 @@ const router = createBrowserRouter([
     path: "/kolejka",
     element: (
       <ProtectedRoute>
-        <OfferQueue />
+        <AppLayout>
+          <OfferQueue />
+        </AppLayout>
       </ProtectedRoute>
     ),
   },
@@ -62,7 +71,9 @@ const router = createBrowserRouter([
     path: "/import-products",
     element: (
       <ProtectedRoute>
-        <ImportProducts />
+        <AppLayout>
+          <ImportProducts />
+        </AppLayout>
       </ProtectedRoute>
     ),
   },
@@ -70,7 +81,9 @@ const router = createBrowserRouter([
     path: "/produkty",
     element: (
       <ProtectedRoute>
-        <Products />
+        <AppLayout>
+          <Products />
+        </AppLayout>
       </ProtectedRoute>
     ),
   },
