@@ -151,6 +151,68 @@ export type Database = {
         }
         Relationships: []
       }
+      realization_images: {
+        Row: {
+          created_at: string
+          file_name: string
+          file_size: number | null
+          id: string
+          image_url: string
+          realization_id: string
+          sort_order: number
+        }
+        Insert: {
+          created_at?: string
+          file_name: string
+          file_size?: number | null
+          id?: string
+          image_url: string
+          realization_id: string
+          sort_order?: number
+        }
+        Update: {
+          created_at?: string
+          file_name?: string
+          file_size?: number | null
+          id?: string
+          image_url?: string
+          realization_id?: string
+          sort_order?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "realization_images_realization_id_fkey"
+            columns: ["realization_id"]
+            isOneToOne: false
+            referencedRelation: "realizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      realizations: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          name: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          name: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          name?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       settings: {
         Row: {
           company_settings: Json
