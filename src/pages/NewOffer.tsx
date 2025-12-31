@@ -7,7 +7,7 @@ import { StepNavigation } from '@/components/StepNavigation';
 import { BottomNavigationBar } from '@/components/BottomNavigationBar';
 import { CustomerStep } from '@/components/steps/CustomerStep';
 import { DimensionsStep } from '@/components/steps/DimensionsStep';
-import { FoilStep } from '@/components/steps/FoilStep';
+import { CoveringStep } from '@/components/steps/CoveringStep';
 import { EquipmentStep } from '@/components/steps/EquipmentStep';
 import { FiltrationStep } from '@/components/steps/FiltrationStep';
 import { LightingStep } from '@/components/steps/LightingStep';
@@ -288,7 +288,7 @@ function ConfiguratorContent() {
       case 2:
         return <DimensionsStep onNext={nextStep} onBack={prevStep} />;
       case 3:
-        return <FoilStep onNext={nextStep} onBack={prevStep} />;
+        return <CoveringStep onNext={nextStep} onBack={prevStep} />;
       case 4:
         return <EquipmentStep onNext={nextStep} onBack={prevStep} />;
       case 5:
