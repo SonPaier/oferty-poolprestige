@@ -18,13 +18,11 @@ interface Pool3DVisualizationProps {
 
 // Generate pool shape as 2D points (XY plane, will be used for top rim and bottom)
 function getPoolShape(dimensions: PoolDimensions): THREE.Vector2[] {
-  const { shape, length, width, lLength2 = 3, lWidth2 = 2 } = dimensions;
+  const { shape, length, width } = dimensions;
   const points: THREE.Vector2[] = [];
 
   switch (shape) {
     case 'prostokatny':
-    case 'prostokatny-schodki-zewnetrzne':
-    case 'prostokatny-schodki-narozne':
       points.push(
         new THREE.Vector2(-length / 2, -width / 2),
         new THREE.Vector2(length / 2, -width / 2),
@@ -43,23 +41,6 @@ function getPoolShape(dimensions: PoolDimensions): THREE.Vector2[] {
           )
         );
       }
-      break;
-    case 'litera-l':
-      const x1 = length / 2;
-      const x2 = -length / 2;
-      const y1 = width / 2;
-      const y2 = -width / 2;
-      const y3 = y2 - lWidth2;
-      const x3 = x2 + lLength2;
-      
-      points.push(
-        new THREE.Vector2(x2, y1),
-        new THREE.Vector2(x1, y1),
-        new THREE.Vector2(x1, y2),
-        new THREE.Vector2(x3, y2),
-        new THREE.Vector2(x3, y3),
-        new THREE.Vector2(x2, y3)
-      );
       break;
     case 'wlasny':
       if (dimensions.customVertices && dimensions.customVertices.length >= 3) {
@@ -123,7 +104,7 @@ function PoolMesh({ dimensions, solid = false }: { dimensions: PoolDimensions; s
 
   const edgeColor = '#0c4a6e';
 
-  const isRectangular = shape === 'prostokatny' || shape === 'prostokatny-schodki-zewnetrzne' || shape === 'prostokatny-schodki-narozne';
+  const isRectangular = shape === 'prostokatny';
 
   // Create geometry for walls and bottom
   const { wallGeometry, bottomGeometry, edges, shellGeometry, rimGeometry } = useMemo(() => {
@@ -503,7 +484,7 @@ function PoolMesh({ dimensions, solid = false }: { dimensions: PoolDimensions; s
 function StairsMesh({ dimensions, stairs }: { dimensions: PoolDimensions; stairs: StairsConfig }) {
   if (!stairs.enabled) return null;
   
-  const { shape, length, width, depth, lLength2 = 3, lWidth2 = 2 } = dimensions;
+  const { shape, length, width, depth } = dimensions;
   // Provide defaults for all stairs properties to avoid NaN
   const position = stairs.position || 'inside';
   const corner = stairs.corner || 'back-left';
@@ -529,17 +510,10 @@ function StairsMesh({ dimensions, stairs }: { dimensions: PoolDimensions; stairs
       color: '#5b9bd5',
     }), []);
 
-  const isLShape = shape === 'litera-l';
   const actualStairsWidth = stairsWidth;
 
   // Calculate corner base position
   const getCornerPosition = () => {
-    if (isLShape) {
-      // For L-shape, use inner corner
-      const x3 = -halfL + lLength2;
-      const y2 = -halfW;
-      return { baseX: x3, baseY: y2 };
-    }
     
     switch (corner) {
       case 'back-left': return { baseX: -halfL, baseY: -halfW };
@@ -623,7 +597,7 @@ function StairsMesh({ dimensions, stairs }: { dimensions: PoolDimensions; stairs
 function WadingPoolMesh({ dimensions, wadingPool }: { dimensions: PoolDimensions; wadingPool: WadingPoolConfig }) {
   if (!wadingPool.enabled) return null;
   
-  const { shape, length, width, depth, lLength2 = 3, lWidth2 = 2 } = dimensions;
+  const { shape, length, width, depth } = dimensions;
   // Provide defaults for all wading pool properties to avoid NaN/undefined
   const corner = wadingPool.corner || 'back-left';
   const direction = wadingPool.direction || 'along-width';
@@ -661,22 +635,6 @@ function WadingPoolMesh({ dimensions, wadingPool }: { dimensions: PoolDimensions
     const sizeX = isAlongLength ? wpWidth : wpLength;
     const sizeY = isAlongLength ? wpLength : wpWidth;
     
-    const isLShape = shape === 'litera-l';
-    
-    if (isLShape) {
-      const x3 = -halfL + lLength2;
-      const y2 = -halfW;
-      
-      return {
-        posX: x3 - sizeX / 2,
-        posY: y2 + sizeY / 2,
-        wallXSide: -1,
-        wallYSide: 1,
-        sizeX,
-        sizeY,
-      };
-    }
-    
     // Calculate position based on corner
     let posX = 0, posY = 0;
     let wallXSide = 1, wallYSide = 1;
@@ -709,7 +667,7 @@ function WadingPoolMesh({ dimensions, wadingPool }: { dimensions: PoolDimensions
     }
     
     return { posX, posY, wallXSide, wallYSide, sizeX, sizeY };
-  }, [shape, corner, direction, halfL, halfW, wpLength, wpWidth, lLength2]);
+  }, [corner, direction, halfL, halfW, wpLength, wpWidth]);
 
   const { posX, posY, sizeX, sizeY, wallXSide, wallYSide } = cornerConfig;
 
@@ -934,7 +892,7 @@ function DimensionLine({ start, end, label, color = '#475569' }: {
 
 // All dimension lines
 function DimensionLines({ dimensions }: { dimensions: PoolDimensions }) {
-  const { length, width, depth, depthDeep, hasSlope, shape, lLength2 = 3, lWidth2 = 2 } = dimensions;
+  const { length, width, depth, depthDeep, hasSlope } = dimensions;
   const actualDeep = hasSlope && depthDeep ? depthDeep : depth;
   const offset = 0.6;
   
@@ -988,18 +946,6 @@ function DimensionLines({ dimensions }: { dimensions: PoolDimensions }) {
             </div>
           </Html>
         </group>
-      )}
-      
-      {/* L-shape additional dimensions */}
-      {shape === 'litera-l' && (
-        <>
-          <DimensionLine
-            start={[-length / 2, -width / 2 - lWidth2 - offset, 0]}
-            end={[-length / 2 + lLength2, -width / 2 - lWidth2 - offset, 0]}
-            label={`${lLength2.toFixed(2)} m`}
-            color="#f97316"
-          />
-        </>
       )}
     </group>
   );

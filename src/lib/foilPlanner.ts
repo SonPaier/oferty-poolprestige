@@ -506,22 +506,7 @@ export function planFoilLayout(
   surfaces.push(rightWall);
   allStrips = [...allStrips, ...rightWall.strips];
   
-  // Handle L-shape additional surfaces
-  if (shape === 'litera-l' && dimensions.lLength2 && dimensions.lWidth2) {
-    const lArmPlan = planWallSurface(
-      'l-arm',
-      dimensions.lLength2,
-      depth,
-      depth,
-      depth,
-      -width / 2 - dimensions.lWidth2 / 2,
-      0,
-      true,
-      'wall-l-arm'
-    );
-    surfaces.push(lArmPlan);
-    allStrips = [...allStrips, ...lArmPlan.strips];
-  }
+  // Custom shapes are handled via customVertices, no L-shape specific logic needed
   
   // 3. Pack strips into rolls
   const rolls = packStripsIntoRolls(allStrips);

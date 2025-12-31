@@ -19,7 +19,7 @@ export function calculatePoolMetrics(
   dimensions: PoolDimensions,
   poolType: PoolType
 ): PoolCalculations {
-  const { shape, length, width, depth, lLength2, lWidth2, overflowType, attractions, customVertices, customArea, customPerimeter } = dimensions;
+  const { shape, length, width, depth, overflowType, attractions, customVertices, customArea, customPerimeter } = dimensions;
   
   // Water depth: depth - 10cm for skimmer pools, = depth for gutter pools
   const waterDepth = overflowType === 'skimmerowy' ? depth - 0.1 : depth;
@@ -47,29 +47,7 @@ export function calculatePoolMetrics(
       volume = surfaceArea * waterDepth;
       // Perimeter approximation for ellipse
       perimeterLength = Math.PI * (3 * (length / 2 + width / 2) - Math.sqrt((3 * length / 2 + width / 2) * (length / 2 + 3 * width / 2)));
-      wallArea = perimeterLength * depth; // Wall area uses full depth (niecka)
-      break;
-
-    case 'litera-l':
-      // L-shaped pool - two rectangles
-      const l1Area = length * width;
-      const l2Area = (lLength2 || 3) * (lWidth2 || 2);
-      surfaceArea = l1Area + l2Area;
-      bottomArea = surfaceArea;
-      volume = surfaceArea * waterDepth;
-      // Perimeter for L-shape
-      perimeterLength = 2 * length + 2 * width + 2 * (lLength2 || 3) + 2 * (lWidth2 || 2) - 2 * Math.min(width, lWidth2 || 2);
       wallArea = perimeterLength * depth;
-      break;
-
-    case 'prostokatny-schodki-zewnetrzne':
-    case 'prostokatny-schodki-narozne':
-      // Rectangle with steps - slight area increase
-      surfaceArea = length * width;
-      bottomArea = surfaceArea;
-      volume = surfaceArea * waterDepth * 0.95; // Steps reduce effective volume
-      perimeterLength = 2 * (length + width) + 2; // Extra for steps
-      wallArea = 2 * length * depth + 2 * width * depth + 3; // Extra for step walls
       break;
 
     case 'prostokatny':

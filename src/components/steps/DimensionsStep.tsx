@@ -66,28 +66,6 @@ const PoolShapeIcon = ({ shape, isSelected }: { shape: PoolShape; isSelected: bo
           <ellipse cx="30" cy="20" rx="25" ry="15" fill={fillColor} stroke={strokeColor} strokeWidth="2"/>
         </svg>
       );
-    case 'litera-l':
-      return (
-        <svg viewBox="0 0 60 40" className="w-full h-12">
-          <path d="M5 5 H35 V20 H20 V35 H5 Z" fill={fillColor} stroke={strokeColor} strokeWidth="2"/>
-        </svg>
-      );
-    case 'prostokatny-schodki-zewnetrzne':
-      return (
-        <svg viewBox="0 0 60 40" className="w-full h-12">
-          <rect x="5" y="5" width="50" height="30" rx="2" fill={fillColor} stroke={strokeColor} strokeWidth="2"/>
-          <path d="M55 15 H65 V25 H55" fill={fillColor} stroke={strokeColor} strokeWidth="1.5" strokeLinejoin="round"/>
-          <line x1="58" y1="18" x2="58" y2="22" stroke={strokeColor} strokeWidth="1"/>
-          <line x1="61" y1="18" x2="61" y2="22" stroke={strokeColor} strokeWidth="1"/>
-        </svg>
-      );
-    case 'prostokatny-schodki-narozne':
-      return (
-        <svg viewBox="0 0 60 40" className="w-full h-12">
-          <path d="M5 5 H55 V35 H5 Z M45 5 L55 5 L55 15 L50 15 L50 10 L45 10 Z" fill={fillColor} stroke={strokeColor} strokeWidth="2" fillRule="evenodd"/>
-          <path d="M47 7 L53 7 L53 13 L50 13 L50 10 L47 10 Z" fill={strokeColor} fillOpacity="0.3"/>
-        </svg>
-      );
     case 'wlasny':
       return (
         <svg viewBox="0 0 60 40" className="w-full h-12">
@@ -165,7 +143,6 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
     }
   }, [dimensions.depth, dimensions.stairs?.stepHeight]);
 
-  const isLShape = dimensions.shape === 'litera-l';
   const isCustomShape = dimensions.shape === 'wlasny';
   const isPublicPool = poolType === 'hotelowy';
 
@@ -533,7 +510,7 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
           {!isCustomShape && (
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="length">{isLShape ? 'Długość ramienia 1 (m)' : 'Długość (m)'}</Label>
+                <Label htmlFor="length">Długość (m)</Label>
                 <Input
                   id="length"
                   type="number"
@@ -547,7 +524,7 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="width">{isLShape ? 'Szerokość ramienia 1 (m)' : 'Szerokość (m)'}</Label>
+                <Label htmlFor="width">Szerokość (m)</Label>
                 <Input
                   id="width"
                   type="number"
@@ -559,39 +536,6 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
                   className="input-field"
                 />
               </div>
-
-              {/* L-Shape additional dimensions */}
-              {isLShape && (
-                <>
-                  <div className="space-y-2">
-                    <Label htmlFor="lLength2">Długość ramienia 2 (m)</Label>
-                    <Input
-                      id="lLength2"
-                      type="number"
-                      step="0.1"
-                      min="1"
-                      max="30"
-                      value={dimensions.lLength2 || 3}
-                      onChange={(e) => updateDimension('lLength2', parseFloat(e.target.value) || 0)}
-                      className="input-field"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="lWidth2">Szerokość ramienia 2 (m)</Label>
-                    <Input
-                      id="lWidth2"
-                      type="number"
-                      step="0.1"
-                      min="1"
-                      max="15"
-                      value={dimensions.lWidth2 || 2}
-                      onChange={(e) => updateDimension('lWidth2', parseFloat(e.target.value) || 0)}
-                      className="input-field"
-                    />
-                  </div>
-                </>
-              )}
             </div>
           )}
 
