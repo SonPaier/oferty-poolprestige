@@ -1,12 +1,11 @@
 import { useState, useEffect } from 'react';
 import { useConfigurator } from '@/context/ConfiguratorContext';
-import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { ProductCard } from '@/components/ProductCard';
-import { ArrowLeft, Shovel, Info } from 'lucide-react';
+import { Shovel, Info, AlertCircle } from 'lucide-react';
 import { ExcavationSettings, ExcavationData, calculateExcavation } from '@/types/offers';
 import { formatPrice } from '@/lib/calculations';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 
 interface ExcavationStepProps {
   onNext: () => void;
@@ -14,10 +13,13 @@ interface ExcavationStepProps {
   excavationSettings: ExcavationSettings;
 }
 
+type ScopeType = 'our' | 'investor';
+
 export function ExcavationStep({ onNext, onBack, excavationSettings }: ExcavationStepProps) {
   const { state, dispatch } = useConfigurator();
-  const { dimensions, calculations } = state;
+  const { dimensions, sections } = state;
   
+  const [scope, setScope] = useState<ScopeType>('our');
   const [excavation, setExcavation] = useState<ExcavationData>(() => 
     calculateExcavation(dimensions, excavationSettings)
   );
@@ -31,6 +33,22 @@ export function ExcavationStep({ onNext, onBack, excavationSettings }: Excavatio
       removalFixedPrice: customRemovalPrice,
     });
   }, [dimensions, excavationSettings, customRemovalPrice]);
+
+  // Save scope to sections
+  useEffect(() => {
+    dispatch({
+      type: 'SET_SECTION',
+      payload: {
+        section: 'roboty_ziemne',
+        data: {
+          ...sections.roboty_ziemne,
+          scope,
+          excavation: scope === 'our' ? excavation : null,
+          items: [],
+        },
+      },
+    });
+  }, [scope, excavation]);
 
   const excavationDimensions = {
     length: dimensions.length + (excavationSettings.marginWidth * 2),
@@ -47,106 +65,179 @@ export function ExcavationStep({ onNext, onBack, excavationSettings }: Excavatio
         Roboty ziemne
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Left: Excavation info */}
-        <div className="glass-card p-6">
-          <h3 className="text-base font-medium mb-4">Wymiary wykopu</h3>
+      {/* Scope selection */}
+      <div className="glass-card p-6 mb-6">
+        <h3 className="text-base font-medium mb-4">Zakres prac</h3>
+        <RadioGroup
+          value={scope}
+          onValueChange={(v) => setScope(v as ScopeType)}
+          className="flex flex-col gap-4"
+        >
+          <div className="flex items-start space-x-3 p-4 rounded-lg border border-border hover:border-primary/50 transition-colors cursor-pointer"
+               onClick={() => setScope('our')}>
+            <RadioGroupItem value="our" id="scope-our" className="mt-1" />
+            <div className="flex-1">
+              <Label htmlFor="scope-our" className="cursor-pointer font-medium">
+                W naszym zakresie
+              </Label>
+              <p className="text-sm text-muted-foreground mt-1">
+                Wykonamy roboty ziemne zgodnie z kalkulacją poniżej
+              </p>
+            </div>
+          </div>
           
-          <div className="p-4 rounded-lg bg-accent/10 border border-accent/20 mb-4">
-            <div className="flex items-start gap-2">
-              <Info className="w-4 h-4 text-accent mt-0.5" />
-              <div className="text-sm">
-                <p className="font-medium">Kalkulacja wykopu</p>
-                <p className="text-muted-foreground">
-                  Basen: {dimensions.length}×{dimensions.width}m + margines {excavationSettings.marginWidth}m z każdej strony
-                </p>
-              </div>
+          <div className="flex items-start space-x-3 p-4 rounded-lg border border-border hover:border-primary/50 transition-colors cursor-pointer"
+               onClick={() => setScope('investor')}>
+            <RadioGroupItem value="investor" id="scope-investor" className="mt-1" />
+            <div className="flex-1">
+              <Label htmlFor="scope-investor" className="cursor-pointer font-medium">
+                W zakresie inwestora
+              </Label>
+              <p className="text-sm text-muted-foreground mt-1">
+                Roboty ziemne po stronie klienta - nie wliczane do oferty
+              </p>
             </div>
           </div>
-
-          <div className="grid grid-cols-3 gap-4 mb-6">
-            <div className="p-3 rounded-lg bg-muted/30 text-center">
-              <p className="text-xs text-muted-foreground">Długość</p>
-              <p className="text-lg font-bold">{excavationDimensions.length.toFixed(1)} m</p>
-            </div>
-            <div className="p-3 rounded-lg bg-muted/30 text-center">
-              <p className="text-xs text-muted-foreground">Szerokość</p>
-              <p className="text-lg font-bold">{excavationDimensions.width.toFixed(1)} m</p>
-            </div>
-            <div className="p-3 rounded-lg bg-muted/30 text-center">
-              <p className="text-xs text-muted-foreground">Głębokość</p>
-              <p className="text-lg font-bold">{excavationDimensions.depth.toFixed(1)} m</p>
-            </div>
-          </div>
-
-          <div className="p-4 rounded-lg bg-primary/10 border border-primary/20">
-            <div className="flex justify-between items-center">
-              <div>
-                <p className="text-xs text-muted-foreground">Objętość wykopu</p>
-                <p className="text-2xl font-bold text-primary">
-                  {excavation.excavationVolume.toFixed(1)} m³
-                </p>
-              </div>
-              <div className="text-right">
-                <p className="text-xs text-muted-foreground">Stawka</p>
-                <p className="text-lg font-semibold">
-                  {formatPrice(excavation.excavationPricePerM3)}/m³
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Right: Pricing */}
-        <div className="glass-card p-6">
-          <h3 className="text-base font-medium mb-4">Koszt robót ziemnych</h3>
-
-          <div className="space-y-4">
-            <div className="flex justify-between items-center p-3 rounded-lg bg-muted/30">
-              <div>
-                <p className="font-medium">Wykop</p>
-                <p className="text-xs text-muted-foreground">
-                  {excavation.excavationVolume.toFixed(1)} m³ × {formatPrice(excavation.excavationPricePerM3)}
-                </p>
-              </div>
-              <span className="text-lg font-semibold">
-                {formatPrice(excavation.excavationTotal)}
-              </span>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="removalPrice">Ryczałt za wywóz ziemi (PLN)</Label>
-              <Input
-                id="removalPrice"
-                type="number"
-                min="0"
-                step="100"
-                value={customRemovalPrice}
-                onChange={(e) => setCustomRemovalPrice(parseFloat(e.target.value) || 0)}
-                className="input-field"
-              />
-            </div>
-
-            <div className="border-t border-border pt-4">
-              <div className="flex justify-between items-center">
-                <p className="font-medium">Razem roboty ziemne (netto)</p>
-                <p className="text-2xl font-bold text-primary">
-                  {formatPrice(totalExcavationCost)}
-                </p>
-              </div>
-              <div className="flex justify-between items-center mt-1 text-sm text-muted-foreground">
-                <p>+ VAT 8%</p>
-                <p>{formatPrice(totalExcavationCost * 0.08)}</p>
-              </div>
-              <div className="flex justify-between items-center mt-1">
-                <p className="font-medium">Brutto</p>
-                <p className="font-bold">{formatPrice(totalExcavationCost * 1.08)}</p>
-              </div>
-            </div>
-          </div>
-        </div>
+        </RadioGroup>
       </div>
 
+      {scope === 'investor' ? (
+        <div className="glass-card p-6">
+          <div className="flex items-start gap-3 p-4 rounded-lg bg-accent/10 border border-accent/20">
+            <AlertCircle className="w-5 h-5 text-accent mt-0.5" />
+            <div>
+              <p className="font-medium">Roboty ziemne w zakresie inwestora</p>
+              <p className="text-sm text-muted-foreground mt-1">
+                Na ofercie pojawi się informacja, że roboty ziemne są po stronie klienta.
+                Poniższe wymiary wykopu mają charakter informacyjny.
+              </p>
+            </div>
+          </div>
+          
+          <div className="mt-6">
+            <h4 className="text-sm font-medium mb-3 text-muted-foreground">
+              Wymagane wymiary wykopu (informacyjnie):
+            </h4>
+            <div className="grid grid-cols-3 gap-4">
+              <div className="p-3 rounded-lg bg-muted/30 text-center">
+                <p className="text-xs text-muted-foreground">Długość</p>
+                <p className="text-lg font-bold">{excavationDimensions.length.toFixed(1)} m</p>
+              </div>
+              <div className="p-3 rounded-lg bg-muted/30 text-center">
+                <p className="text-xs text-muted-foreground">Szerokość</p>
+                <p className="text-lg font-bold">{excavationDimensions.width.toFixed(1)} m</p>
+              </div>
+              <div className="p-3 rounded-lg bg-muted/30 text-center">
+                <p className="text-xs text-muted-foreground">Głębokość</p>
+                <p className="text-lg font-bold">{excavationDimensions.depth.toFixed(1)} m</p>
+              </div>
+            </div>
+            <p className="text-sm text-muted-foreground mt-3 text-center">
+              Objętość wykopu: <strong>{excavation.excavationVolume.toFixed(1)} m³</strong>
+            </p>
+          </div>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Left: Excavation info */}
+          <div className="glass-card p-6">
+            <h3 className="text-base font-medium mb-4">Wymiary wykopu</h3>
+            
+            <div className="p-4 rounded-lg bg-accent/10 border border-accent/20 mb-4">
+              <div className="flex items-start gap-2">
+                <Info className="w-4 h-4 text-accent mt-0.5" />
+                <div className="text-sm">
+                  <p className="font-medium">Kalkulacja wykopu</p>
+                  <p className="text-muted-foreground">
+                    Basen: {dimensions.length}×{dimensions.width}m + margines {excavationSettings.marginWidth}m z każdej strony
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-3 gap-4 mb-6">
+              <div className="p-3 rounded-lg bg-muted/30 text-center">
+                <p className="text-xs text-muted-foreground">Długość</p>
+                <p className="text-lg font-bold">{excavationDimensions.length.toFixed(1)} m</p>
+              </div>
+              <div className="p-3 rounded-lg bg-muted/30 text-center">
+                <p className="text-xs text-muted-foreground">Szerokość</p>
+                <p className="text-lg font-bold">{excavationDimensions.width.toFixed(1)} m</p>
+              </div>
+              <div className="p-3 rounded-lg bg-muted/30 text-center">
+                <p className="text-xs text-muted-foreground">Głębokość</p>
+                <p className="text-lg font-bold">{excavationDimensions.depth.toFixed(1)} m</p>
+              </div>
+            </div>
+
+            <div className="p-4 rounded-lg bg-primary/10 border border-primary/20">
+              <div className="flex justify-between items-center">
+                <div>
+                  <p className="text-xs text-muted-foreground">Objętość wykopu</p>
+                  <p className="text-2xl font-bold text-primary">
+                    {excavation.excavationVolume.toFixed(1)} m³
+                  </p>
+                </div>
+                <div className="text-right">
+                  <p className="text-xs text-muted-foreground">Stawka</p>
+                  <p className="text-lg font-semibold">
+                    {formatPrice(excavation.excavationPricePerM3)}/m³
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Right: Pricing */}
+          <div className="glass-card p-6">
+            <h3 className="text-base font-medium mb-4">Koszt robót ziemnych</h3>
+
+            <div className="space-y-4">
+              <div className="flex justify-between items-center p-3 rounded-lg bg-muted/30">
+                <div>
+                  <p className="font-medium">Wykop</p>
+                  <p className="text-xs text-muted-foreground">
+                    {excavation.excavationVolume.toFixed(1)} m³ × {formatPrice(excavation.excavationPricePerM3)}
+                  </p>
+                </div>
+                <span className="text-lg font-semibold">
+                  {formatPrice(excavation.excavationTotal)}
+                </span>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="removalPrice">Ryczałt za wywóz ziemi (PLN)</Label>
+                <Input
+                  id="removalPrice"
+                  type="number"
+                  min="0"
+                  step="100"
+                  value={customRemovalPrice}
+                  onChange={(e) => setCustomRemovalPrice(parseFloat(e.target.value) || 0)}
+                  className="input-field"
+                />
+              </div>
+
+              <div className="border-t border-border pt-4">
+                <div className="flex justify-between items-center">
+                  <p className="font-medium">Razem roboty ziemne (netto)</p>
+                  <p className="text-2xl font-bold text-primary">
+                    {formatPrice(totalExcavationCost)}
+                  </p>
+                </div>
+                <div className="flex justify-between items-center mt-1 text-sm text-muted-foreground">
+                  <p>+ VAT 8%</p>
+                  <p>{formatPrice(totalExcavationCost * 0.08)}</p>
+                </div>
+                <div className="flex justify-between items-center mt-1">
+                  <p className="font-medium">Brutto</p>
+                  <p className="font-bold">{formatPrice(totalExcavationCost * 1.08)}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

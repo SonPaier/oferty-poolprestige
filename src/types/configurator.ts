@@ -188,6 +188,10 @@ export interface ConfiguratorSection {
   items: OfferItem[];
   suggestedProduct?: Product;
   alternatives?: Product[];
+  scope?: 'our' | 'investor'; // For sections that can be delegated
+  excavation?: any; // For roboty_ziemne
+  notes?: string; // For additional notes
+  estimatedCost?: number; // For prace_budowlane
 }
 
 export interface ConfiguratorState {
@@ -205,6 +209,8 @@ export interface ConfiguratorState {
     automatyka: ConfiguratorSection;
     atrakcje: ConfiguratorSection;
     dodatki: ConfiguratorSection;
+    roboty_ziemne: ConfiguratorSection;
+    prace_budowlane: ConfiguratorSection;
   };
   foilType: 'tradycyjna' | 'strukturalna';
 }

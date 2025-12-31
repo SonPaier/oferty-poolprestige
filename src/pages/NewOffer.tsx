@@ -13,6 +13,7 @@ import { FiltrationStep } from '@/components/steps/FiltrationStep';
 import { LightingStep } from '@/components/steps/LightingStep';
 import { AutomationStep } from '@/components/steps/AutomationStep';
 import { ExcavationStep } from '@/components/steps/ExcavationStep';
+import { ConstructionStep } from '@/components/steps/ConstructionStep';
 import { AdditionsStep } from '@/components/steps/AdditionsStep';
 import { SummaryStep } from '@/components/steps/SummaryStep';
 import { SettingsDialog } from '@/components/SettingsDialog';
@@ -22,7 +23,7 @@ import { toast } from 'sonner';
 import { getOfferByIdFromDb } from '@/lib/offerDb';
 
 const DRAFT_STORAGE_KEY = 'pool_prestige_draft';
-const TOTAL_STEPS = 10;
+const TOTAL_STEPS = 11;
 
 interface DraftData {
   draftId: string;
@@ -300,8 +301,10 @@ function ConfiguratorContent() {
       case 8:
         return <ExcavationStep onNext={nextStep} onBack={prevStep} excavationSettings={excavationSettings} />;
       case 9:
-        return <AdditionsStep onNext={nextStep} onBack={prevStep} />;
+        return <ConstructionStep onNext={nextStep} onBack={prevStep} />;
       case 10:
+        return <AdditionsStep onNext={nextStep} onBack={prevStep} />;
+      case 11:
         return (
           <SummaryStep 
             onBack={prevStep} 
