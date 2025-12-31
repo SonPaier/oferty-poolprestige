@@ -1,8 +1,9 @@
 import { Product } from '@/data/products';
 
 export type PoolType = 'prywatny' | 'polprywatny' | 'hotelowy';
-export type PoolShape = 'prostokatny' | 'owalny' | 'litera-l' | 'prostokatny-schodki-zewnetrzne' | 'prostokatny-schodki-narozne' | 'wlasny';
+export type PoolShape = 'prostokatny' | 'owalny' | 'wlasny';
 export type PoolOverflowType = 'skimmerowy' | 'rynnowy';
+export type PoolLiningType = 'foliowany' | 'ceramiczny';
 
 export interface CustomPoolVertex {
   x: number;
@@ -81,34 +82,32 @@ export const nominalLoadByType: Record<PoolType, number> = {
 
 export interface PoolDimensions {
   shape: PoolShape;
+  liningType: PoolLiningType; // New: ceramiczny or foliowany
   length: number;
   width: number;
-  depth: number; // Głębokość płytka (min)
-  depthDeep?: number; // Głębokość głęboka (max) - jeśli jest spadek
-  hasSlope: boolean; // Czy basen ma spadek dna
+  depth: number;
+  depthDeep?: number;
+  hasSlope: boolean;
   isIrregular: boolean;
   overflowType: PoolOverflowType;
-  attractions: number; // Number of attractions (for public pools)
-  // Additional dimensions for L-shape
-  lLength2?: number; // Second arm length
-  lWidth2?: number;  // Second arm width
+  attractions: number;
   // Custom shape vertices
   customVertices?: CustomPoolVertex[];
-  customArea?: number; // Pre-calculated area for custom shape
-  customPerimeter?: number; // Pre-calculated perimeter for custom shape
+  customArea?: number;
+  customPerimeter?: number;
   // Custom stairs - array to support multiple stairs
-  customStairsVertices?: CustomPoolVertex[][]; // Array of stair polygons
-  customStairsRotations?: number[]; // Rotation in degrees (0, 90, 180, 270) for each stair
-  // Legacy single stair support (deprecated but kept for backwards compatibility)
-  customStairsVerticesSingle?: CustomPoolVertex[]; // @deprecated - use customStairsVertices
-  customStairsRotation?: number; // @deprecated - use customStairsRotations
+  customStairsVertices?: CustomPoolVertex[][];
+  customStairsRotations?: number[];
+  // Legacy single stair support (deprecated)
+  customStairsVerticesSingle?: CustomPoolVertex[];
+  customStairsRotation?: number;
   // Custom wading pools - array to support multiple wading pools
-  customWadingPoolVertices?: CustomPoolVertex[][]; // Array of wading pool polygons
-  // Legacy single wading pool support (deprecated but kept for backwards compatibility)
-  customWadingPoolVerticesSingle?: CustomPoolVertex[]; // @deprecated - use customWadingPoolVertices
-  // Stairs configuration
+  customWadingPoolVertices?: CustomPoolVertex[][];
+  // Legacy single wading pool support (deprecated)
+  customWadingPoolVerticesSingle?: CustomPoolVertex[];
+  // Stairs configuration (only for custom shapes now)
   stairs: StairsConfig;
-  // Wading pool configuration
+  // Wading pool configuration (only for custom shapes now)
   wadingPool: WadingPoolConfig;
 }
 
@@ -266,11 +265,13 @@ export const poolTypeLabels: Record<PoolType, string> = {
 
 export const poolShapeLabels: Record<PoolShape, string> = {
   prostokatny: 'Prostokątny',
-  owalny: 'Owalny',
-  'litera-l': 'Litera L',
-  'prostokatny-schodki-zewnetrzne': 'Prostokątny ze schodkami zewn.',
-  'prostokatny-schodki-narozne': 'Prostokątny ze schodkami narożnymi',
+  owalny: 'Owalny / Okrągły',
   wlasny: 'Własny kształt',
+};
+
+export const liningTypeLabels: Record<PoolLiningType, string> = {
+  foliowany: 'Wyłożony folią',
+  ceramiczny: 'Ceramiczny',
 };
 
 // Overflow type labels

@@ -36,6 +36,7 @@ type ConfiguratorAction =
 
 const initialDimensions: PoolDimensions = {
   shape: 'prostokatny',
+  liningType: 'foliowany',
   length: 8,
   width: 4,
   depth: 1.5,
