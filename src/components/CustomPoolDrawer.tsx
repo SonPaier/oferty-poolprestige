@@ -33,9 +33,10 @@ interface CustomPoolDrawerProps {
   initialStairsRotation?: number;
 }
 
-const GRID_SIZE = 50; // pixels per meter
-const CANVAS_WIDTH = 800;
-const CANVAS_HEIGHT = 500;
+const GRID_SIZE = 30; // pixels per meter (smaller to fit 25m)
+const CANVAS_WIDTH = 810; // 27m * 30px = 810 (extra for -1m offset)
+const CANVAS_HEIGHT = 810; // 27m * 30px = 810 (extra for -1m offset)
+const GRID_OFFSET = GRID_SIZE; // 1m offset for -1 start
 
 // Colors for different drawing modes
 const MODE_COLORS = {
@@ -116,47 +117,56 @@ export function CustomPoolDrawer({
     return perimeter;
   }, []);
 
-  // Convert canvas coordinates to meters
+  // Convert canvas coordinates to meters (accounting for -1m offset)
   const canvasToMeters = useCallback((canvasPoint: { x: number; y: number }): Point => {
     return {
-      x: canvasPoint.x / GRID_SIZE,
-      y: canvasPoint.y / GRID_SIZE,
+      x: (canvasPoint.x - GRID_OFFSET) / GRID_SIZE,
+      y: (canvasPoint.y - GRID_OFFSET) / GRID_SIZE,
     };
   }, []);
 
-  // Convert meters to canvas coordinates
+  // Convert meters to canvas coordinates (accounting for -1m offset)
   const metersToCanvas = useCallback((point: Point): { x: number; y: number } => {
     return {
-      x: point.x * GRID_SIZE,
-      y: point.y * GRID_SIZE,
+      x: point.x * GRID_SIZE + GRID_OFFSET,
+      y: point.y * GRID_SIZE + GRID_OFFSET,
     };
   }, []);
 
-  // Snap to grid
+  // Snap to grid (snap to 0.5m increments)
   const snapToGrid = useCallback((value: number): number => {
-    return Math.round(value / (GRID_SIZE / 2)) * (GRID_SIZE / 2);
+    // Snap relative to grid offset
+    const relativeValue = value - GRID_OFFSET;
+    const snapped = Math.round(relativeValue / (GRID_SIZE / 2)) * (GRID_SIZE / 2);
+    return snapped + GRID_OFFSET;
   }, []);
 
-  // Draw grid
+  // Draw grid from -1m to 25m
   const drawGrid = useCallback((canvas: FabricCanvas) => {
-    // Vertical lines
-    for (let x = 0; x <= CANVAS_WIDTH; x += GRID_SIZE) {
+    // Draw from -1 to 25 meters
+    for (let m = -1; m <= 25; m++) {
+      const x = m * GRID_SIZE + GRID_OFFSET;
+      
+      // Vertical lines
+      const isMainLine = m % 5 === 0;
+      const isOrigin = m === 0;
       const line = new Line([x, 0, x, CANVAS_HEIGHT], {
-        stroke: x % (GRID_SIZE * 2) === 0 ? 'hsl(190 20% 80%)' : 'hsl(190 10% 90%)',
-        strokeWidth: x % (GRID_SIZE * 2) === 0 ? 1 : 0.5,
+        stroke: isOrigin ? 'hsl(190 50% 50%)' : isMainLine ? 'hsl(190 20% 70%)' : 'hsl(190 10% 85%)',
+        strokeWidth: isOrigin ? 2 : isMainLine ? 1 : 0.5,
         selectable: false,
         evented: false,
       });
       objectDataMap.set(line, { type: 'grid' });
       canvas.add(line);
       
-      // Add meter labels
-      if (x % GRID_SIZE === 0 && x > 0) {
-        const text = new Text(`${x / GRID_SIZE}m`, {
-          left: x - 10,
-          top: 5,
-          fontSize: 10,
-          fill: 'hsl(190 20% 50%)',
+      // Add meter labels for every 5m and at 0
+      if (m % 5 === 0 || m === 0) {
+        const text = new Text(`${m}`, {
+          left: x - 6,
+          top: 3,
+          fontSize: 9,
+          fill: isOrigin ? 'hsl(190 50% 40%)' : 'hsl(190 20% 50%)',
+          fontWeight: isOrigin ? 'bold' : 'normal',
           selectable: false,
           evented: false,
         });
@@ -166,22 +176,26 @@ export function CustomPoolDrawer({
     }
     
     // Horizontal lines
-    for (let y = 0; y <= CANVAS_HEIGHT; y += GRID_SIZE) {
+    for (let m = -1; m <= 25; m++) {
+      const y = m * GRID_SIZE + GRID_OFFSET;
+      
+      const isMainLine = m % 5 === 0;
+      const isOrigin = m === 0;
       const line = new Line([0, y, CANVAS_WIDTH, y], {
-        stroke: y % (GRID_SIZE * 2) === 0 ? 'hsl(190 20% 80%)' : 'hsl(190 10% 90%)',
-        strokeWidth: y % (GRID_SIZE * 2) === 0 ? 1 : 0.5,
+        stroke: isOrigin ? 'hsl(190 50% 50%)' : isMainLine ? 'hsl(190 20% 70%)' : 'hsl(190 10% 85%)',
+        strokeWidth: isOrigin ? 2 : isMainLine ? 1 : 0.5,
         selectable: false,
         evented: false,
       });
       objectDataMap.set(line, { type: 'grid' });
       canvas.add(line);
       
-      // Add meter labels
-      if (y % GRID_SIZE === 0 && y > 0) {
-        const text = new Text(`${y / GRID_SIZE}m`, {
-          left: 5,
-          top: y - 6,
-          fontSize: 10,
+      // Add meter labels for every 5m and at 0
+      if ((m % 5 === 0 || m === 0) && m !== 0) {
+        const text = new Text(`${m}`, {
+          left: 3,
+          top: y - 5,
+          fontSize: 9,
           fill: 'hsl(190 20% 50%)',
           selectable: false,
           evented: false,
@@ -615,7 +629,7 @@ export function CustomPoolDrawer({
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Grid3X3 className="w-4 h-4" />
-            <span>1 kratka = 1 metr</span>
+            <span>Skala: 25m × 25m (od -1m)</span>
           </div>
           {isDrawing ? (
             <div className="flex items-center gap-2 text-sm" style={{ color: colors.stroke }}>
@@ -668,7 +682,7 @@ export function CustomPoolDrawer({
         </div>
       </div>
 
-      <div className="border border-border rounded-lg overflow-hidden bg-white">
+      <div className="border border-border rounded-lg overflow-auto bg-white max-h-[500px]">
         <canvas ref={canvasRef} />
       </div>
 
