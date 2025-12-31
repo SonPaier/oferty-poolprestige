@@ -65,6 +65,68 @@ export type Database = {
         }
         Relationships: []
       }
+      portfolio: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          name: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          name: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          name?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      portfolio_images: {
+        Row: {
+          created_at: string
+          file_name: string
+          file_size: number | null
+          id: string
+          image_url: string
+          portfolio_id: string
+          sort_order: number
+        }
+        Insert: {
+          created_at?: string
+          file_name: string
+          file_size?: number | null
+          id?: string
+          image_url: string
+          portfolio_id: string
+          sort_order?: number
+        }
+        Update: {
+          created_at?: string
+          file_name?: string
+          file_size?: number | null
+          id?: string
+          image_url?: string
+          portfolio_id?: string
+          sort_order?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "portfolio_images_portfolio_id_fkey"
+            columns: ["portfolio_id"]
+            isOneToOne: false
+            referencedRelation: "portfolio"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       product_images: {
         Row: {
           created_at: string
@@ -147,68 +209,6 @@ export type Database = {
           price?: number
           stock_quantity?: number | null
           symbol?: string
-          updated_at?: string
-        }
-        Relationships: []
-      }
-      realization_images: {
-        Row: {
-          created_at: string
-          file_name: string
-          file_size: number | null
-          id: string
-          image_url: string
-          realization_id: string
-          sort_order: number
-        }
-        Insert: {
-          created_at?: string
-          file_name: string
-          file_size?: number | null
-          id?: string
-          image_url: string
-          realization_id: string
-          sort_order?: number
-        }
-        Update: {
-          created_at?: string
-          file_name?: string
-          file_size?: number | null
-          id?: string
-          image_url?: string
-          realization_id?: string
-          sort_order?: number
-        }
-        Relationships: [
-          {
-            foreignKeyName: "realization_images_realization_id_fkey"
-            columns: ["realization_id"]
-            isOneToOne: false
-            referencedRelation: "realizations"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      realizations: {
-        Row: {
-          created_at: string
-          description: string | null
-          id: string
-          name: string
-          updated_at: string
-        }
-        Insert: {
-          created_at?: string
-          description?: string | null
-          id?: string
-          name: string
-          updated_at?: string
-        }
-        Update: {
-          created_at?: string
-          description?: string | null
-          id?: string
-          name?: string
           updated_at?: string
         }
         Relationships: []

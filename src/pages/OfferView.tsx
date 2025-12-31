@@ -3,7 +3,17 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { getOfferByShareUid } from '@/lib/offerDb';
 import { getSettingsFromDb } from '@/lib/settingsDb';
 import { SavedOffer } from '@/types/offers';
-import { OfferItem, poolTypeLabels, PoolType, PoolCalculations, CompanySettings } from '@/types/configurator';
+import { 
+  OfferItem, 
+  poolTypeLabels, 
+  PoolType, 
+  CompanySettings,
+  ContactPersonSettings,
+  overflowTypeLabels,
+  liningTypeLabels,
+  PoolOverflowType,
+  PoolLiningType
+} from '@/types/configurator';
 import { formatPrice, calculatePoolMetrics } from '@/lib/calculations';
 import { getPriceInPLN } from '@/data/products';
 import { useAuth } from '@/context/AuthContext';
@@ -24,7 +34,10 @@ import {
   ArrowLeft,
   FileDown,
   Facebook,
-  Instagram
+  Instagram,
+  Waves,
+  Droplets,
+  Images
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -32,7 +45,10 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Pool3DVisualization } from '@/components/Pool3DVisualization';
+import { Carousel, CarouselContent, CarouselItem, CarouselNext, CarouselPrevious } from '@/components/ui/carousel';
+
 interface OfferWithShareUid extends SavedOffer {
   shareUid: string;
 }
@@ -66,8 +82,28 @@ interface DisplayItem {
   quantity: number;
   unit: string;
   unitPrice: number;
-  discount: number; // 100 = full price, 50 = 50% of price
+  discount: number;
   isOptional: boolean;
+  productId?: string;
+}
+
+interface PortfolioItem {
+  id: string;
+  name: string;
+  description: string | null;
+}
+
+interface PortfolioImage {
+  id: string;
+  image_url: string;
+  file_name: string;
+  sort_order: number;
+}
+
+interface ProductImage {
+  id: string;
+  product_id: string;
+  image_url: string;
 }
 
 const sectionLabels: Record<string, string> = {
@@ -85,17 +121,26 @@ const sectionLabels: Record<string, string> = {
   atrakcje: 'Atrakcje',
   dodatki: 'Dodatki',
   filtracja: 'Filtracja',
+  roboty_ziemne: 'Roboty ziemne',
+  prace_budowlane: 'Prace budowlane',
 };
 
-// Capitalize first letter of each word
+const sectionDescriptions: Record<string, string> = {
+  wykonczenie: 'Wykończenie basenu obejmuje wszystkie elementy niezbędne do zabezpieczenia i estetycznego wykończenia wnętrza niecki.',
+  uzbrojenie: 'Elementy hydrauliczne zapewniające prawidłowy obieg wody w basenie.',
+  filtracja: 'System filtracji odpowiedzialny za czystość i klarowność wody.',
+  oswietlenie: 'Oświetlenie podwodne i nadbrzeżne zapewniające bezpieczeństwo i atmosferę.',
+  automatyka: 'Systemy automatyki do sterowania i monitorowania parametrów basenu.',
+  atrakcje: 'Dodatkowe atrakcje wodne zwiększające komfort użytkowania.',
+  dodatki: 'Akcesoria i dodatki uzupełniające wyposażenie basenu.',
+};
+
 function capitalize(text: string): string {
   if (!text) return text;
   return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
-// Helper to convert OfferItem or InneItemData to DisplayItem
 function toDisplayItem(item: OfferItem | InneItemData, index: number): DisplayItem {
-  // Check if it's an InneItemData (has name directly and no product)
   if ('name' in item && typeof item.name === 'string' && !('product' in item)) {
     const inneItem = item as InneItemData;
     return {
@@ -105,12 +150,11 @@ function toDisplayItem(item: OfferItem | InneItemData, index: number): DisplayIt
       quantity: inneItem.quantity || 1,
       unit: inneItem.unit || 'szt',
       unitPrice: inneItem.unitPrice || 0,
-      discount: inneItem.discount ?? 100, // Default to 100 (full price)
+      discount: inneItem.discount ?? 100,
       isOptional: inneItem.isOptional || false,
     };
   }
   
-  // It's an OfferItem with product
   const offerItem = item as OfferItem;
   const product = offerItem.product;
   const price = offerItem.customPrice ?? getPriceInPLN(product);
@@ -123,8 +167,9 @@ function toDisplayItem(item: OfferItem | InneItemData, index: number): DisplayIt
     quantity: offerItem.quantity || 1,
     unit: 'szt',
     unitPrice: price,
-    discount: 100, // OfferItems have full price (discount applied separately if needed)
+    discount: 100,
     isOptional: false,
+    productId: product?.id,
   };
 }
 
@@ -133,11 +178,20 @@ export default function OfferView() {
   const navigate = useNavigate();
   const { isAuthenticated } = useAuth();
   const [offer, setOffer] = useState<OfferWithShareUid | null>(null);
+  const [companySettings, setCompanySettings] = useState<CompanySettings | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
   const [optionalSelections, setOptionalSelections] = useState<Record<string, boolean>>({});
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
+  
+  // Portfolio state
+  const [portfolios, setPortfolios] = useState<PortfolioItem[]>([]);
+  const [selectedPortfolioId, setSelectedPortfolioId] = useState<string>('');
+  const [portfolioImages, setPortfolioImages] = useState<PortfolioImage[]>([]);
+  
+  // Product images cache
+  const [productImages, setProductImages] = useState<Record<string, string>>({});
 
   useEffect(() => {
     const loadOffer = async () => {
@@ -148,12 +202,14 @@ export default function OfferView() {
       }
 
       try {
-        const data = await getOfferByShareUid(shareUid);
+        const [data, settings] = await Promise.all([
+          getOfferByShareUid(shareUid),
+          getSettingsFromDb()
+        ]);
+        
         if (data) {
           setOffer(data);
-          // Initialize optional selections - all unchecked by default
           const initialSelections: Record<string, boolean> = {};
-          // Check opcje section
           const opcjeItems = (data.sections as any)?.opcje?.items || [];
           opcjeItems.forEach((_: any, idx: number) => {
             initialSelections[`opcje-${idx}`] = false;
@@ -161,6 +217,37 @@ export default function OfferView() {
           setOptionalSelections(initialSelections);
         } else {
           setError('Nie znaleziono oferty');
+        }
+        
+        if (settings?.companySettings) {
+          setCompanySettings(settings.companySettings as CompanySettings);
+        }
+        
+        // Load portfolios
+        const { data: portfolioData } = await supabase
+          .from('portfolio')
+          .select('id, name, description')
+          .order('created_at', { ascending: false });
+        
+        if (portfolioData && portfolioData.length > 0) {
+          setPortfolios(portfolioData);
+          setSelectedPortfolioId(portfolioData[0].id);
+        }
+        
+        // Load product images
+        const { data: productImagesData } = await supabase
+          .from('product_images')
+          .select('id, product_id, image_url')
+          .order('sort_order');
+        
+        if (productImagesData) {
+          const imagesMap: Record<string, string> = {};
+          productImagesData.forEach(img => {
+            if (!imagesMap[img.product_id]) {
+              imagesMap[img.product_id] = img.image_url;
+            }
+          });
+          setProductImages(imagesMap);
         }
       } catch (err) {
         console.error('Error loading offer:', err);
@@ -172,6 +259,23 @@ export default function OfferView() {
 
     loadOffer();
   }, [shareUid]);
+
+  // Load portfolio images when selected portfolio changes
+  useEffect(() => {
+    const loadPortfolioImages = async () => {
+      if (!selectedPortfolioId) return;
+      
+      const { data } = await supabase
+        .from('portfolio_images')
+        .select('*')
+        .eq('portfolio_id', selectedPortfolioId)
+        .order('sort_order');
+      
+      setPortfolioImages(data || []);
+    };
+    
+    loadPortfolioImages();
+  }, [selectedPortfolioId]);
 
   const toggleExpanded = (key: string) => {
     setExpandedItems(prev => {
@@ -207,18 +311,14 @@ export default function OfferView() {
     
     setIsGeneratingPDF(true);
     try {
-      // Load company settings from database
       const settings = await getSettingsFromDb();
-      const companySettings = settings?.companySettings;
+      const companySettingsForPdf = settings?.companySettings;
       
-      if (!companySettings) {
-        toast.error('Brak ustawień firmy', {
-          description: 'Skonfiguruj ustawienia firmy w panelu administracyjnym',
-        });
+      if (!companySettingsForPdf) {
+        toast.error('Brak ustawień firmy');
         return;
       }
       
-      // Load logo as base64
       let logoBase64: string | undefined;
       try {
         const response = await fetch(logo);
@@ -234,7 +334,6 @@ export default function OfferView() {
       
       const vatRate = 0.23;
       
-      // Calculate pool metrics from offer data
       const poolParams = {
         type: poolTypeLabels[offer.poolType as PoolType] || offer.poolType,
         length: offer.dimensions?.length || 8,
@@ -243,11 +342,10 @@ export default function OfferView() {
         volume: offer.calculations?.volume || (offer.dimensions?.length || 8) * (offer.dimensions?.width || 4) * (offer.dimensions?.depth || 1.5),
         requiredFlow: offer.calculations?.requiredFlow || 0,
         isIrregular: offer.dimensions?.isIrregular || false,
-        irregularSurcharge: companySettings.irregularSurchargePercent || 0,
+        irregularSurcharge: (companySettingsForPdf as any).irregularSurchargePercent || 0,
         overflowType: offer.dimensions?.overflowType,
       };
       
-      // Prepare sections for PDF in the format expected by edge function
       const sectionsForPdf: Array<{ name: string; items: Array<{
         product: { name: string; symbol: string };
         quantity: number;
@@ -279,7 +377,6 @@ export default function OfferView() {
         });
       });
       
-      // Prepare inne items
       const inneSection = (offer.sections as any)?.inne;
       const inneItems = inneSection?.items?.map((item: any) => ({
         name: item.name || '',
@@ -292,7 +389,7 @@ export default function OfferView() {
       const pdfData = {
         offerNumber: offer.offerNumber,
         companySettings: {
-          ...companySettings,
+          ...companySettingsForPdf,
           logoBase64: logoBase64 || undefined,
         },
         customerData: {
@@ -365,18 +462,15 @@ export default function OfferView() {
     }
   };
 
-  // Calculate total with optional selections
   const calculatedTotals = useMemo(() => {
     if (!offer) return { net: 0, gross: 0 };
 
     let totalNet = 0;
     
-    // Add excavation
     totalNet += offer.excavation.excavationTotal + offer.excavation.removalFixedPrice;
 
-    // Add sections (except opcje which are optional)
     Object.entries(offer.sections).forEach(([sectionKey, section]) => {
-      if (sectionKey === 'opcje') return; // Handle opcje separately
+      if (sectionKey === 'opcje') return;
       
       const items = section.items || [];
       items.forEach((item: OfferItem | InneItemData, idx: number) => {
@@ -388,7 +482,6 @@ export default function OfferView() {
       });
     });
 
-    // Add selected optional items (opcje)
     const opcjeItems = (offer.sections as any)?.opcje?.items || [];
     opcjeItems.forEach((item: OptionalItemData, idx: number) => {
       const itemKey = `opcje-${idx}`;
@@ -405,19 +498,22 @@ export default function OfferView() {
 
   const renderItemDetails = (displayItem: DisplayItem) => {
     const description = displayItem.description || 'Szczegółowy opis produktu będzie dostępny wkrótce.';
+    const imageUrl = displayItem.productId ? productImages[displayItem.productId] : null;
     
     return (
       <div className="mt-4 pt-4 border-t border-border/50">
-        <div className="prose prose-sm max-w-none text-muted-foreground">
-          <p>{description}</p>
-        </div>
-        {/* Placeholder for future youtube videos and images */}
-        <div className="mt-4 grid grid-cols-2 gap-4">
-          <div className="aspect-video bg-muted rounded-lg flex items-center justify-center text-muted-foreground text-sm">
-            Zdjęcie produktu
-          </div>
-          <div className="aspect-video bg-muted rounded-lg flex items-center justify-center text-muted-foreground text-sm">
-            Film produktu
+        <div className="flex gap-4">
+          {imageUrl && (
+            <div className="w-24 h-24 flex-shrink-0">
+              <img 
+                src={imageUrl} 
+                alt={displayItem.name} 
+                className="w-full h-full object-cover rounded-lg"
+              />
+            </div>
+          )}
+          <div className="flex-1 prose prose-sm max-w-none text-muted-foreground">
+            <p>{description}</p>
           </div>
         </div>
       </div>
@@ -449,19 +545,17 @@ export default function OfferView() {
     );
   }
 
-  // Get optional items for rendering at the end
   const opcjeItems: OptionalItemData[] = (offer.sections as any)?.opcje?.items || [];
-
-  // Get pool type label with proper polish characters
   const poolTypeLabel = poolTypeLabels[offer.poolType as PoolType] || offer.poolType;
+  const contactPerson = companySettings?.contactPerson;
+  const calculations = calculatePoolMetrics(offer.dimensions, offer.poolType as PoolType);
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Fixed Header - same style as configurator */}
+      {/* Fixed Header */}
       <header className="fixed top-0 left-0 right-0 z-[100] bg-header border-b border-header/80 shadow-lg">
         <div className="container mx-auto px-4 lg:px-6 py-3 lg:py-4">
           <div className="flex items-center justify-between gap-4">
-            {/* Left: Offer info */}
             <div>
               <h1 className="text-base lg:text-lg font-semibold text-header-foreground">
                 Oferta {offer.offerNumber}
@@ -475,9 +569,7 @@ export default function OfferView() {
               </p>
             </div>
             
-            {/* Desktop: Customer data in 2 rows */}
             <div className="hidden lg:flex flex-col items-end gap-1 text-sm text-header-foreground">
-              {/* Row 1: Name, company, email, phone */}
               <div className="flex items-center gap-4">
                 <div className="flex items-center gap-2">
                   <User className="w-4 h-4 text-header-foreground/70" />
@@ -506,7 +598,6 @@ export default function OfferView() {
                   </div>
                 )}
               </div>
-              {/* Row 2: Address and NIP */}
               <div className="flex items-center gap-4 text-header-foreground/80">
                 {(offer.customerData.city || offer.customerData.address) && (
                   <div className="flex items-center gap-2">
@@ -524,7 +615,6 @@ export default function OfferView() {
               </div>
             </div>
             
-            {/* Right: Logo */}
             <img 
               src={logo} 
               alt="Pool Prestige" 
@@ -535,8 +625,72 @@ export default function OfferView() {
       </header>
 
       {/* Main Content */}
-      <main className="container mx-auto px-4 pt-24 pb-32">
-        {/* Customer Info for Mobile/Tablet */}
+      <main className="container mx-auto px-4 pt-24 pb-32 max-w-4xl">
+        {/* Company Description */}
+        {companySettings?.companyDescription && (
+          <Card className="mb-6">
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Building2 className="w-5 h-5 text-primary" />
+                O nas
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-muted-foreground whitespace-pre-line">
+                {companySettings.companyDescription}
+              </p>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Contact Person */}
+        {contactPerson && contactPerson.name && (
+          <Card className="mb-6">
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <User className="w-5 h-5 text-primary" />
+                Osoba prowadząca ofertę
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center gap-4">
+                {contactPerson.photo ? (
+                  <img 
+                    src={contactPerson.photo} 
+                    alt={contactPerson.name}
+                    className="w-16 h-16 rounded-full object-cover border-2 border-primary/20"
+                  />
+                ) : (
+                  <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center">
+                    <User className="w-8 h-8 text-primary" />
+                  </div>
+                )}
+                <div>
+                  <p className="font-semibold">{contactPerson.name}</p>
+                  {contactPerson.role && (
+                    <p className="text-sm text-muted-foreground">{contactPerson.role}</p>
+                  )}
+                  <div className="flex items-center gap-3 mt-2 text-sm">
+                    {contactPerson.phone && (
+                      <a href={`tel:${contactPerson.phone.replace(/\s/g, '')}`} className="flex items-center gap-1 text-primary hover:underline">
+                        <Phone className="w-3 h-3" />
+                        {contactPerson.phone}
+                      </a>
+                    )}
+                    {contactPerson.email && (
+                      <a href={`mailto:${contactPerson.email}`} className="flex items-center gap-1 text-primary hover:underline">
+                        <Mail className="w-3 h-3" />
+                        {contactPerson.email}
+                      </a>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Customer Info for Mobile */}
         <Card className="mb-6 lg:hidden">
           <CardHeader className="pb-2">
             <CardTitle className="text-base flex items-center gap-2">
@@ -582,11 +736,6 @@ export default function OfferView() {
                   </span>
                 </div>
               )}
-              {offer.customerData.nip && (
-                <div className="text-muted-foreground">
-                  NIP: {offer.customerData.nip}
-                </div>
-              )}
             </div>
           </CardContent>
         </Card>
@@ -595,20 +744,20 @@ export default function OfferView() {
         <Card className="mb-6">
           <CardHeader className="pb-3">
             <CardTitle className="flex items-center gap-2 text-base">
-              <Ruler className="w-5 h-5 text-primary" />
+              <Waves className="w-5 h-5 text-primary" />
               Wizualizacja basenu
             </CardTitle>
           </CardHeader>
           <CardContent>
             <Pool3DVisualization 
               dimensions={offer.dimensions}
-              calculations={calculatePoolMetrics(offer.dimensions, offer.poolType as PoolType)}
+              calculations={calculations}
               height={300}
             />
           </CardContent>
         </Card>
 
-        {/* Pool Dimensions */}
+        {/* Pool Parameters */}
         <Card className="mb-6">
           <CardHeader className="pb-3">
             <CardTitle className="flex items-center gap-2 text-base">
@@ -617,58 +766,84 @@ export default function OfferView() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-3 gap-4 text-center">
-              <div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4">
+              <div className="text-center p-3 bg-primary/5 rounded-lg">
                 <p className="text-2xl font-bold text-primary">{offer.dimensions.length}m</p>
                 <p className="text-xs text-muted-foreground">Długość</p>
               </div>
-              <div>
+              <div className="text-center p-3 bg-primary/5 rounded-lg">
                 <p className="text-2xl font-bold text-primary">{offer.dimensions.width}m</p>
                 <p className="text-xs text-muted-foreground">Szerokość</p>
               </div>
-              <div>
+              <div className="text-center p-3 bg-primary/5 rounded-lg">
                 <p className="text-2xl font-bold text-primary">{offer.dimensions.depth}m</p>
                 <p className="text-xs text-muted-foreground">Głębokość</p>
               </div>
+              <div className="text-center p-3 bg-primary/5 rounded-lg">
+                <p className="text-2xl font-bold text-primary">{calculations.volume.toFixed(1)}m³</p>
+                <p className="text-xs text-muted-foreground">Objętość</p>
+              </div>
             </div>
-            <p className="text-center mt-3 text-sm text-muted-foreground">
-              Typ basenu: <span className="font-medium text-foreground">{poolTypeLabel}</span>
-            </p>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm">
+              <div className="flex items-center gap-2">
+                <Droplets className="w-4 h-4 text-primary" />
+                <span>Typ: <strong>{poolTypeLabel}</strong></span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Waves className="w-4 h-4 text-primary" />
+                <span>Przelew: <strong>{overflowTypeLabels[offer.dimensions.overflowType as PoolOverflowType] || offer.dimensions.overflowType}</strong></span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Package className="w-4 h-4 text-primary" />
+                <span>Wykończenie: <strong>{liningTypeLabels[offer.dimensions.liningType as PoolLiningType] || offer.dimensions.liningType}</strong></span>
+              </div>
+            </div>
           </CardContent>
         </Card>
 
         {/* Excavation */}
-        <Card className="mb-6">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base">Wykopy i wywóz</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-2 text-sm">
-              <div className="flex justify-between">
-                <span>Wykopy ({offer.excavation.excavationVolume.toFixed(1)} m³)</span>
-                <span className="font-medium">{formatPrice(offer.excavation.excavationTotal)}</span>
+        {(offer.excavation.excavationTotal > 0 || offer.excavation.removalFixedPrice > 0) && (
+          <Card className="mb-6">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">WYKOPY I WYWÓZ</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2 text-sm">
+                {offer.excavation.excavationTotal > 0 && (
+                  <div className="flex justify-between">
+                    <span>Wykopy ({offer.excavation.excavationVolume.toFixed(1)} m³)</span>
+                    <span className="font-medium">{formatPrice(offer.excavation.excavationTotal)}</span>
+                  </div>
+                )}
+                {offer.excavation.removalFixedPrice > 0 && (
+                  <div className="flex justify-between">
+                    <span>Wywóz ziemi</span>
+                    <span className="font-medium">{formatPrice(offer.excavation.removalFixedPrice)}</span>
+                  </div>
+                )}
               </div>
-              <div className="flex justify-between">
-                <span>Wywóz ziemi</span>
-                <span className="font-medium">{formatPrice(offer.excavation.removalFixedPrice)}</span>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        )}
 
-        {/* Sections (except opcje) */}
+        {/* Sections */}
         {Object.entries(offer.sections)
           .filter(([sectionKey]) => sectionKey !== 'opcje')
           .map(([sectionKey, section]) => {
             const items = section.items || [];
             if (items.length === 0) return null;
             
+            const sectionDescription = sectionDescriptions[sectionKey];
+            
             return (
               <Card key={sectionKey} className="mb-6">
                 <CardHeader className="pb-3">
-                  <CardTitle className="text-base">
+                  <CardTitle className="text-base uppercase">
                     {sectionLabels[sectionKey] || sectionKey}
                   </CardTitle>
+                  {sectionDescription && (
+                    <p className="text-sm text-muted-foreground mt-1">{sectionDescription}</p>
+                  )}
                 </CardHeader>
                 <CardContent className="space-y-3">
                   {items.map((item: OfferItem | InneItemData, idx: number) => {
@@ -679,6 +854,7 @@ export default function OfferView() {
                     const itemTotal = displayItem.unitPrice * displayItem.quantity;
                     const discount = displayItem.discount || 100;
                     const afterDiscount = itemTotal * (discount / 100);
+                    const imageUrl = displayItem.productId ? productImages[displayItem.productId] : null;
 
                     return (
                       <div 
@@ -686,10 +862,17 @@ export default function OfferView() {
                         className="border rounded-lg p-4 border-border"
                       >
                         <div className="flex items-start gap-3">
+                          {imageUrl && (
+                            <img 
+                              src={imageUrl} 
+                              alt={displayItem.name}
+                              className="w-16 h-16 object-cover rounded-lg flex-shrink-0"
+                            />
+                          )}
                           <div className="flex-1 min-w-0">
                             <div className="flex items-start justify-between gap-2">
                               <div>
-                                <h4 className="font-medium">
+                                <h4 className="font-medium uppercase">
                                   {capitalize(displayItem.name)}
                                 </h4>
                                 {displayItem.symbol && (
@@ -712,24 +895,26 @@ export default function OfferView() {
                               )}
                             </div>
 
-                            <Collapsible open={isExpanded} onOpenChange={() => toggleExpanded(itemKey)}>
-                              <CollapsibleTrigger className="flex items-center gap-1 mt-3 text-sm text-primary hover:underline">
-                                {isExpanded ? (
-                                  <>
-                                    <ChevronUp className="w-4 h-4" />
-                                    Ukryj szczegóły
-                                  </>
-                                ) : (
-                                  <>
-                                    <ChevronDown className="w-4 h-4" />
-                                    Zobacz szczegóły
-                                  </>
-                                )}
-                              </CollapsibleTrigger>
-                              <CollapsibleContent>
-                                {renderItemDetails(displayItem)}
-                              </CollapsibleContent>
-                            </Collapsible>
+                            {displayItem.description && (
+                              <Collapsible open={isExpanded} onOpenChange={() => toggleExpanded(itemKey)}>
+                                <CollapsibleTrigger className="flex items-center gap-1 mt-3 text-sm text-primary hover:underline">
+                                  {isExpanded ? (
+                                    <>
+                                      <ChevronUp className="w-4 h-4" />
+                                      Ukryj szczegóły
+                                    </>
+                                  ) : (
+                                    <>
+                                      <ChevronDown className="w-4 h-4" />
+                                      Zobacz szczegóły
+                                    </>
+                                  )}
+                                </CollapsibleTrigger>
+                                <CollapsibleContent>
+                                  {renderItemDetails(displayItem)}
+                                </CollapsibleContent>
+                              </Collapsible>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -740,13 +925,13 @@ export default function OfferView() {
             );
           })}
 
-        {/* Optional Items (Opcje dodatkowe) - at the end with checkboxes */}
+        {/* Optional Items */}
         {opcjeItems.length > 0 && (
           <Card className="mb-6 border-amber-500/30 bg-amber-50/50 dark:bg-amber-950/20">
             <CardHeader className="pb-3">
-              <CardTitle className="text-base flex items-center gap-2">
+              <CardTitle className="text-base flex items-center gap-2 uppercase">
                 <span>Opcje dodatkowe</span>
-                <span className="text-xs font-normal text-muted-foreground">(zaznacz, aby dodać do oferty)</span>
+                <span className="text-xs font-normal text-muted-foreground normal-case">(zaznacz, aby dodać do oferty)</span>
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
@@ -776,7 +961,7 @@ export default function OfferView() {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-start justify-between gap-2">
                           <div>
-                            <h4 className={`font-medium ${!isSelected ? 'text-muted-foreground' : ''}`}>
+                            <h4 className={`font-medium uppercase ${!isSelected ? 'text-muted-foreground' : ''}`}>
                               {capitalize(item.name)}
                             </h4>
                             <p className="text-xs text-muted-foreground mt-1">
@@ -796,8 +981,96 @@ export default function OfferView() {
           </Card>
         )}
 
+        {/* Summary Table */}
+        <Card className="mb-6 bg-primary/5">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">PODSUMOWANIE</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              <div className="flex justify-between text-lg">
+                <span>Suma netto:</span>
+                <span className="font-semibold">{formatPrice(calculatedTotals.net)}</span>
+              </div>
+              <div className="flex justify-between text-muted-foreground">
+                <span>VAT 23%:</span>
+                <span>{formatPrice(calculatedTotals.gross - calculatedTotals.net)}</span>
+              </div>
+              <div className="flex justify-between text-xl font-bold text-primary pt-2 border-t">
+                <span>Suma brutto:</span>
+                <span>{formatPrice(calculatedTotals.gross)}</span>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Payment Terms */}
+        {companySettings?.paymentTermsTemplate && (
+          <Card className="mb-6">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">WARUNKI PŁATNOŚCI</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-muted-foreground whitespace-pre-line">
+                {companySettings.paymentTermsTemplate}
+              </p>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Portfolio Gallery */}
+        {portfolios.length > 0 && (
+          <Card className="mb-6">
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <Images className="w-5 h-5 text-primary" />
+                  Portfolio realizacji
+                </CardTitle>
+                {portfolios.length > 1 && (
+                  <Select value={selectedPortfolioId} onValueChange={setSelectedPortfolioId}>
+                    <SelectTrigger className="w-[200px]">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {portfolios.map(p => (
+                        <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              </div>
+            </CardHeader>
+            <CardContent>
+              {portfolioImages.length > 0 ? (
+                <Carousel className="w-full">
+                  <CarouselContent>
+                    {portfolioImages.map((image) => (
+                      <CarouselItem key={image.id} className="md:basis-1/2 lg:basis-1/3">
+                        <div className="aspect-[4/3] overflow-hidden rounded-lg">
+                          <img 
+                            src={image.image_url} 
+                            alt={image.file_name}
+                            className="w-full h-full object-cover hover:scale-105 transition-transform duration-300"
+                          />
+                        </div>
+                      </CarouselItem>
+                    ))}
+                  </CarouselContent>
+                  <CarouselPrevious />
+                  <CarouselNext />
+                </Carousel>
+              ) : (
+                <p className="text-center text-muted-foreground py-8">
+                  Brak zdjęć w wybranym portfolio
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
         {/* Social Media Links */}
-        <div className="container mx-auto px-4 py-6 flex flex-col items-center gap-4 border-t border-border/50">
+        <div className="flex flex-col items-center gap-4 py-6 border-t border-border/50">
           <p className="text-sm text-muted-foreground">Zobacz nasze realizacje i śledź nas w social mediach</p>
           <div className="flex items-center gap-4">
             <a
@@ -822,63 +1095,56 @@ export default function OfferView() {
         </div>
       </main>
 
-      {/* Fixed Footer with Total */}
+      {/* Fixed Footer */}
       <footer className="fixed bottom-0 left-0 right-0 bg-background/95 backdrop-blur-sm border-t border-border">
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-between gap-4">
-            {/* Actions - left side */}
-            {offer && (
-              <div className="flex items-center gap-2">
-                {isAuthenticated && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => navigate(-1)}
-                  >
-                    <ArrowLeft className="w-4 h-4 mr-2" />
-                    Wróć
-                  </Button>
-                )}
+            <div className="flex items-center gap-2">
+              {isAuthenticated && (
                 <Button
-                  variant="outline"
+                  variant="ghost"
                   size="sm"
-                  onClick={handleDownloadPDF}
-                  disabled={isGeneratingPDF}
+                  onClick={() => navigate(-1)}
                 >
-                  {isGeneratingPDF ? (
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  ) : (
-                    <FileDown className="w-4 h-4 mr-2" />
-                  )}
-                  Pobierz PDF
+                  <ArrowLeft className="w-4 h-4 mr-2" />
+                  Wróć
                 </Button>
-                {isAuthenticated && (
-                  <>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => navigate(`/nowa-oferta?edit=${offer.id}`)}
-                    >
-                      <Pencil className="w-4 h-4 mr-2" />
-                      Edytuj
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        // TODO: Implement duplicate - for now just navigate to new offer
-                        navigate('/nowa-oferta');
-                      }}
-                    >
-                      <Copy className="w-4 h-4 mr-2" />
-                      Duplikuj
-                    </Button>
-                  </>
+              )}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleDownloadPDF}
+                disabled={isGeneratingPDF}
+              >
+                {isGeneratingPDF ? (
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                ) : (
+                  <FileDown className="w-4 h-4 mr-2" />
                 )}
-              </div>
-            )}
+                Pobierz PDF
+              </Button>
+              {isAuthenticated && (
+                <>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => navigate(`/nowa-oferta?edit=${offer.id}`)}
+                  >
+                    <Pencil className="w-4 h-4 mr-2" />
+                    Edytuj
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => navigate('/nowa-oferta')}
+                  >
+                    <Copy className="w-4 h-4 mr-2" />
+                    Duplikuj
+                  </Button>
+                </>
+              )}
+            </div>
             
-            {/* Amounts - right side */}
             <div className="flex items-center gap-6 ml-auto">
               <div className="hidden sm:block">
                 <p className="text-sm text-muted-foreground">Suma netto</p>

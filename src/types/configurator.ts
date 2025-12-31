@@ -215,6 +215,14 @@ export interface ConfiguratorState {
   foilType: 'tradycyjna' | 'strukturalna';
 }
 
+export interface ContactPersonSettings {
+  name: string;
+  role: string;
+  phone: string;
+  email: string;
+  photo?: string; // URL to photo in storage
+}
+
 export interface CompanySettings {
   name: string;
   address: string;
@@ -230,6 +238,9 @@ export interface CompanySettings {
   notesTemplate: string;
   paymentTermsTemplate: string;
   dueDays: number; // Termin odpowiedzi na ofertę (dni)
+  // New fields for public offer view
+  companyDescription?: string;
+  contactPerson?: ContactPersonSettings;
 }
 
 export interface EmailTemplateSettings {
