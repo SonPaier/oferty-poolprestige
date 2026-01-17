@@ -35,7 +35,7 @@ export function StepNavigation({ currentStep, onStepClick, completedSteps = [] }
         {steps.map((step, index) => {
           const isActive = currentStep === step.id;
           const isCompleted = completedSteps.includes(step.id) || step.id < currentStep;
-          const isClickable = step.id <= currentStep || completedSteps.includes(step.id - 1);
+          const isClickable = true; // Allow navigation to any step
           
           return (
             <div key={step.id} className="flex items-center flex-shrink-0">
