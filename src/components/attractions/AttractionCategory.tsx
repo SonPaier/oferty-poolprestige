@@ -75,7 +75,7 @@ export function AttractionCategory({
             {debouncedSearch ? 'Brak wyników' : 'Brak produktów w tej kategorii'}
           </div>
         ) : (
-          <div className="grid grid-cols-2 gap-2">
+          <div className="flex flex-col gap-2">
             {products.map((product) => (
               <AttractionProductCard
                 key={product.id}
