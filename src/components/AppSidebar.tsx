@@ -3,7 +3,9 @@ import {
   FileText, 
   FilePlus, 
   Package, 
-  Clock 
+  Clock,
+  PanelLeftClose,
+  PanelLeft
 } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
 import {
@@ -19,6 +21,7 @@ import {
   SidebarFooter,
   useSidebar,
 } from "@/components/ui/sidebar";
+import { Button } from "@/components/ui/button";
 import logo from "@/assets/logo.png";
 
 const navigationItems = [
@@ -30,7 +33,7 @@ const navigationItems = [
 ];
 
 export function AppSidebar() {
-  const { state } = useSidebar();
+  const { state, toggleSidebar } = useSidebar();
   const collapsed = state === "collapsed";
   const location = useLocation();
 
@@ -39,17 +42,32 @@ export function AppSidebar() {
   return (
     <Sidebar collapsible="icon">
       <SidebarHeader className="border-b border-sidebar-border">
-        <div className="flex items-center gap-3 px-2 py-3">
-          <img 
-            src={logo} 
-            alt="Pool Prestige" 
-            className="h-8 w-8 object-contain"
-          />
-          {!collapsed && (
-            <span className="font-semibold text-foreground text-lg">
-              Pool Prestige
-            </span>
-          )}
+        <div className="flex items-center justify-between px-2 py-3">
+          <div className="flex items-center gap-3">
+            <img 
+              src={logo} 
+              alt="Pool Prestige" 
+              className="h-8 w-8 object-contain"
+            />
+            {!collapsed && (
+              <span className="font-semibold text-foreground text-lg">
+                Pool Prestige
+              </span>
+            )}
+          </div>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={toggleSidebar}
+            className="h-8 w-8 shrink-0"
+            title={collapsed ? "Rozwiń menu" : "Zwiń menu"}
+          >
+            {collapsed ? (
+              <PanelLeft className="h-4 w-4" />
+            ) : (
+              <PanelLeftClose className="h-4 w-4" />
+            )}
+          </Button>
         </div>
       </SidebarHeader>
 
