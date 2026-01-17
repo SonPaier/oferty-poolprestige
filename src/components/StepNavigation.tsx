@@ -15,9 +15,11 @@ const steps: Step[] = [
   { id: 5, label: 'Filtracja', shortLabel: 'Filtr' },
   { id: 6, label: 'Oświetlenie', shortLabel: 'Światło' },
   { id: 7, label: 'Automatyka', shortLabel: 'Automatyka' },
-  { id: 8, label: 'Roboty ziemne', shortLabel: 'Wykop' },
-  { id: 9, label: 'Dodatki', shortLabel: 'Dodatki' },
-  { id: 10, label: 'Podsumowanie', shortLabel: 'Oferta' },
+  { id: 8, label: 'Atrakcje', shortLabel: 'Atrakcje' },
+  { id: 9, label: 'Roboty ziemne', shortLabel: 'Wykop' },
+  { id: 10, label: 'Prace budowlane', shortLabel: 'Budowa' },
+  { id: 11, label: 'Dodatki', shortLabel: 'Dodatki' },
+  { id: 12, label: 'Podsumowanie', shortLabel: 'Oferta' },
 ];
 
 interface StepNavigationProps {

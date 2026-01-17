@@ -15,6 +15,9 @@ interface ProductImport {
   stock_quantity?: number;
   image_id?: string;
   category?: string;
+  subcategory?: string;
+  foil_category?: string;
+  foil_width?: number;
 }
 
 serve(async (req) => {
@@ -44,6 +47,9 @@ serve(async (req) => {
       stock_quantity: number;
       image_id: string | null;
       category: string | null;
+      subcategory: string | null;
+      foil_category: string | null;
+      foil_width: number | null;
     };
 
     // Filter out products with empty symbols and deduplicate by symbol
@@ -63,6 +69,9 @@ serve(async (req) => {
           stock_quantity: p.stock_quantity || 0,
           image_id: p.image_id?.trim() || null,
           category: p.category?.trim() || null,
+          subcategory: p.subcategory?.trim() || null,
+          foil_category: p.foil_category?.trim() || null,
+          foil_width: p.foil_width || null,
         });
       });
     

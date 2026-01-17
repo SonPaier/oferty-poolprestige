@@ -12,6 +12,7 @@ import { EquipmentStep } from '@/components/steps/EquipmentStep';
 import { FiltrationStep } from '@/components/steps/FiltrationStep';
 import { LightingStep } from '@/components/steps/LightingStep';
 import { AutomationStep } from '@/components/steps/AutomationStep';
+import { AttractionsStep } from '@/components/steps/AttractionsStep';
 import { ExcavationStep } from '@/components/steps/ExcavationStep';
 import { ConstructionStep } from '@/components/steps/ConstructionStep';
 import { AdditionsStep } from '@/components/steps/AdditionsStep';
@@ -23,7 +24,7 @@ import { toast } from 'sonner';
 import { getOfferByIdFromDb } from '@/lib/offerDb';
 
 const DRAFT_STORAGE_KEY = 'pool_prestige_draft';
-const TOTAL_STEPS = 11;
+const TOTAL_STEPS = 12;
 
 interface DraftData {
   draftId: string;
@@ -299,12 +300,14 @@ function ConfiguratorContent() {
       case 7:
         return <AutomationStep onNext={nextStep} onBack={prevStep} />;
       case 8:
-        return <ExcavationStep onNext={nextStep} onBack={prevStep} excavationSettings={excavationSettings} />;
+        return <AttractionsStep onNext={nextStep} onBack={prevStep} />;
       case 9:
-        return <ConstructionStep onNext={nextStep} onBack={prevStep} />;
+        return <ExcavationStep onNext={nextStep} onBack={prevStep} excavationSettings={excavationSettings} />;
       case 10:
-        return <AdditionsStep onNext={nextStep} onBack={prevStep} />;
+        return <ConstructionStep onNext={nextStep} onBack={prevStep} />;
       case 11:
+        return <AdditionsStep onNext={nextStep} onBack={prevStep} />;
+      case 12:
         return (
           <SummaryStep 
             onBack={prevStep} 
