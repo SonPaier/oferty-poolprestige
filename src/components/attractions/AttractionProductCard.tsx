@@ -49,7 +49,7 @@ export function AttractionProductCard({
         )}
       >
         {/* Image */}
-        <div className="h-12 w-12 shrink-0 rounded-md overflow-hidden bg-muted flex items-center justify-center">
+        <div className="h-20 w-20 shrink-0 rounded-md overflow-hidden bg-muted flex items-center justify-center">
           {imageUrl ? (
             <img
               src={imageUrl}
@@ -57,7 +57,7 @@ export function AttractionProductCard({
               className="w-full h-full object-cover"
             />
           ) : (
-            <Package className="h-5 w-5 text-muted-foreground" />
+            <Package className="h-8 w-8 text-muted-foreground" />
           )}
         </div>
 
