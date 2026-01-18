@@ -8,6 +8,13 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog';
 import { 
   Palette, 
   Info, 
@@ -19,7 +26,8 @@ import {
   Edit2,
   Package,
   Layers,
-  GripVertical
+  GripVertical,
+  HelpCircle
 } from 'lucide-react';
 import { Product, getPriceInPLN } from '@/data/products';
 import { formatPrice, calculateFoilOptimization, FoilOptimizationResult } from '@/lib/calculations';
@@ -445,7 +453,98 @@ export function CoveringStep({ onNext, onBack }: CoveringStepProps) {
                 <div className="flex items-start gap-2">
                   <Calculator className="w-4 h-4 text-accent mt-0.5" />
                   <div className="flex-1">
-                    <p className="text-sm font-medium">Zapotrzebowanie</p>
+                    <div className="flex items-center justify-between">
+                      <p className="text-sm font-medium">Zapotrzebowanie</p>
+                      <Dialog>
+                        <DialogTrigger asChild>
+                          <Button variant="ghost" size="sm" className="h-6 px-2 text-xs">
+                            <HelpCircle className="w-3 h-3 mr-1" />
+                            Szczegóły
+                          </Button>
+                        </DialogTrigger>
+                        <DialogContent className="max-w-lg">
+                          <DialogHeader>
+                            <DialogTitle>Sposób kalkulacji rolek folii</DialogTitle>
+                          </DialogHeader>
+                          <div className="space-y-4 text-sm">
+                            <div>
+                              <h4 className="font-semibold mb-2">1. Obliczenie powierzchni</h4>
+                              <ul className="list-disc list-inside space-y-1 text-muted-foreground">
+                                <li>Dno basenu: {dimensions.length} × {dimensions.width} = {(dimensions.length * dimensions.width).toFixed(2)} m²</li>
+                                <li>Ściany długie: 2 × {dimensions.length} × {dimensions.depth} = {(2 * dimensions.length * dimensions.depth).toFixed(2)} m²</li>
+                                <li>Ściany krótkie: 2 × {dimensions.width} × {dimensions.depth} = {(2 * dimensions.width * dimensions.depth).toFixed(2)} m²</li>
+                                <li className="font-medium text-foreground">Suma podstawowa: {((dimensions.length * dimensions.width) + (2 * dimensions.length * dimensions.depth) + (2 * dimensions.width * dimensions.depth)).toFixed(2)} m²</li>
+                              </ul>
+                            </div>
+                            
+                            <div>
+                              <h4 className="font-semibold mb-2">2. Naddatki</h4>
+                              <ul className="list-disc list-inside space-y-1 text-muted-foreground">
+                                <li>Zakładki spawów: +10% na zakłady między pasami</li>
+                                {dimensions.isIrregular && (
+                                  <li>Kształt nieregularny: +{companySettings.irregularSurchargePercent || 20}% na docinanie</li>
+                                )}
+                              </ul>
+                            </div>
+                            
+                            <div>
+                              <h4 className="font-semibold mb-2">3. Optymalizacja rolek</h4>
+                              <p className="text-muted-foreground mb-2">
+                                Folia jest układana pasami wzdłuż dłuższego boku basenu, aby zminimalizować ilość spawów.
+                              </p>
+                              <ul className="list-disc list-inside space-y-1 text-muted-foreground">
+                                <li>Rolki 1,65m: optymalne dla węższych powierzchni</li>
+                                <li>Rolki 2,05m: optymalne dla szerszych powierzchni</li>
+                                <li>Długość rolki: 25 mb</li>
+                                <li>Zakładka między pasami: 10 cm</li>
+                              </ul>
+                            </div>
+                            
+                            <div className="pt-2 border-t">
+                              <h4 className="font-semibold mb-2">4. Wynik kalkulacji</h4>
+                              <div className="grid grid-cols-2 gap-2">
+                                <div className="p-2 rounded bg-muted/50">
+                                  <p className="text-xs text-muted-foreground">Całkowita powierzchnia</p>
+                                  <p className="font-medium">{foilCalc.totalArea.toFixed(1)} m²</p>
+                                </div>
+                                <div className="p-2 rounded bg-muted/50">
+                                  <p className="text-xs text-muted-foreground">Odpad</p>
+                                  <p className="font-medium">{foilCalc.wastePercentage.toFixed(1)}%</p>
+                                </div>
+                                <div className="p-2 rounded bg-muted/50">
+                                  <p className="text-xs text-muted-foreground">Rolki 1,65m</p>
+                                  <p className="font-medium">{foilCalc.rolls165} szt.</p>
+                                </div>
+                                <div className="p-2 rounded bg-muted/50">
+                                  <p className="text-xs text-muted-foreground">Rolki 2,05m</p>
+                                  <p className="font-medium">{foilCalc.rolls205} szt.</p>
+                                </div>
+                              </div>
+                            </div>
+                            
+                            {foilCalc.strips && foilCalc.strips.length > 0 && (
+                              <div className="pt-2 border-t">
+                                <h4 className="font-semibold mb-2">5. Układ pasów</h4>
+                                <div className="max-h-32 overflow-y-auto space-y-1">
+                                  {foilCalc.strips.map((strip, idx) => (
+                                    <div key={idx} className="flex justify-between text-xs p-1 rounded bg-muted/30">
+                                      <span className="text-muted-foreground">
+                                        {strip.surface === 'bottom' ? 'Dno' : 
+                                         strip.surface === 'wall-long' ? 'Ściana długa' : 'Ściana krótka'}
+                                      </span>
+                                      <span>
+                                        {strip.rollWidth}m × {strip.stripLength.toFixed(2)}m 
+                                        <span className="text-muted-foreground ml-1">(użyte: {strip.usedWidth.toFixed(2)}m)</span>
+                                      </span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </DialogContent>
+                      </Dialog>
+                    </div>
                     <p className="text-2xl font-bold mt-1">
                       {foilCalc.totalArea.toFixed(1)} m²
                     </p>
