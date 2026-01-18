@@ -15,7 +15,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Badge } from "@/components/ui/badge";
-import { SidebarTrigger } from "@/components/ui/sidebar";
+
 import { useAuth } from "@/context/AuthContext";
 import { getQueueOffers } from "@/lib/offerDb";
 import { useSettings } from "@/context/SettingsContext";
@@ -89,9 +89,7 @@ export function AppHeader({ onSettingsClick }: AppHeaderProps) {
 
   return (
     <header className="h-12 border-b border-border bg-card flex items-center justify-between px-4 shrink-0">
-      <div className="flex items-center gap-2">
-        <SidebarTrigger className="h-8 w-8" />
-      </div>
+      <div className="flex items-center gap-2" />
 
       <div className="flex items-center gap-2">
         {/* Notifications */}
