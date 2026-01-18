@@ -964,7 +964,7 @@ function WaterSurface({ dimensions, waterDepth }: { dimensions: PoolDimensions; 
   );
 }
 
-// Custom stairs mesh (from drawn vertices) - needs poolVertices to compute same center offset
+// Custom stairs mesh (from drawn vertices) - uses actual polygon shape
 function CustomStairsMesh({ vertices, depth, poolVertices, rotation = 0 }: { 
   vertices: CustomPoolVertex[]; 
   depth: number;
@@ -1005,14 +1005,7 @@ function CustomStairsMesh({ vertices, depth, poolVertices, rotation = 0 }: {
     vertices.map(v => ({ x: v.x - poolCenter.x, y: v.y - poolCenter.y })),
   [vertices, poolCenter]);
 
-  // Calculate centroid for positioning
-  const centroid = useMemo(() => {
-    const cx = transformedVertices.reduce((sum, v) => sum + v.x, 0) / transformedVertices.length;
-    const cy = transformedVertices.reduce((sum, v) => sum + v.y, 0) / transformedVertices.length;
-    return { x: cx, y: cy };
-  }, [transformedVertices]);
-
-  // Calculate bounding box for step sizing
+  // Calculate bounding box for step sizing and dimensions
   const bounds = useMemo(() => {
     const xs = transformedVertices.map(v => v.x);
     const ys = transformedVertices.map(v => v.y);
@@ -1022,75 +1015,81 @@ function CustomStairsMesh({ vertices, depth, poolVertices, rotation = 0 }: {
     };
   }, [transformedVertices]);
 
+  const sizeX = bounds.maxX - bounds.minX;
+  const sizeY = bounds.maxY - bounds.minY;
+
+  // Create stairs using actual polygon shape with ExtrudeGeometry
   const steps = useMemo(() => {
     const stepsArr: JSX.Element[] = [];
-    const sizeX = bounds.maxX - bounds.minX;
-    const sizeY = bounds.maxY - bounds.minY;
+    if (transformedVertices.length < 3) return stepsArr;
     
-    // Determine step depth based on which dimension the stairs extend along
-    // Default rotation (0): entry from Y+, stairs extend along Y axis
+    // Determine step depth based on rotation direction
     const isHorizontal = rotation === 90 || rotation === 270;
     const stairsExtent = isHorizontal ? sizeX : sizeY;
     const stepDepth = stairsExtent / stepCount;
     
-    // Steps go from top (z=0) down to pool depth
-    // Each step: top surface is white, sides are blue
-    // Step i has its TOP at z = -i * stepHeight
-    
     for (let i = 0; i < stepCount; i++) {
-      // This step's top surface is at this Z level
       const stepTopZ = -i * stepHeight;
-      // The step body extends from stepTopZ down to the pool floor
       const stepBodyHeight = depth - (i * stepHeight);
-      const stepBodyCenterZ = stepTopZ - stepBodyHeight / 2;
       
-      // Calculate position based on rotation and step index
-      // The first step (i=0) is at the entry edge, last step is deepest
-      let offsetX = 0;
-      let offsetY = 0;
-      let currentSizeX = sizeX;
-      let currentSizeY = sizeY;
+      // Calculate slice ratio for this step
+      const startRatio = i / stepCount;
+      const endRatio = (i + 1) / stepCount;
       
-      // Position each step progressively deeper into the pool
-      // Apply 180° flip - previously steps were going wrong direction
-      switch (rotation) {
-        case 0: // Entry from top (Y+), descend toward Y- (person walks from +Y toward -Y)
-          // First step near +Y edge, last step near -Y edge
-          offsetY = (sizeY / 2) - (stepDepth / 2) - (i * stepDepth);
-          currentSizeY = stepDepth;
-          break;
-        case 90: // Entry from right (X+), descend toward X- (person walks from +X toward -X)
-          offsetX = (sizeX / 2) - (stepDepth / 2) - (i * stepDepth);
-          currentSizeX = stepDepth;
-          break;
-        case 180: // Entry from bottom (Y-), descend toward Y+ (person walks from -Y toward +Y)
-          offsetY = -(sizeY / 2) + (stepDepth / 2) + (i * stepDepth);
-          currentSizeY = stepDepth;
-          break;
-        case 270: // Entry from left (X-), descend toward X+ (person walks from -X toward +X)
-          offsetX = -(sizeX / 2) + (stepDepth / 2) + (i * stepDepth);
-          currentSizeX = stepDepth;
-          break;
+      // Slice the polygon based on rotation direction
+      let slicedVertices: { x: number; y: number }[];
+      
+      if (rotation === 0) {
+        // Entry from top (Y+), steps slice along Y axis from max to min
+        const yStart = bounds.maxY - startRatio * sizeY;
+        const yEnd = bounds.maxY - endRatio * sizeY;
+        slicedVertices = slicePolygonY(transformedVertices, yEnd, yStart);
+      } else if (rotation === 180) {
+        // Entry from bottom (Y-), steps slice along Y axis from min to max
+        const yStart = bounds.minY + startRatio * sizeY;
+        const yEnd = bounds.minY + endRatio * sizeY;
+        slicedVertices = slicePolygonY(transformedVertices, yStart, yEnd);
+      } else if (rotation === 90) {
+        // Entry from right (X+), steps slice along X axis from max to min
+        const xStart = bounds.maxX - startRatio * sizeX;
+        const xEnd = bounds.maxX - endRatio * sizeX;
+        slicedVertices = slicePolygonX(transformedVertices, xEnd, xStart);
+      } else {
+        // rotation === 270: Entry from left (X-), steps slice along X axis from min to max
+        const xStart = bounds.minX + startRatio * sizeX;
+        const xEnd = bounds.minX + endRatio * sizeX;
+        slicedVertices = slicePolygonX(transformedVertices, xStart, xEnd);
       }
-
+      
+      if (slicedVertices.length < 3) continue;
+      
+      // Create shape from sliced vertices
+      const shape2D = slicedVertices.map(v => new THREE.Vector2(v.x, v.y));
+      const stepShape = new THREE.Shape(shape2D);
+      
+      // Create extruded geometry for step body
+      const stepBodyGeo = new THREE.ExtrudeGeometry(stepShape, {
+        depth: stepBodyHeight,
+        bevelEnabled: false,
+      });
+      // Rotate to align with Z axis (extrusion goes along Z)
+      stepBodyGeo.rotateX(Math.PI / 2);
+      stepBodyGeo.translate(0, 0, stepTopZ - stepBodyHeight);
+      
+      // Create thin surface for step top
+      const stepTopGeo = new THREE.ShapeGeometry(stepShape);
+      
       stepsArr.push(
-        <group key={i} position={[centroid.x + offsetX, centroid.y + offsetY, stepBodyCenterZ]}>
+        <group key={i}>
           {/* Step body (blue) */}
-          <mesh material={stepFrontMaterial}>
-            <boxGeometry args={[Math.max(0.1, currentSizeX), Math.max(0.1, currentSizeY), stepBodyHeight]} />
-          </mesh>
+          <mesh geometry={stepBodyGeo} material={stepFrontMaterial} />
           {/* Step top surface (white) */}
-          <mesh position={[0, 0, stepBodyHeight / 2 - 0.01]} material={stepTopMaterial}>
-            <boxGeometry args={[Math.max(0.1, currentSizeX), Math.max(0.1, currentSizeY), 0.02]} />
-          </mesh>
+          <mesh position={[0, 0, stepTopZ - 0.01]} geometry={stepTopGeo} material={stepTopMaterial} />
         </group>
       );
     }
     return stepsArr;
-  }, [stepCount, stepHeight, depth, bounds, centroid, rotation, stepTopMaterial, stepFrontMaterial]);
-
-  const sizeX = bounds.maxX - bounds.minX;
-  const sizeY = bounds.maxY - bounds.minY;
+  }, [stepCount, stepHeight, depth, bounds, transformedVertices, rotation, sizeX, sizeY, stepTopMaterial, stepFrontMaterial]);
 
   return (
     <group>
@@ -1114,7 +1113,77 @@ function CustomStairsMesh({ vertices, depth, poolVertices, rotation = 0 }: {
   );
 }
 
-// Custom wading pool mesh (from drawn vertices)
+// Helper: Slice polygon horizontally (by Y range)
+function slicePolygonY(vertices: { x: number; y: number }[], yMin: number, yMax: number): { x: number; y: number }[] {
+  const result: { x: number; y: number }[] = [];
+  const n = vertices.length;
+  
+  for (let i = 0; i < n; i++) {
+    const curr = vertices[i];
+    const next = vertices[(i + 1) % n];
+    
+    // Check if current point is in range
+    if (curr.y >= yMin && curr.y <= yMax) {
+      result.push(curr);
+    }
+    
+    // Check for intersections with yMin and yMax
+    if ((curr.y < yMin && next.y > yMin) || (curr.y > yMin && next.y < yMin)) {
+      const t = (yMin - curr.y) / (next.y - curr.y);
+      result.push({ x: curr.x + t * (next.x - curr.x), y: yMin });
+    }
+    if ((curr.y < yMax && next.y > yMax) || (curr.y > yMax && next.y < yMax)) {
+      const t = (yMax - curr.y) / (next.y - curr.y);
+      result.push({ x: curr.x + t * (next.x - curr.x), y: yMax });
+    }
+  }
+  
+  // Sort points to form a proper polygon (clockwise order)
+  if (result.length < 3) return result;
+  
+  const cx = result.reduce((s, v) => s + v.x, 0) / result.length;
+  const cy = result.reduce((s, v) => s + v.y, 0) / result.length;
+  result.sort((a, b) => Math.atan2(a.y - cy, a.x - cx) - Math.atan2(b.y - cy, b.x - cx));
+  
+  return result;
+}
+
+// Helper: Slice polygon vertically (by X range)
+function slicePolygonX(vertices: { x: number; y: number }[], xMin: number, xMax: number): { x: number; y: number }[] {
+  const result: { x: number; y: number }[] = [];
+  const n = vertices.length;
+  
+  for (let i = 0; i < n; i++) {
+    const curr = vertices[i];
+    const next = vertices[(i + 1) % n];
+    
+    // Check if current point is in range
+    if (curr.x >= xMin && curr.x <= xMax) {
+      result.push(curr);
+    }
+    
+    // Check for intersections with xMin and xMax
+    if ((curr.x < xMin && next.x > xMin) || (curr.x > xMin && next.x < xMin)) {
+      const t = (xMin - curr.x) / (next.x - curr.x);
+      result.push({ x: xMin, y: curr.y + t * (next.y - curr.y) });
+    }
+    if ((curr.x < xMax && next.x > xMax) || (curr.x > xMax && next.x < xMax)) {
+      const t = (xMax - curr.x) / (next.x - curr.x);
+      result.push({ x: xMax, y: curr.y + t * (next.y - curr.y) });
+    }
+  }
+  
+  // Sort points to form a proper polygon (clockwise order)
+  if (result.length < 3) return result;
+  
+  const cx = result.reduce((s, v) => s + v.x, 0) / result.length;
+  const cy = result.reduce((s, v) => s + v.y, 0) / result.length;
+  result.sort((a, b) => Math.atan2(a.y - cy, a.x - cx) - Math.atan2(b.y - cy, b.x - cx));
+  
+  return result;
+}
+
+// Custom wading pool mesh (from drawn vertices) - uses actual polygon shape
 function CustomWadingPoolMesh({ vertices, wadingDepth, poolDepth, poolVertices }: { 
   vertices: CustomPoolVertex[]; 
   wadingDepth: number;
@@ -1127,13 +1196,12 @@ function CustomWadingPoolMesh({ vertices, wadingDepth, poolDepth, poolVertices }
     new THREE.MeshStandardMaterial({ color: '#5b9bd5' }), []);
   const wallMaterial = useMemo(() => 
     new THREE.MeshStandardMaterial({ color: '#5b9bd5' }), []);
-  // White/gray rim material like pool edge
   const rimMaterial = useMemo(() => 
     new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.6 }), []);
 
-  const RIM_WIDTH = 0.15; // 15cm rim
+  const RIM_WIDTH = 0.15;
 
-  // Calculate pool center (same as getPoolShape uses for custom pools)
+  // Calculate pool center
   const poolCenter = useMemo(() => {
     if (!poolVertices || poolVertices.length < 3) return { x: 0, y: 0 };
     const minX = Math.min(...poolVertices.map(v => v.x));
@@ -1153,9 +1221,22 @@ function CustomWadingPoolMesh({ vertices, wadingDepth, poolDepth, poolVertices }
     poolVertices.map(v => ({ x: v.x - poolCenter.x, y: v.y - poolCenter.y })),
   [poolVertices, poolCenter]);
 
+  // Create shape from actual polygon vertices
   const shape2D = useMemo(() => transformedVertices.map(v => new THREE.Vector2(v.x, v.y)), [transformedVertices]);
   const shapeObj = useMemo(() => new THREE.Shape(shape2D), [shape2D]);
   const floorGeo = useMemo(() => new THREE.ShapeGeometry(shapeObj), [shapeObj]);
+
+  // Create extruded platform geometry using actual shape
+  const platformHeight = poolDepth - wadingDepth;
+  const platformGeo = useMemo(() => {
+    const geo = new THREE.ExtrudeGeometry(shapeObj, {
+      depth: platformHeight,
+      bevelEnabled: false,
+    });
+    geo.rotateX(Math.PI / 2);
+    geo.translate(0, 0, -poolDepth);
+    return geo;
+  }, [shapeObj, platformHeight, poolDepth]);
 
   const centroid = useMemo(() => {
     const cx = transformedVertices.reduce((sum, v) => sum + v.x, 0) / transformedVertices.length;
@@ -1176,13 +1257,9 @@ function CustomWadingPoolMesh({ vertices, wadingDepth, poolDepth, poolVertices }
     };
   }, [transformedVertices]);
 
-  // Wading pool floor is at wadingDepth from surface (shallow area)
   const floorZ = -wadingDepth;
-  // The raised platform height (from pool floor to wading floor)
-  const platformHeight = poolDepth - wadingDepth;
 
-  // Determine which edges are internal (not touching pool boundary)
-  // Check if edge is near pool boundary
+  // Check which edges are internal (not touching pool boundary)
   const poolBounds = useMemo(() => {
     const xs = transformedPoolVertices.map(v => v.x);
     const ys = transformedPoolVertices.map(v => v.y);
@@ -1194,123 +1271,116 @@ function CustomWadingPoolMesh({ vertices, wadingDepth, poolDepth, poolVertices }
     };
   }, [transformedPoolVertices]);
 
-  // Check which edges are internal (threshold 0.3m from pool boundary)
-  const threshold = 0.3;
-  const isLeftInternal = bounds.minX > poolBounds.minX + threshold;
-  const isRightInternal = bounds.maxX < poolBounds.maxX - threshold;
-  const isBottomInternal = bounds.minY > poolBounds.minY + threshold;
-  const isTopInternal = bounds.maxY < poolBounds.maxY - threshold;
+  // Generate walls and rims from actual polygon edges
+  const { walls, rims } = useMemo(() => {
+    const wallElements: JSX.Element[] = [];
+    const rimElements: JSX.Element[] = [];
+    const threshold = 0.3;
+    
+    for (let i = 0; i < transformedVertices.length; i++) {
+      const curr = transformedVertices[i];
+      const next = transformedVertices[(i + 1) % transformedVertices.length];
+      
+      // Calculate edge midpoint
+      const midX = (curr.x + next.x) / 2;
+      const midY = (curr.y + next.y) / 2;
+      
+      // Check if this edge is internal (not on pool boundary)
+      const isOnPoolBoundary = 
+        (Math.abs(midX - poolBounds.minX) < threshold) ||
+        (Math.abs(midX - poolBounds.maxX) < threshold) ||
+        (Math.abs(midY - poolBounds.minY) < threshold) ||
+        (Math.abs(midY - poolBounds.maxY) < threshold);
+      
+      // Also check if edge is close to any pool edge
+      const distToPoolEdge = Math.min(
+        pointToLineDistance({ x: midX, y: midY }, transformedPoolVertices)
+      );
+      
+      if (isOnPoolBoundary || distToPoolEdge < threshold) continue;
+      
+      // This is an internal edge - create wall and rim
+      const dx = next.x - curr.x;
+      const dy = next.y - curr.y;
+      const length = Math.sqrt(dx * dx + dy * dy);
+      const angle = Math.atan2(dy, dx);
+      
+      // Wall
+      wallElements.push(
+        <mesh 
+          key={`wall-${i}`}
+          position={[midX, midY, floorZ - wadingDepth / 2]}
+          rotation={[0, 0, angle]}
+          material={wallMaterial}
+        >
+          <boxGeometry args={[length, RIM_WIDTH, wadingDepth]} />
+        </mesh>
+      );
+      
+      // White rim on top
+      rimElements.push(
+        <mesh 
+          key={`rim-${i}`}
+          position={[midX, midY, 0]}
+          rotation={[0, 0, angle]}
+          material={rimMaterial}
+        >
+          <boxGeometry args={[length + RIM_WIDTH, RIM_WIDTH, RIM_WIDTH]} />
+        </mesh>
+      );
+    }
+    
+    return { walls: wallElements, rims: rimElements };
+  }, [transformedVertices, transformedPoolVertices, poolBounds, floorZ, wadingDepth, wallMaterial, rimMaterial]);
 
-  // Calculate actual bounds for dimensions
-  const xs = transformedVertices.map(v => v.x);
-  const ys = transformedVertices.map(v => v.y);
-  const minX = Math.min(...xs);
-  const maxX = Math.max(...xs);
-  const minY = Math.min(...ys);
-  const maxY = Math.max(...ys);
+  // Water shape (slightly inset from wading pool shape)
+  const waterShape = useMemo(() => {
+    const insetVertices = insetPolygon(transformedVertices, 0.05);
+    if (insetVertices.length < 3) return null;
+    return new THREE.Shape(insetVertices.map(v => new THREE.Vector2(v.x, v.y)));
+  }, [transformedVertices]);
+
+  const waterGeo = useMemo(() => {
+    if (!waterShape) return null;
+    const geo = new THREE.ExtrudeGeometry(waterShape, {
+      depth: wadingDepth * 0.8,
+      bevelEnabled: false,
+    });
+    geo.rotateX(Math.PI / 2);
+    geo.translate(0, 0, floorZ);
+    return geo;
+  }, [waterShape, wadingDepth, floorZ]);
+
+  const { minX, maxX, minY, maxY, sizeX, sizeY } = bounds;
 
   return (
     <group>
-      {/* Platform/raised floor (the structure holding up the wading pool floor) */}
-      <mesh position={[centroid.x, centroid.y, -poolDepth + platformHeight / 2]} material={wallMaterial}>
-        <boxGeometry args={[bounds.sizeX, bounds.sizeY, platformHeight]} />
-      </mesh>
-      {/* Floor surface (top of wading pool) - blue */}
+      {/* Platform using actual polygon shape */}
+      <mesh geometry={platformGeo} material={wallMaterial} />
+      
+      {/* Floor surface */}
       <mesh position={[0, 0, floorZ]} geometry={floorGeo} material={floorMaterial} />
       
-      {/* Internal rim/walls - only on edges facing the main pool */}
-      {/* Corner pieces first (at intersections) */}
-      {isLeftInternal && isBottomInternal && (
-        <mesh position={[minX + RIM_WIDTH / 2, minY + RIM_WIDTH / 2, 0]} material={rimMaterial}>
-          <boxGeometry args={[RIM_WIDTH, RIM_WIDTH, RIM_WIDTH]} />
-        </mesh>
-      )}
-      {isLeftInternal && isTopInternal && (
-        <mesh position={[minX + RIM_WIDTH / 2, maxY - RIM_WIDTH / 2, 0]} material={rimMaterial}>
-          <boxGeometry args={[RIM_WIDTH, RIM_WIDTH, RIM_WIDTH]} />
-        </mesh>
-      )}
-      {isRightInternal && isBottomInternal && (
-        <mesh position={[maxX - RIM_WIDTH / 2, minY + RIM_WIDTH / 2, 0]} material={rimMaterial}>
-          <boxGeometry args={[RIM_WIDTH, RIM_WIDTH, RIM_WIDTH]} />
-        </mesh>
-      )}
-      {isRightInternal && isTopInternal && (
-        <mesh position={[maxX - RIM_WIDTH / 2, maxY - RIM_WIDTH / 2, 0]} material={rimMaterial}>
-          <boxGeometry args={[RIM_WIDTH, RIM_WIDTH, RIM_WIDTH]} />
-        </mesh>
-      )}
+      {/* Internal walls and rims */}
+      {walls}
+      {rims}
       
-      {/* Left rim (X-) */}
-      {isLeftInternal && (
-        <group>
-          {/* Vertical wall */}
-          <mesh position={[minX + RIM_WIDTH / 2, centroid.y, floorZ - wadingDepth / 2]} material={wallMaterial}>
-            <boxGeometry args={[RIM_WIDTH, bounds.sizeY - (isBottomInternal ? RIM_WIDTH : 0) - (isTopInternal ? RIM_WIDTH : 0), wadingDepth]} />
-          </mesh>
-          {/* White top rim - excluding corners */}
-          <mesh position={[minX + RIM_WIDTH / 2, centroid.y, 0]} material={rimMaterial}>
-            <boxGeometry args={[RIM_WIDTH, bounds.sizeY - (isBottomInternal ? RIM_WIDTH : 0) - (isTopInternal ? RIM_WIDTH : 0), RIM_WIDTH]} />
-          </mesh>
-        </group>
-      )}
+      {/* Water */}
+      {waterGeo && <mesh geometry={waterGeo} material={waterMaterial} />}
       
-      {/* Right rim (X+) */}
-      {isRightInternal && (
-        <group>
-          <mesh position={[maxX - RIM_WIDTH / 2, centroid.y, floorZ - wadingDepth / 2]} material={wallMaterial}>
-            <boxGeometry args={[RIM_WIDTH, bounds.sizeY - (isBottomInternal ? RIM_WIDTH : 0) - (isTopInternal ? RIM_WIDTH : 0), wadingDepth]} />
-          </mesh>
-          <mesh position={[maxX - RIM_WIDTH / 2, centroid.y, 0]} material={rimMaterial}>
-            <boxGeometry args={[RIM_WIDTH, bounds.sizeY - (isBottomInternal ? RIM_WIDTH : 0) - (isTopInternal ? RIM_WIDTH : 0), RIM_WIDTH]} />
-          </mesh>
-        </group>
-      )}
-      
-      {/* Bottom rim (Y-) */}
-      {isBottomInternal && (
-        <group>
-          <mesh position={[centroid.x, minY + RIM_WIDTH / 2, floorZ - wadingDepth / 2]} material={wallMaterial}>
-            <boxGeometry args={[bounds.sizeX - (isLeftInternal ? RIM_WIDTH : 0) - (isRightInternal ? RIM_WIDTH : 0), RIM_WIDTH, wadingDepth]} />
-          </mesh>
-          <mesh position={[centroid.x, minY + RIM_WIDTH / 2, 0]} material={rimMaterial}>
-            <boxGeometry args={[bounds.sizeX - (isLeftInternal ? RIM_WIDTH : 0) - (isRightInternal ? RIM_WIDTH : 0), RIM_WIDTH, RIM_WIDTH]} />
-          </mesh>
-        </group>
-      )}
-      
-      {/* Top rim (Y+) */}
-      {isTopInternal && (
-        <group>
-          <mesh position={[centroid.x, maxY - RIM_WIDTH / 2, floorZ - wadingDepth / 2]} material={wallMaterial}>
-            <boxGeometry args={[bounds.sizeX - (isLeftInternal ? RIM_WIDTH : 0) - (isRightInternal ? RIM_WIDTH : 0), RIM_WIDTH, wadingDepth]} />
-          </mesh>
-          <mesh position={[centroid.x, maxY - RIM_WIDTH / 2, 0]} material={rimMaterial}>
-            <boxGeometry args={[bounds.sizeX - (isLeftInternal ? RIM_WIDTH : 0) - (isRightInternal ? RIM_WIDTH : 0), RIM_WIDTH, RIM_WIDTH]} />
-          </mesh>
-        </group>
-      )}
-      
-      {/* Water in wading pool */}
-      <mesh position={[centroid.x, centroid.y, floorZ + (wadingDepth * 0.4)]} material={waterMaterial}>
-        <boxGeometry args={[bounds.sizeX * 0.9, bounds.sizeY * 0.9, wadingDepth * 0.8]} />
-      </mesh>
-      {/* Dimension lines for wading pool */}
-      {/* Width dimension */}
+      {/* Dimension lines */}
       <DimensionLine
         start={[minX, minY - 0.3, floorZ + 0.05]}
         end={[maxX, minY - 0.3, floorZ + 0.05]}
-        label={`${bounds.sizeX.toFixed(2)} m`}
+        label={`${sizeX.toFixed(2)} m`}
         color="#8b5cf6"
       />
-      {/* Length dimension */}
       <DimensionLine
         start={[maxX + 0.3, minY, floorZ + 0.05]}
         end={[maxX + 0.3, maxY, floorZ + 0.05]}
-        label={`${bounds.sizeY.toFixed(2)} m`}
+        label={`${sizeY.toFixed(2)} m`}
         color="#8b5cf6"
       />
-      {/* Depth dimension */}
       <group>
         <Line
           points={[
@@ -1328,6 +1398,49 @@ function CustomWadingPoolMesh({ vertices, wadingDepth, poolDepth, poolVertices }
       </group>
     </group>
   );
+}
+
+// Helper: Calculate minimum distance from point to polygon edges
+function pointToLineDistance(point: { x: number; y: number }, polygon: { x: number; y: number }[]): number {
+  let minDist = Infinity;
+  for (let i = 0; i < polygon.length; i++) {
+    const a = polygon[i];
+    const b = polygon[(i + 1) % polygon.length];
+    const dist = pointToSegmentDistance(point, a, b);
+    if (dist < minDist) minDist = dist;
+  }
+  return minDist;
+}
+
+function pointToSegmentDistance(p: { x: number; y: number }, a: { x: number; y: number }, b: { x: number; y: number }): number {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const lenSq = dx * dx + dy * dy;
+  if (lenSq === 0) return Math.sqrt((p.x - a.x) ** 2 + (p.y - a.y) ** 2);
+  
+  let t = ((p.x - a.x) * dx + (p.y - a.y) * dy) / lenSq;
+  t = Math.max(0, Math.min(1, t));
+  
+  const projX = a.x + t * dx;
+  const projY = a.y + t * dy;
+  return Math.sqrt((p.x - projX) ** 2 + (p.y - projY) ** 2);
+}
+
+// Helper: Inset polygon by given amount
+function insetPolygon(vertices: { x: number; y: number }[], amount: number): { x: number; y: number }[] {
+  if (vertices.length < 3) return vertices;
+  
+  const cx = vertices.reduce((s, v) => s + v.x, 0) / vertices.length;
+  const cy = vertices.reduce((s, v) => s + v.y, 0) / vertices.length;
+  
+  return vertices.map(v => {
+    const dx = v.x - cx;
+    const dy = v.y - cy;
+    const len = Math.sqrt(dx * dx + dy * dy);
+    if (len === 0) return v;
+    const scale = Math.max(0, (len - amount) / len);
+    return { x: cx + dx * scale, y: cy + dy * scale };
+  });
 }
 
 // Main scene
