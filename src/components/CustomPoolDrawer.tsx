@@ -73,6 +73,7 @@ export function CustomPoolDrawer({
   const [currentMode, setCurrentMode] = useState<DrawingMode>('pool');
   const [isDrawing, setIsDrawing] = useState(!initialPoolVertices || initialPoolVertices.length < 3);
   const [selectedVertexIndex, setSelectedVertexIndex] = useState<number | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
 
   // Get current vertices based on mode
   const getCurrentVertices = useCallback(() => {
@@ -206,7 +207,7 @@ export function CustomPoolDrawer({
     }
   }, []);
 
-  // Draw a single polygon layer
+  // Draw a single polygon layer (no longer depends on selectedVertexIndex)
   const drawPolygonLayer = useCallback((
     canvas: FabricCanvas, 
     points: Point[], 
@@ -249,15 +250,14 @@ export function CustomPoolDrawer({
     objectDataMap.set(polygon, { type: 'polygon', layer: mode });
     canvas.add(polygon);
 
-    // Draw vertices and edge lengths
+    // Draw vertices and edge lengths (all vertices with default color, selection handled separately)
     points.forEach((point, index) => {
       const canvasPoint = metersToCanvas(point);
-      const isSelected = isActiveLayer && selectedVertexIndex === index;
       const vertex = new Circle({
         left: canvasPoint.x - 8,
         top: canvasPoint.y - 8,
         radius: 8,
-        fill: isSelected ? 'hsl(0 80% 50%)' : colors.vertex,
+        fill: colors.vertex,
         stroke: 'white',
         strokeWidth: 2,
         selectable: isActiveLayer,
@@ -292,7 +292,7 @@ export function CustomPoolDrawer({
         canvas.add(label);
       }
     });
-  }, [metersToCanvas, selectedVertexIndex]);
+  }, [metersToCanvas]);
 
   // Draw direction arrow for stairs
   const drawStairsArrow = useCallback((canvas: FabricCanvas, points: Point[], rotation: number) => {
@@ -416,13 +416,31 @@ export function CustomPoolDrawer({
     };
   }, []);
 
-  // Redraw when vertices or mode changes
+  // Redraw when vertices or mode changes (but NOT during dragging)
   useEffect(() => {
     const canvas = fabricRef.current;
-    if (canvas) {
+    if (canvas && !isDragging) {
       redrawAllShapes(canvas);
     }
-  }, [poolVertices, stairsVertices, wadingPoolVertices, currentMode, redrawAllShapes]);
+  }, [poolVertices, stairsVertices, wadingPoolVertices, currentMode, redrawAllShapes, isDragging]);
+
+  // Update vertex selection highlight without full redraw
+  useEffect(() => {
+    const canvas = fabricRef.current;
+    if (!canvas) return;
+    
+    canvas.getObjects().forEach(obj => {
+      const data = objectDataMap.get(obj);
+      if (data?.type === 'vertex' && data.layer === currentMode) {
+        const isSelected = data.index === selectedVertexIndex;
+        const colors = MODE_COLORS[currentMode];
+        (obj as Circle).set({
+          fill: isSelected ? 'hsl(0 80% 50%)' : colors.vertex
+        });
+      }
+    });
+    canvas.renderAll();
+  }, [selectedVertexIndex, currentMode]);
 
   // Handle mode change
   const handleModeChange = (mode: DrawingMode) => {
@@ -484,6 +502,14 @@ export function CustomPoolDrawer({
     const canvas = fabricRef.current;
     if (!canvas || isDrawing) return;
 
+    // Track the vertex being dragged and its new position
+    let draggedVertexData: { index: number; layer: DrawingMode } | null = null;
+    let draggedNewPoint: Point | null = null;
+
+    const handleMouseDown = () => {
+      setIsDragging(true);
+    };
+
     const handleObjectMoving = (e: any) => {
       const obj = e.target;
       const data = objectDataMap.get(obj);
@@ -492,17 +518,49 @@ export function CustomPoolDrawer({
         const snappedX = snapToGrid(obj.left + 8);
         const snappedY = snapToGrid(obj.top + 8);
         
+        // Update visual position only
         obj.set({
           left: snappedX - 8,
           top: snappedY - 8,
         });
         
-        const newPoint = canvasToMeters({ x: snappedX, y: snappedY });
-        const currentVerts = getCurrentVertices();
-        const newVertices = [...currentVerts];
-        newVertices[index] = newPoint;
-        setCurrentVertices(newVertices);
+        // Store the new position for when drag ends
+        draggedVertexData = { index, layer: currentMode };
+        draggedNewPoint = canvasToMeters({ x: snappedX, y: snappedY });
       }
+    };
+
+    const handleObjectModified = () => {
+      // Update state only after dragging is complete
+      if (draggedVertexData && draggedNewPoint) {
+        const { index, layer } = draggedVertexData;
+        const newPoint = draggedNewPoint;
+        
+        // Update the correct vertex array based on layer
+        if (layer === 'pool') {
+          setPoolVertices(prev => {
+            const newVertices = [...prev];
+            newVertices[index] = newPoint;
+            return newVertices;
+          });
+        } else if (layer === 'stairs') {
+          setStairsVertices(prev => {
+            const newVertices = [...prev];
+            newVertices[index] = newPoint;
+            return newVertices;
+          });
+        } else if (layer === 'wadingPool') {
+          setWadingPoolVertices(prev => {
+            const newVertices = [...prev];
+            newVertices[index] = newPoint;
+            return newVertices;
+          });
+        }
+        
+        draggedVertexData = null;
+        draggedNewPoint = null;
+      }
+      setIsDragging(false);
     };
 
     const handleSelection = (e: any) => {
@@ -513,18 +571,27 @@ export function CustomPoolDrawer({
       }
     };
 
+    const handleSelectionCleared = () => {
+      setSelectedVertexIndex(null);
+      setIsDragging(false);
+    };
+
+    canvas.on('mouse:down', handleMouseDown);
     canvas.on('object:moving', handleObjectMoving);
+    canvas.on('object:modified', handleObjectModified);
     canvas.on('selection:created', handleSelection);
     canvas.on('selection:updated', handleSelection);
-    canvas.on('selection:cleared', () => setSelectedVertexIndex(null));
+    canvas.on('selection:cleared', handleSelectionCleared);
 
     return () => {
+      canvas.off('mouse:down', handleMouseDown);
       canvas.off('object:moving', handleObjectMoving);
+      canvas.off('object:modified', handleObjectModified);
       canvas.off('selection:created', handleSelection);
       canvas.off('selection:updated', handleSelection);
-      canvas.off('selection:cleared');
+      canvas.off('selection:cleared', handleSelectionCleared);
     };
-  }, [isDrawing, currentMode, getCurrentVertices, setCurrentVertices, canvasToMeters, snapToGrid]);
+  }, [isDrawing, currentMode, canvasToMeters, snapToGrid]);
 
   const handleReset = () => {
     setCurrentVertices([]);
