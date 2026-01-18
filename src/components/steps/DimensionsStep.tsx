@@ -179,7 +179,7 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
         customStairsVertices: stairsArray,
         customStairsRotations: rotationsArray,
         customWadingPoolVertices: wadingArray,
-        isIrregular: true,
+        // isIrregular left unchanged - user can manually toggle it
         // If custom stairs/wading pool drawn, enable them
         stairs: stairsArray.length > 0
           ? { ...dimensions.stairs, enabled: true }
@@ -499,7 +499,7 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
               id="irregular"
               checked={dimensions.isIrregular}
               onCheckedChange={(checked) => updateDimension('isIrregular', checked)}
-              disabled={isCustomShape}
+              
             />
           </div>
         </div>
