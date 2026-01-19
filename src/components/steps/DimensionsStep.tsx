@@ -520,25 +520,25 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
             </TabsList>
             
             <TabsContent value="3d" className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
+              <div className="flex flex-col gap-4">
+                <div>
+                  <Pool2DPreview 
+                    dimensions={dimensions}
+                    height={200}
+                  />
+                  <p className="text-xs text-muted-foreground text-center mt-1">
+                    Widok z góry (2D)
+                  </p>
+                </div>
                 <div>
                   <Pool3DVisualization 
                     dimensions={dimensions}
                     calculations={calculations}
                     showFoilLayout={false}
-                    height={280}
+                    height={320}
                   />
                   <p className="text-xs text-muted-foreground text-center mt-1">
                     Wizualizacja 3D
-                  </p>
-                </div>
-                <div>
-                  <Pool2DPreview 
-                    dimensions={dimensions}
-                    height={280}
-                  />
-                  <p className="text-xs text-muted-foreground text-center mt-1">
-                    Widok z góry (2D)
                   </p>
                 </div>
               </div>
