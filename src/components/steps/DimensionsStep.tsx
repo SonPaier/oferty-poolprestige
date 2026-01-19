@@ -22,6 +22,7 @@ import {
   Baby
 } from 'lucide-react';
 import { Pool3DVisualization } from '@/components/Pool3DVisualization';
+import Pool2DPreview from '@/components/Pool2DPreview';
 import { 
   PoolType, 
   PoolShape, 
@@ -519,14 +520,28 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
             </TabsList>
             
             <TabsContent value="3d" className="space-y-4">
-              <Pool3DVisualization 
-                dimensions={dimensions}
-                calculations={calculations}
-                showFoilLayout={false}
-              />
-              <p className="text-xs text-muted-foreground text-center">
-                Widok niecki basenu z liniami wymiarowymi
-              </p>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Pool3DVisualization 
+                    dimensions={dimensions}
+                    calculations={calculations}
+                    showFoilLayout={false}
+                    height={280}
+                  />
+                  <p className="text-xs text-muted-foreground text-center mt-1">
+                    Wizualizacja 3D
+                  </p>
+                </div>
+                <div>
+                  <Pool2DPreview 
+                    dimensions={dimensions}
+                    height={280}
+                  />
+                  <p className="text-xs text-muted-foreground text-center mt-1">
+                    Widok z góry (2D)
+                  </p>
+                </div>
+              </div>
             </TabsContent>
             
             <TabsContent value="calculations">
