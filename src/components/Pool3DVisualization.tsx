@@ -1003,15 +1003,15 @@ function StairsDimensionLines({ dimensions }: { dimensions: PoolDimensions }) {
         <>
           {/* Width (perpendicular to stairs direction) */}
           <DimensionLine
-            start={[posX + dirX * stairsLength / 2, posY + dirY * stairsWidth + dirY * 0.3, 0.05]}
-            end={[posX + dirX * stairsLength / 2, posY + dirY * 0.3, 0.05]}
+            start={[posX + dirX * stairsLength / 2, posY + dirY * stairsWidth + dirY * 0.8, 0.05]}
+            end={[posX + dirX * stairsLength / 2, posY + dirY * 0.8, 0.05]}
             label={`${stairsWidth.toFixed(2)} m`}
             color="#f97316"
           />
           {/* Length (along stairs direction) */}
           <DimensionLine
-            start={[posX, posY + dirY * stairsWidth / 2, 0.05]}
-            end={[posX + dirX * stairsLength, posY + dirY * stairsWidth / 2, 0.05]}
+            start={[posX, posY + dirY * (stairsWidth + 0.5), 0.05]}
+            end={[posX + dirX * stairsLength, posY + dirY * (stairsWidth + 0.5), 0.05]}
             label={`${stairsLength.toFixed(2)} m`}
             color="#f97316"
           />
@@ -1020,15 +1020,15 @@ function StairsDimensionLines({ dimensions }: { dimensions: PoolDimensions }) {
         <>
           {/* Width (perpendicular to stairs direction) */}
           <DimensionLine
-            start={[posX + dirX * stairsWidth + dirX * 0.3, posY + dirY * stairsLength / 2, 0.05]}
-            end={[posX + dirX * 0.3, posY + dirY * stairsLength / 2, 0.05]}
+            start={[posX + dirX * stairsWidth + dirX * 0.8, posY + dirY * stairsLength / 2, 0.05]}
+            end={[posX + dirX * 0.8, posY + dirY * stairsLength / 2, 0.05]}
             label={`${stairsWidth.toFixed(2)} m`}
             color="#f97316"
           />
           {/* Length (along stairs direction) */}
           <DimensionLine
-            start={[posX + dirX * stairsWidth / 2, posY, 0.05]}
-            end={[posX + dirX * stairsWidth / 2, posY + dirY * stairsLength, 0.05]}
+            start={[posX + dirX * (stairsWidth + 0.5), posY, 0.05]}
+            end={[posX + dirX * (stairsWidth + 0.5), posY + dirY * stairsLength, 0.05]}
             label={`${stairsLength.toFixed(2)} m`}
             color="#f97316"
           />
@@ -1082,27 +1082,27 @@ function WadingDimensionLines({ dimensions }: { dimensions: PoolDimensions }) {
   return (
     <group position={[posX, posY, 0]}>
       <DimensionLine
-        start={[-sizeX / 2, -sizeY / 2 - 0.3, -wpDepth + 0.05]}
-        end={[sizeX / 2, -sizeY / 2 - 0.3, -wpDepth + 0.05]}
+        start={[-sizeX / 2, -sizeY / 2 - 0.8, -wpDepth + 0.05]}
+        end={[sizeX / 2, -sizeY / 2 - 0.8, -wpDepth + 0.05]}
         label={`${sizeX.toFixed(2)} m`}
         color="#8b5cf6"
       />
       <DimensionLine
-        start={[sizeX / 2 + 0.3, -sizeY / 2, -wpDepth + 0.05]}
-        end={[sizeX / 2 + 0.3, sizeY / 2, -wpDepth + 0.05]}
+        start={[sizeX / 2 + 0.8, -sizeY / 2, -wpDepth + 0.05]}
+        end={[sizeX / 2 + 0.8, sizeY / 2, -wpDepth + 0.05]}
         label={`${sizeY.toFixed(2)} m`}
         color="#8b5cf6"
       />
       <group>
         <Line
           points={[
-            [-sizeX / 2 - 0.3, -sizeY / 2, 0],
-            [-sizeX / 2 - 0.3, -sizeY / 2, -wpDepth]
+            [-sizeX / 2 - 0.8, -sizeY / 2, 0],
+            [-sizeX / 2 - 0.8, -sizeY / 2, -wpDepth]
           ]}
           color="#8b5cf6"
           lineWidth={1.5}
         />
-        <Html position={[-sizeX / 2 - 0.5, -sizeY / 2, -wpDepth / 2]} center>
+        <Html position={[-sizeX / 2 - 1.0, -sizeY / 2, -wpDepth / 2]} center>
           <div className="bg-purple-50 px-2 py-0.5 rounded text-xs font-semibold text-purple-700 border border-purple-200 shadow-sm whitespace-nowrap">
             {wpDepth.toFixed(2)} m
           </div>
@@ -1231,10 +1231,13 @@ function WaterSurface({ dimensions, waterDepth }: { dimensions: PoolDimensions; 
       // Only cut if stairs are inside
       if (position === 'inside') {
         const stairsHole = new THREE.Path();
+        // Holes must be CLOCKWISE (opposite of main CCW shape)
+        // CCW order: min,min -> max,min -> max,max -> min,max
+        // CW order:  min,min -> min,max -> max,max -> max,min
         stairsHole.moveTo(Math.min(x1, x2), Math.min(y1, y2));
-        stairsHole.lineTo(Math.max(x1, x2), Math.min(y1, y2));
-        stairsHole.lineTo(Math.max(x1, x2), Math.max(y1, y2));
         stairsHole.lineTo(Math.min(x1, x2), Math.max(y1, y2));
+        stairsHole.lineTo(Math.max(x1, x2), Math.max(y1, y2));
+        stairsHole.lineTo(Math.max(x1, x2), Math.min(y1, y2));
         stairsHole.closePath();
         shape.holes.push(stairsHole);
       }
@@ -1276,10 +1279,13 @@ function WaterSurface({ dimensions, waterDepth }: { dimensions: PoolDimensions; 
       }
       
       const wadingHole = new THREE.Path();
+      // Holes must be CLOCKWISE (opposite of main CCW shape)
+      // CCW order: left,bottom -> right,bottom -> right,top -> left,top
+      // CW order:  left,bottom -> left,top -> right,top -> right,bottom
       wadingHole.moveTo(posX - sizeX / 2, posY - sizeY / 2);
-      wadingHole.lineTo(posX + sizeX / 2, posY - sizeY / 2);
-      wadingHole.lineTo(posX + sizeX / 2, posY + sizeY / 2);
       wadingHole.lineTo(posX - sizeX / 2, posY + sizeY / 2);
+      wadingHole.lineTo(posX + sizeX / 2, posY + sizeY / 2);
+      wadingHole.lineTo(posX + sizeX / 2, posY - sizeY / 2);
       wadingHole.closePath();
       shape.holes.push(wadingHole);
     }
@@ -1432,15 +1438,15 @@ function CustomStairsMesh({ vertices, depth, poolVertices, rotation = 0, showDim
         <>
           {/* Width dimension - moved further away */}
           <DimensionLine
-            start={[bounds.minX, bounds.minY - 0.5, 0.05]}
-            end={[bounds.maxX, bounds.minY - 0.5, 0.05]}
+            start={[bounds.minX, bounds.minY - 1.0, 0.05]}
+            end={[bounds.maxX, bounds.minY - 1.0, 0.05]}
             label={`${sizeX.toFixed(2)} m`}
             color="#f97316"
           />
           {/* Length dimension - moved further away */}
           <DimensionLine
-            start={[bounds.maxX + 0.5, bounds.minY, 0.05]}
-            end={[bounds.maxX + 0.5, bounds.maxY, 0.05]}
+            start={[bounds.maxX + 1.0, bounds.minY, 0.05]}
+            end={[bounds.maxX + 1.0, bounds.maxY, 0.05]}
             label={`${sizeY.toFixed(2)} m`}
             color="#f97316"
           />
@@ -1710,27 +1716,27 @@ function CustomWadingPoolMesh({ vertices, wadingDepth, poolDepth, poolVertices, 
       {showDimensions && (
         <>
           <DimensionLine
-            start={[minX, minY - 0.6, floorZ + 0.05]}
-            end={[maxX, minY - 0.6, floorZ + 0.05]}
+            start={[minX, minY - 1.0, floorZ + 0.05]}
+            end={[maxX, minY - 1.0, floorZ + 0.05]}
             label={`${sizeX.toFixed(2)} m`}
             color="#8b5cf6"
           />
           <DimensionLine
-            start={[maxX + 0.6, minY, floorZ + 0.05]}
-            end={[maxX + 0.6, maxY, floorZ + 0.05]}
+            start={[maxX + 1.0, minY, floorZ + 0.05]}
+            end={[maxX + 1.0, maxY, floorZ + 0.05]}
             label={`${sizeY.toFixed(2)} m`}
             color="#8b5cf6"
           />
           <group>
             <Line
               points={[
-                [minX - 0.6, minY, 0],
-                [minX - 0.6, minY, floorZ]
+                [minX - 1.0, minY, 0],
+                [minX - 1.0, minY, floorZ]
               ]}
               color="#8b5cf6"
               lineWidth={1.5}
             />
-            <Html position={[minX - 0.9, minY, floorZ / 2]} center>
+            <Html position={[minX - 1.3, minY, floorZ / 2]} center>
               <div className="bg-purple-50 px-2 py-0.5 rounded text-xs font-semibold text-purple-700 border border-purple-200 shadow-sm whitespace-nowrap">
                 {wadingDepth.toFixed(2)} m
               </div>
