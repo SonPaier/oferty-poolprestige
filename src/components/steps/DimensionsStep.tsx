@@ -21,7 +21,7 @@ import {
   Footprints,
   Baby
 } from 'lucide-react';
-import { Pool3DVisualization } from '@/components/Pool3DVisualization';
+import { Pool3DVisualization, DimensionDisplay } from '@/components/Pool3DVisualization';
 import Pool2DPreview from '@/components/Pool2DPreview';
 import { 
   PoolType, 
@@ -89,6 +89,7 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
   const { companySettings } = useSettings();
   const { dimensions, poolType, calculations } = state;
   const [showCustomDrawer, setShowCustomDrawer] = useState(false);
+  const [dimensionDisplay, setDimensionDisplay] = useState<DimensionDisplay>('pool');
 
   useEffect(() => {
     // Recalculate when dimensions or pool type change
@@ -520,11 +521,47 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
             </TabsList>
             
             <TabsContent value="3d" className="space-y-4">
+              {/* Dimension display control */}
+              <div className="flex items-center gap-2 text-xs">
+                <span className="font-medium">Wymiary:</span>
+                <RadioGroup 
+                  value={dimensionDisplay} 
+                  onValueChange={(value) => setDimensionDisplay(value as DimensionDisplay)}
+                  className="flex flex-wrap gap-2"
+                >
+                  <div className="flex items-center space-x-1">
+                    <RadioGroupItem value="pool" id="dim-pool-main" className="h-3 w-3" />
+                    <Label htmlFor="dim-pool-main" className="text-xs cursor-pointer">Niecka</Label>
+                  </div>
+                  {(dimensions.stairs?.enabled || (dimensions.shape === 'wlasny' && dimensions.customStairsVertices?.some(arr => arr.length >= 3))) && (
+                    <div className="flex items-center space-x-1">
+                      <RadioGroupItem value="stairs" id="dim-stairs-main" className="h-3 w-3" />
+                      <Label htmlFor="dim-stairs-main" className="text-xs cursor-pointer">Schody</Label>
+                    </div>
+                  )}
+                  {(dimensions.wadingPool?.enabled || (dimensions.shape === 'wlasny' && dimensions.customWadingPoolVertices?.some(arr => arr.length >= 3))) && (
+                    <div className="flex items-center space-x-1">
+                      <RadioGroupItem value="wading" id="dim-wading-main" className="h-3 w-3" />
+                      <Label htmlFor="dim-wading-main" className="text-xs cursor-pointer">Brodzik</Label>
+                    </div>
+                  )}
+                  <div className="flex items-center space-x-1">
+                    <RadioGroupItem value="all" id="dim-all-main" className="h-3 w-3" />
+                    <Label htmlFor="dim-all-main" className="text-xs cursor-pointer">Wszystko</Label>
+                  </div>
+                  <div className="flex items-center space-x-1">
+                    <RadioGroupItem value="none" id="dim-none-main" className="h-3 w-3" />
+                    <Label htmlFor="dim-none-main" className="text-xs cursor-pointer">Brak</Label>
+                  </div>
+                </RadioGroup>
+              </div>
+              
               <div className="flex flex-col gap-4">
                 <div>
                   <Pool2DPreview 
                     dimensions={dimensions}
                     height={200}
+                    dimensionDisplay={dimensionDisplay}
                   />
                   <p className="text-xs text-muted-foreground text-center mt-1">
                     Widok z góry (2D)
@@ -536,6 +573,8 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
                     calculations={calculations}
                     showFoilLayout={false}
                     height={320}
+                    dimensionDisplay={dimensionDisplay}
+                    onDimensionDisplayChange={setDimensionDisplay}
                   />
                   <p className="text-xs text-muted-foreground text-center mt-1">
                     Wizualizacja 3D

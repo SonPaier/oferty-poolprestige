@@ -7,11 +7,25 @@ import { planFoilLayout, FoilStrip, ROLL_WIDTH_NARROW, ROLL_WIDTH_WIDE } from '@
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
 
-// Dimension display options
-type DimensionDisplay = 'all' | 'pool' | 'stairs' | 'wading' | 'none';
+// Dimension display options - exported for use in other components
+export type DimensionDisplay = 'all' | 'pool' | 'stairs' | 'wading' | 'none';
 
 // Wall thickness constant (20cm)
 const WALL_THICKNESS = 0.2;
+
+// Helper: ensure polygon vertices are in counter-clockwise order
+function ensureCounterClockwise(vertices: THREE.Vector2[]): THREE.Vector2[] {
+  if (vertices.length < 3) return vertices;
+  // Calculate signed area (shoelace formula)
+  let area = 0;
+  for (let i = 0; i < vertices.length; i++) {
+    const j = (i + 1) % vertices.length;
+    area += vertices[i].x * vertices[j].y;
+    area -= vertices[j].x * vertices[i].y;
+  }
+  // If clockwise (area < 0), reverse to get counter-clockwise
+  return area < 0 ? [...vertices].reverse() : vertices;
+}
 
 interface Pool3DVisualizationProps {
   dimensions: PoolDimensions;
@@ -19,6 +33,8 @@ interface Pool3DVisualizationProps {
   rollWidth?: number;
   showFoilLayout?: boolean;
   height?: number;
+  dimensionDisplay?: DimensionDisplay;
+  onDimensionDisplayChange?: (display: DimensionDisplay) => void;
 }
 
 // Generate pool shape as 2D points (XY plane, will be used for top rim and bottom)
@@ -1130,9 +1146,11 @@ function WaterSurface({ dimensions, waterDepth }: { dimensions: PoolDimensions; 
   }, [dimensions.customVertices, dimensions.shape]);
   
   const shapeObj = useMemo(() => {
-    const shape = new THREE.Shape(shape2D);
+    // Get main pool shape and ensure it's counter-clockwise
+    const mainVerts = ensureCounterClockwise(shape2D);
+    const shape = new THREE.Shape(mainVerts);
     
-    // Cut out custom stairs areas
+    // Cut out custom stairs areas (holes must be clockwise = opposite of main shape)
     if (dimensions.customStairsVertices && dimensions.customStairsVertices.length > 0) {
       dimensions.customStairsVertices.forEach(stairsVerts => {
         if (stairsVerts && stairsVerts.length >= 3) {
@@ -1140,13 +1158,15 @@ function WaterSurface({ dimensions, waterDepth }: { dimensions: PoolDimensions; 
           const transformedVerts = stairsVerts.map(v => 
             new THREE.Vector2(v.x - poolCenter.x, v.y - poolCenter.y)
           );
-          const holePath = new THREE.Path(transformedVerts);
+          // Holes need to be clockwise (opposite of CCW main shape)
+          const holeVerts = ensureCounterClockwise(transformedVerts).reverse();
+          const holePath = new THREE.Path(holeVerts);
           shape.holes.push(holePath);
         }
       });
     }
     
-    // Cut out custom wading pool areas
+    // Cut out custom wading pool areas (holes must be clockwise)
     if (dimensions.customWadingPoolVertices && dimensions.customWadingPoolVertices.length > 0) {
       dimensions.customWadingPoolVertices.forEach(wadingVerts => {
         if (wadingVerts && wadingVerts.length >= 3) {
@@ -1154,7 +1174,9 @@ function WaterSurface({ dimensions, waterDepth }: { dimensions: PoolDimensions; 
           const transformedVerts = wadingVerts.map(v => 
             new THREE.Vector2(v.x - poolCenter.x, v.y - poolCenter.y)
           );
-          const holePath = new THREE.Path(transformedVerts);
+          // Holes need to be clockwise (opposite of CCW main shape)
+          const holeVerts = ensureCounterClockwise(transformedVerts).reverse();
+          const holePath = new THREE.Path(holeVerts);
           shape.holes.push(holePath);
         }
       });
@@ -1847,8 +1869,14 @@ export function Pool3DVisualization({
   rollWidth = 1.65,
   showFoilLayout = false,
   height = 400,
+  dimensionDisplay: externalDimensionDisplay,
+  onDimensionDisplayChange,
 }: Pool3DVisualizationProps) {
-  const [dimensionDisplay, setDimensionDisplay] = useState<DimensionDisplay>('pool');
+  // Use external state if provided, otherwise use internal state
+  const [internalDimensionDisplay, setInternalDimensionDisplay] = useState<DimensionDisplay>('pool');
+  const dimensionDisplay = externalDimensionDisplay ?? internalDimensionDisplay;
+  const setDimensionDisplay = onDimensionDisplayChange ?? setInternalDimensionDisplay;
+  
   const maxDimension = Math.max(dimensions.length, dimensions.width, dimensions.depth * 2);
   const cameraDistance = maxDimension * 1.8;
 
