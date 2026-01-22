@@ -1,9 +1,11 @@
 import { useMemo } from 'react';
 import { PoolDimensions, CustomPoolVertex } from '@/types/configurator';
+import { DimensionDisplay } from '@/components/Pool3DVisualization';
 
 interface Pool2DPreviewProps {
   dimensions: PoolDimensions;
   height?: number;
+  dimensionDisplay?: DimensionDisplay;
 }
 
 // Generate pool outline points for 2D view
@@ -89,7 +91,7 @@ function transformCustomVertices(
   }));
 }
 
-export default function Pool2DPreview({ dimensions, height = 300 }: Pool2DPreviewProps) {
+export default function Pool2DPreview({ dimensions, height = 300, dimensionDisplay = 'pool' }: Pool2DPreviewProps) {
   const poolPoints = useMemo(() => getPoolPoints(dimensions), [dimensions]);
   
   const stairsPoints = useMemo(() => {
@@ -128,6 +130,25 @@ export default function Pool2DPreview({ dimensions, height = 300 }: Pool2DPrevie
     return { minX, maxX, minY, maxY };
   }, [poolPoints, stairsPoints, wadingPoolPoints]);
   
+  // Calculate bounds for stairs and wading pool individually
+  const stairsBounds = useMemo(() => {
+    if (!stairsPoints || stairsPoints.length < 2) return null;
+    const minX = Math.min(...stairsPoints.map(p => p.x));
+    const maxX = Math.max(...stairsPoints.map(p => p.x));
+    const minY = Math.min(...stairsPoints.map(p => p.y));
+    const maxY = Math.max(...stairsPoints.map(p => p.y));
+    return { minX, maxX, minY, maxY, width: maxX - minX, height: maxY - minY };
+  }, [stairsPoints]);
+  
+  const wadingBounds = useMemo(() => {
+    if (!wadingPoolPoints || wadingPoolPoints.length < 2) return null;
+    const minX = Math.min(...wadingPoolPoints.map(p => p.x));
+    const maxX = Math.max(...wadingPoolPoints.map(p => p.x));
+    const minY = Math.min(...wadingPoolPoints.map(p => p.y));
+    const maxY = Math.max(...wadingPoolPoints.map(p => p.y));
+    return { minX, maxX, minY, maxY, width: maxX - minX, height: maxY - minY };
+  }, [wadingPoolPoints]);
+  
   // Calculate SVG viewBox with padding
   const viewBox = useMemo(() => {
     const padding = Math.max(bounds.maxX - bounds.minX, bounds.maxY - bounds.minY) * 0.15;
@@ -152,6 +173,11 @@ export default function Pool2DPreview({ dimensions, height = 300 }: Pool2DPrevie
   // Calculate dimension labels
   const poolWidth = bounds.maxX - bounds.minX;
   const poolHeight = bounds.maxY - bounds.minY;
+  
+  // Dimension visibility flags
+  const showPoolDims = dimensionDisplay === 'all' || dimensionDisplay === 'pool';
+  const showStairsDims = dimensionDisplay === 'all' || dimensionDisplay === 'stairs';
+  const showWadingDims = dimensionDisplay === 'all' || dimensionDisplay === 'wading';
   
   return (
     <div 
@@ -212,53 +238,155 @@ export default function Pool2DPreview({ dimensions, height = 300 }: Pool2DPrevie
           />
         )}
         
-        {/* Dimension lines */}
-        {/* Width dimension (bottom) */}
-        <g>
-          <line
-            x1={bounds.minX}
-            y1={-bounds.minY + 0.4}
-            x2={bounds.maxX}
-            y2={-bounds.minY + 0.4}
-            stroke="#f97316"
-            strokeWidth="0.03"
-            markerStart="url(#arrowStart)"
-            markerEnd="url(#arrowEnd)"
-          />
-          <text
-            x={(bounds.minX + bounds.maxX) / 2}
-            y={-bounds.minY + 0.7}
-            textAnchor="middle"
-            fontSize="0.25"
-            fill="#f97316"
-            fontWeight="bold"
-          >
-            {poolWidth.toFixed(2)} m
-          </text>
-        </g>
+        {/* Pool Dimension lines - only when pool dims enabled */}
+        {showPoolDims && (
+          <>
+            {/* Width dimension (bottom) */}
+            <g>
+              <line
+                x1={bounds.minX}
+                y1={-bounds.minY + 0.4}
+                x2={bounds.maxX}
+                y2={-bounds.minY + 0.4}
+                stroke="#f97316"
+                strokeWidth="0.03"
+                markerStart="url(#arrowStart)"
+                markerEnd="url(#arrowEnd)"
+              />
+              <text
+                x={(bounds.minX + bounds.maxX) / 2}
+                y={-bounds.minY + 0.7}
+                textAnchor="middle"
+                fontSize="0.25"
+                fill="#f97316"
+                fontWeight="bold"
+              >
+                {poolWidth.toFixed(2)} m
+              </text>
+            </g>
+            
+            {/* Height dimension (right) */}
+            <g>
+              <line
+                x1={bounds.maxX + 0.4}
+                y1={-bounds.minY}
+                x2={bounds.maxX + 0.4}
+                y2={-bounds.maxY}
+                stroke="#f97316"
+                strokeWidth="0.03"
+              />
+              <text
+                x={bounds.maxX + 0.7}
+                y={-(bounds.minY + bounds.maxY) / 2}
+                textAnchor="middle"
+                fontSize="0.25"
+                fill="#f97316"
+                fontWeight="bold"
+                transform={`rotate(-90 ${bounds.maxX + 0.7} ${-(bounds.minY + bounds.maxY) / 2})`}
+              >
+                {poolHeight.toFixed(2)} m
+              </text>
+            </g>
+          </>
+        )}
         
-        {/* Height dimension (right) */}
-        <g>
-          <line
-            x1={bounds.maxX + 0.4}
-            y1={-bounds.minY}
-            x2={bounds.maxX + 0.4}
-            y2={-bounds.maxY}
-            stroke="#f97316"
-            strokeWidth="0.03"
-          />
-          <text
-            x={bounds.maxX + 0.7}
-            y={-(bounds.minY + bounds.maxY) / 2}
-            textAnchor="middle"
-            fontSize="0.25"
-            fill="#f97316"
-            fontWeight="bold"
-            transform={`rotate(-90 ${bounds.maxX + 0.7} ${-(bounds.minY + bounds.maxY) / 2})`}
-          >
-            {poolHeight.toFixed(2)} m
-          </text>
-        </g>
+        {/* Stairs Dimension lines */}
+        {showStairsDims && stairsBounds && stairsPath && (
+          <>
+            {/* Stairs width */}
+            <g>
+              <line
+                x1={stairsBounds.minX}
+                y1={-stairsBounds.maxY - 0.2}
+                x2={stairsBounds.maxX}
+                y2={-stairsBounds.maxY - 0.2}
+                stroke="#22c55e"
+                strokeWidth="0.03"
+              />
+              <text
+                x={(stairsBounds.minX + stairsBounds.maxX) / 2}
+                y={-stairsBounds.maxY - 0.35}
+                textAnchor="middle"
+                fontSize="0.2"
+                fill="#22c55e"
+                fontWeight="bold"
+              >
+                {stairsBounds.width.toFixed(2)} m
+              </text>
+            </g>
+            {/* Stairs height */}
+            <g>
+              <line
+                x1={stairsBounds.minX - 0.2}
+                y1={-stairsBounds.minY}
+                x2={stairsBounds.minX - 0.2}
+                y2={-stairsBounds.maxY}
+                stroke="#22c55e"
+                strokeWidth="0.03"
+              />
+              <text
+                x={stairsBounds.minX - 0.35}
+                y={-(stairsBounds.minY + stairsBounds.maxY) / 2}
+                textAnchor="middle"
+                fontSize="0.2"
+                fill="#22c55e"
+                fontWeight="bold"
+                transform={`rotate(-90 ${stairsBounds.minX - 0.35} ${-(stairsBounds.minY + stairsBounds.maxY) / 2})`}
+              >
+                {stairsBounds.height.toFixed(2)} m
+              </text>
+            </g>
+          </>
+        )}
+        
+        {/* Wading Pool Dimension lines */}
+        {showWadingDims && wadingBounds && wadingPoolPath && (
+          <>
+            {/* Wading pool width */}
+            <g>
+              <line
+                x1={wadingBounds.minX}
+                y1={-wadingBounds.maxY - 0.2}
+                x2={wadingBounds.maxX}
+                y2={-wadingBounds.maxY - 0.2}
+                stroke="#3b82f6"
+                strokeWidth="0.03"
+              />
+              <text
+                x={(wadingBounds.minX + wadingBounds.maxX) / 2}
+                y={-wadingBounds.maxY - 0.35}
+                textAnchor="middle"
+                fontSize="0.2"
+                fill="#3b82f6"
+                fontWeight="bold"
+              >
+                {wadingBounds.width.toFixed(2)} m
+              </text>
+            </g>
+            {/* Wading pool height */}
+            <g>
+              <line
+                x1={wadingBounds.maxX + 0.2}
+                y1={-wadingBounds.minY}
+                x2={wadingBounds.maxX + 0.2}
+                y2={-wadingBounds.maxY}
+                stroke="#3b82f6"
+                strokeWidth="0.03"
+              />
+              <text
+                x={wadingBounds.maxX + 0.35}
+                y={-(wadingBounds.minY + wadingBounds.maxY) / 2}
+                textAnchor="middle"
+                fontSize="0.2"
+                fill="#3b82f6"
+                fontWeight="bold"
+                transform={`rotate(-90 ${wadingBounds.maxX + 0.35} ${-(wadingBounds.minY + wadingBounds.maxY) / 2})`}
+              >
+                {wadingBounds.height.toFixed(2)} m
+              </text>
+            </g>
+          </>
+        )}
         
         {/* Arrow markers */}
         <defs>
