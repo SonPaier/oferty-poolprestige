@@ -911,11 +911,11 @@ function DimensionLine({ start, end, label, color = '#475569' }: {
   );
 }
 
-// Pool dimension lines (main pool only)
+// Pool dimension lines (main pool only) - offset increased for better readability
 function PoolDimensionLines({ dimensions }: { dimensions: PoolDimensions }) {
   const { length, width, depth, depthDeep, hasSlope } = dimensions;
   const actualDeep = hasSlope && depthDeep ? depthDeep : depth;
-  const offset = 0.6;
+  const offset = 1.2; // Increased offset for better visibility
   
   return (
     <group>
@@ -943,7 +943,7 @@ function PoolDimensionLines({ dimensions }: { dimensions: PoolDimensions }) {
           color="#475569"
           lineWidth={1.5}
         />
-        <Html position={[-length / 2 - offset - 0.3, width / 2 + offset, -depth / 2]} center>
+        <Html position={[-length / 2 - offset - 0.5, width / 2 + offset, -depth / 2]} center>
           <div className="bg-background/95 px-2 py-0.5 rounded text-xs font-semibold text-foreground border border-border shadow-sm whitespace-nowrap">
             {depth.toFixed(2)} m{hasSlope ? ' (płytko)' : ''}
           </div>
@@ -961,7 +961,7 @@ function PoolDimensionLines({ dimensions }: { dimensions: PoolDimensions }) {
             color="#f97316"
             lineWidth={1.5}
           />
-          <Html position={[length / 2 + offset + 0.3, width / 2 + offset, -actualDeep / 2]} center>
+          <Html position={[length / 2 + offset + 0.5, width / 2 + offset, -actualDeep / 2]} center>
             <div className="bg-orange-50 px-2 py-0.5 rounded text-xs font-semibold text-orange-700 border border-orange-200 shadow-sm whitespace-nowrap">
               {actualDeep.toFixed(2)} m (głęboko)
             </div>
@@ -1158,9 +1158,15 @@ function WaterSurface({ dimensions, waterDepth }: { dimensions: PoolDimensions; 
           const transformedVerts = stairsVerts.map(v => 
             new THREE.Vector2(v.x - poolCenter.x, v.y - poolCenter.y)
           );
-          // Holes need to be clockwise (opposite of CCW main shape)
-          const holeVerts = ensureCounterClockwise(transformedVerts).reverse();
-          const holePath = new THREE.Path(holeVerts);
+          // Ensure CCW first, then reverse for clockwise holes
+          const ccwVerts = ensureCounterClockwise(transformedVerts);
+          const holeVerts = [...ccwVerts].reverse();
+          const holePath = new THREE.Path();
+          holePath.moveTo(holeVerts[0].x, holeVerts[0].y);
+          for (let i = 1; i < holeVerts.length; i++) {
+            holePath.lineTo(holeVerts[i].x, holeVerts[i].y);
+          }
+          holePath.closePath();
           shape.holes.push(holePath);
         }
       });
@@ -1174,9 +1180,15 @@ function WaterSurface({ dimensions, waterDepth }: { dimensions: PoolDimensions; 
           const transformedVerts = wadingVerts.map(v => 
             new THREE.Vector2(v.x - poolCenter.x, v.y - poolCenter.y)
           );
-          // Holes need to be clockwise (opposite of CCW main shape)
-          const holeVerts = ensureCounterClockwise(transformedVerts).reverse();
-          const holePath = new THREE.Path(holeVerts);
+          // Ensure CCW first, then reverse for clockwise holes
+          const ccwVerts = ensureCounterClockwise(transformedVerts);
+          const holeVerts = [...ccwVerts].reverse();
+          const holePath = new THREE.Path();
+          holePath.moveTo(holeVerts[0].x, holeVerts[0].y);
+          for (let i = 1; i < holeVerts.length; i++) {
+            holePath.lineTo(holeVerts[i].x, holeVerts[i].y);
+          }
+          holePath.closePath();
           shape.holes.push(holePath);
         }
       });
@@ -1205,7 +1217,6 @@ function WaterSurface({ dimensions, waterDepth }: { dimensions: PoolDimensions; 
       const baseY = corner.includes('back') ? -halfW : halfW;
       
       if (isAlongLength) {
-        const actualLength = position === 'inside' ? stairsLength : -stairsLength * dirX;
         x1 = baseX;
         x2 = baseX + dirX * (position === 'inside' ? stairsLength : 0);
         y1 = baseY;
@@ -1219,12 +1230,12 @@ function WaterSurface({ dimensions, waterDepth }: { dimensions: PoolDimensions; 
       
       // Only cut if stairs are inside
       if (position === 'inside') {
-        const stairsHole = new THREE.Path([
-          new THREE.Vector2(Math.min(x1, x2), Math.min(y1, y2)),
-          new THREE.Vector2(Math.max(x1, x2), Math.min(y1, y2)),
-          new THREE.Vector2(Math.max(x1, x2), Math.max(y1, y2)),
-          new THREE.Vector2(Math.min(x1, x2), Math.max(y1, y2)),
-        ]);
+        const stairsHole = new THREE.Path();
+        stairsHole.moveTo(Math.min(x1, x2), Math.min(y1, y2));
+        stairsHole.lineTo(Math.max(x1, x2), Math.min(y1, y2));
+        stairsHole.lineTo(Math.max(x1, x2), Math.max(y1, y2));
+        stairsHole.lineTo(Math.min(x1, x2), Math.max(y1, y2));
+        stairsHole.closePath();
         shape.holes.push(stairsHole);
       }
     }
@@ -1264,12 +1275,12 @@ function WaterSurface({ dimensions, waterDepth }: { dimensions: PoolDimensions; 
           break;
       }
       
-      const wadingHole = new THREE.Path([
-        new THREE.Vector2(posX - sizeX / 2, posY - sizeY / 2),
-        new THREE.Vector2(posX + sizeX / 2, posY - sizeY / 2),
-        new THREE.Vector2(posX + sizeX / 2, posY + sizeY / 2),
-        new THREE.Vector2(posX - sizeX / 2, posY + sizeY / 2),
-      ]);
+      const wadingHole = new THREE.Path();
+      wadingHole.moveTo(posX - sizeX / 2, posY - sizeY / 2);
+      wadingHole.lineTo(posX + sizeX / 2, posY - sizeY / 2);
+      wadingHole.lineTo(posX + sizeX / 2, posY + sizeY / 2);
+      wadingHole.lineTo(posX - sizeX / 2, posY + sizeY / 2);
+      wadingHole.closePath();
       shape.holes.push(wadingHole);
     }
     
@@ -1419,17 +1430,17 @@ function CustomStairsMesh({ vertices, depth, poolVertices, rotation = 0, showDim
       {/* Dimension lines for custom stairs - only show if showDimensions is true */}
       {showDimensions && (
         <>
-          {/* Width dimension */}
+          {/* Width dimension - moved further away */}
           <DimensionLine
-            start={[bounds.minX, bounds.minY - 0.3, 0.05]}
-            end={[bounds.maxX, bounds.minY - 0.3, 0.05]}
+            start={[bounds.minX, bounds.minY - 0.5, 0.05]}
+            end={[bounds.maxX, bounds.minY - 0.5, 0.05]}
             label={`${sizeX.toFixed(2)} m`}
             color="#f97316"
           />
-          {/* Length dimension */}
+          {/* Length dimension - moved further away */}
           <DimensionLine
-            start={[bounds.maxX + 0.3, bounds.minY, 0.05]}
-            end={[bounds.maxX + 0.3, bounds.maxY, 0.05]}
+            start={[bounds.maxX + 0.5, bounds.minY, 0.05]}
+            end={[bounds.maxX + 0.5, bounds.maxY, 0.05]}
             label={`${sizeY.toFixed(2)} m`}
             color="#f97316"
           />
@@ -1695,31 +1706,31 @@ function CustomWadingPoolMesh({ vertices, wadingDepth, poolDepth, poolVertices, 
       {/* Water */}
       {waterGeo && <mesh geometry={waterGeo} material={waterMaterial} />}
       
-      {/* Dimension lines - only show if showDimensions is true */}
+      {/* Dimension lines - only show if showDimensions is true, with larger offset */}
       {showDimensions && (
         <>
           <DimensionLine
-            start={[minX, minY - 0.3, floorZ + 0.05]}
-            end={[maxX, minY - 0.3, floorZ + 0.05]}
+            start={[minX, minY - 0.6, floorZ + 0.05]}
+            end={[maxX, minY - 0.6, floorZ + 0.05]}
             label={`${sizeX.toFixed(2)} m`}
             color="#8b5cf6"
           />
           <DimensionLine
-            start={[maxX + 0.3, minY, floorZ + 0.05]}
-            end={[maxX + 0.3, maxY, floorZ + 0.05]}
+            start={[maxX + 0.6, minY, floorZ + 0.05]}
+            end={[maxX + 0.6, maxY, floorZ + 0.05]}
             label={`${sizeY.toFixed(2)} m`}
             color="#8b5cf6"
           />
           <group>
             <Line
               points={[
-                [minX - 0.3, minY, 0],
-                [minX - 0.3, minY, floorZ]
+                [minX - 0.6, minY, 0],
+                [minX - 0.6, minY, floorZ]
               ]}
               color="#8b5cf6"
               lineWidth={1.5}
             />
-            <Html position={[minX - 0.5, minY, floorZ / 2]} center>
+            <Html position={[minX - 0.9, minY, floorZ / 2]} center>
               <div className="bg-purple-50 px-2 py-0.5 rounded text-xs font-semibold text-purple-700 border border-purple-200 shadow-sm whitespace-nowrap">
                 {wadingDepth.toFixed(2)} m
               </div>
