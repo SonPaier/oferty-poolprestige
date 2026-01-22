@@ -1,9 +1,14 @@
-import { useRef, useMemo, Suspense } from 'react';
+import { useRef, useMemo, Suspense, useState } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, Html, Line } from '@react-three/drei';
 import * as THREE from 'three';
 import { PoolDimensions, PoolCalculations, StairsConfig, WadingPoolConfig, CustomPoolVertex } from '@/types/configurator';
 import { planFoilLayout, FoilStrip, ROLL_WIDTH_NARROW, ROLL_WIDTH_WIDE } from '@/lib/foilPlanner';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Label } from '@/components/ui/label';
+
+// Dimension display options
+type DimensionDisplay = 'all' | 'pool' | 'stairs' | 'wading' | 'none';
 
 // Wall thickness constant (20cm)
 const WALL_THICKNESS = 0.2;
@@ -890,8 +895,8 @@ function DimensionLine({ start, end, label, color = '#475569' }: {
   );
 }
 
-// All dimension lines
-function DimensionLines({ dimensions }: { dimensions: PoolDimensions }) {
+// Pool dimension lines (main pool only)
+function PoolDimensionLines({ dimensions }: { dimensions: PoolDimensions }) {
   const { length, width, depth, depthDeep, hasSlope } = dimensions;
   const actualDeep = hasSlope && depthDeep ? depthDeep : depth;
   const offset = 0.6;
@@ -951,10 +956,304 @@ function DimensionLines({ dimensions }: { dimensions: PoolDimensions }) {
   );
 }
 
-// Water surface
+// Stairs dimension lines wrapper (dimensions are rendered inside CustomStairsMesh)
+function StairsDimensionLines({ dimensions }: { dimensions: PoolDimensions }) {
+  // For regular stairs (non-custom), show dimensions
+  if (!dimensions.stairs?.enabled) return null;
+  if (dimensions.shape === 'wlasny') return null; // Custom stairs have their own dimension lines
+  
+  const { length, width, depth } = dimensions;
+  const stairs = dimensions.stairs;
+  const halfL = length / 2;
+  const halfW = width / 2;
+  // Handle "full" width - use pool width if full, otherwise use specified value
+  const stairsWidth = stairs.width === 'full' ? width : (typeof stairs.width === 'number' ? stairs.width : 1.5);
+  
+  const corner = stairs.corner || 'back-left';
+  const direction = stairs.direction || 'along-width';
+  const isAlongLength = direction === 'along-length';
+  const stepCount = Math.ceil(depth / (stairs.stepHeight || 0.29));
+  const stairsLength = stepCount * (stairs.stepDepth || 0.29);
+  
+  // Calculate position
+  let posX = corner.includes('left') ? -halfL : halfL;
+  let posY = corner.includes('back') ? -halfW : halfW;
+  const dirX = corner.includes('left') ? 1 : -1;
+  const dirY = corner.includes('back') ? 1 : -1;
+  
+  return (
+    <group>
+      {isAlongLength ? (
+        <>
+          {/* Width (perpendicular to stairs direction) */}
+          <DimensionLine
+            start={[posX + dirX * stairsLength / 2, posY + dirY * stairsWidth + dirY * 0.3, 0.05]}
+            end={[posX + dirX * stairsLength / 2, posY + dirY * 0.3, 0.05]}
+            label={`${stairsWidth.toFixed(2)} m`}
+            color="#f97316"
+          />
+          {/* Length (along stairs direction) */}
+          <DimensionLine
+            start={[posX, posY + dirY * stairsWidth / 2, 0.05]}
+            end={[posX + dirX * stairsLength, posY + dirY * stairsWidth / 2, 0.05]}
+            label={`${stairsLength.toFixed(2)} m`}
+            color="#f97316"
+          />
+        </>
+      ) : (
+        <>
+          {/* Width (perpendicular to stairs direction) */}
+          <DimensionLine
+            start={[posX + dirX * stairsWidth + dirX * 0.3, posY + dirY * stairsLength / 2, 0.05]}
+            end={[posX + dirX * 0.3, posY + dirY * stairsLength / 2, 0.05]}
+            label={`${stairsWidth.toFixed(2)} m`}
+            color="#f97316"
+          />
+          {/* Length (along stairs direction) */}
+          <DimensionLine
+            start={[posX + dirX * stairsWidth / 2, posY, 0.05]}
+            end={[posX + dirX * stairsWidth / 2, posY + dirY * stairsLength, 0.05]}
+            label={`${stairsLength.toFixed(2)} m`}
+            color="#f97316"
+          />
+        </>
+      )}
+    </group>
+  );
+}
+
+// Wading pool dimension lines wrapper (dimensions are rendered inside CustomWadingPoolMesh)
+function WadingDimensionLines({ dimensions }: { dimensions: PoolDimensions }) {
+  // For regular wading pool (non-custom), show dimensions
+  if (!dimensions.wadingPool?.enabled) return null;
+  if (dimensions.shape === 'wlasny') return null; // Custom wading pools have their own dimension lines
+  
+  const { length, width, depth } = dimensions;
+  const wadingPool = dimensions.wadingPool;
+  const halfL = length / 2;
+  const halfW = width / 2;
+  
+  const corner = wadingPool.corner || 'back-left';
+  const direction = wadingPool.direction || 'along-width';
+  const isAlongLength = direction === 'along-length';
+  const wpWidth = wadingPool.width || 2;
+  const wpLength = wadingPool.length || 1.5;
+  const wpDepth = wadingPool.depth || 0.4;
+  
+  const sizeX = isAlongLength ? wpWidth : wpLength;
+  const sizeY = isAlongLength ? wpLength : wpWidth;
+  
+  let posX = 0, posY = 0;
+  switch (corner) {
+    case 'back-left':
+      posX = -halfL + sizeX / 2;
+      posY = -halfW + sizeY / 2;
+      break;
+    case 'back-right':
+      posX = halfL - sizeX / 2;
+      posY = -halfW + sizeY / 2;
+      break;
+    case 'front-left':
+      posX = -halfL + sizeX / 2;
+      posY = halfW - sizeY / 2;
+      break;
+    case 'front-right':
+      posX = halfL - sizeX / 2;
+      posY = halfW - sizeY / 2;
+      break;
+  }
+  
+  return (
+    <group position={[posX, posY, 0]}>
+      <DimensionLine
+        start={[-sizeX / 2, -sizeY / 2 - 0.3, -wpDepth + 0.05]}
+        end={[sizeX / 2, -sizeY / 2 - 0.3, -wpDepth + 0.05]}
+        label={`${sizeX.toFixed(2)} m`}
+        color="#8b5cf6"
+      />
+      <DimensionLine
+        start={[sizeX / 2 + 0.3, -sizeY / 2, -wpDepth + 0.05]}
+        end={[sizeX / 2 + 0.3, sizeY / 2, -wpDepth + 0.05]}
+        label={`${sizeY.toFixed(2)} m`}
+        color="#8b5cf6"
+      />
+      <group>
+        <Line
+          points={[
+            [-sizeX / 2 - 0.3, -sizeY / 2, 0],
+            [-sizeX / 2 - 0.3, -sizeY / 2, -wpDepth]
+          ]}
+          color="#8b5cf6"
+          lineWidth={1.5}
+        />
+        <Html position={[-sizeX / 2 - 0.5, -sizeY / 2, -wpDepth / 2]} center>
+          <div className="bg-purple-50 px-2 py-0.5 rounded text-xs font-semibold text-purple-700 border border-purple-200 shadow-sm whitespace-nowrap">
+            {wpDepth.toFixed(2)} m
+          </div>
+        </Html>
+      </group>
+    </group>
+  );
+}
+
+// Combined dimension lines with display filter
+function DimensionLines({ dimensions, display }: { dimensions: PoolDimensions; display: DimensionDisplay }) {
+  if (display === 'none') return null;
+  
+  const showPool = display === 'all' || display === 'pool';
+  const showStairs = display === 'all' || display === 'stairs';
+  const showWading = display === 'all' || display === 'wading';
+  
+  return (
+    <group>
+      {showPool && <PoolDimensionLines dimensions={dimensions} />}
+      {showStairs && <StairsDimensionLines dimensions={dimensions} />}
+      {showWading && <WadingDimensionLines dimensions={dimensions} />}
+    </group>
+  );
+}
+
+// Water surface - with holes cut out for stairs and wading pools
 function WaterSurface({ dimensions, waterDepth }: { dimensions: PoolDimensions; waterDepth: number }) {
   const shape2D = useMemo(() => getPoolShape(dimensions), [dimensions]);
-  const shapeObj = useMemo(() => new THREE.Shape(shape2D), [shape2D]);
+  
+  // Calculate pool center for custom shapes (same as in getPoolShape)
+  const poolCenter = useMemo(() => {
+    if (dimensions.shape !== 'wlasny' || !dimensions.customVertices || dimensions.customVertices.length < 3) {
+      return { x: 0, y: 0 };
+    }
+    const minX = Math.min(...dimensions.customVertices.map(v => v.x));
+    const maxX = Math.max(...dimensions.customVertices.map(v => v.x));
+    const minY = Math.min(...dimensions.customVertices.map(v => v.y));
+    const maxY = Math.max(...dimensions.customVertices.map(v => v.y));
+    return { x: (minX + maxX) / 2, y: (minY + maxY) / 2 };
+  }, [dimensions.customVertices, dimensions.shape]);
+  
+  const shapeObj = useMemo(() => {
+    const shape = new THREE.Shape(shape2D);
+    
+    // Cut out custom stairs areas
+    if (dimensions.customStairsVertices && dimensions.customStairsVertices.length > 0) {
+      dimensions.customStairsVertices.forEach(stairsVerts => {
+        if (stairsVerts && stairsVerts.length >= 3) {
+          // Transform stairs vertices relative to pool center
+          const transformedVerts = stairsVerts.map(v => 
+            new THREE.Vector2(v.x - poolCenter.x, v.y - poolCenter.y)
+          );
+          const holePath = new THREE.Path(transformedVerts);
+          shape.holes.push(holePath);
+        }
+      });
+    }
+    
+    // Cut out custom wading pool areas
+    if (dimensions.customWadingPoolVertices && dimensions.customWadingPoolVertices.length > 0) {
+      dimensions.customWadingPoolVertices.forEach(wadingVerts => {
+        if (wadingVerts && wadingVerts.length >= 3) {
+          // Transform wading pool vertices relative to pool center
+          const transformedVerts = wadingVerts.map(v => 
+            new THREE.Vector2(v.x - poolCenter.x, v.y - poolCenter.y)
+          );
+          const holePath = new THREE.Path(transformedVerts);
+          shape.holes.push(holePath);
+        }
+      });
+    }
+    
+    // Cut out regular stairs for non-custom shapes
+    if (dimensions.shape !== 'wlasny' && dimensions.stairs?.enabled) {
+      const stairs = dimensions.stairs;
+      const halfL = dimensions.length / 2;
+      const halfW = dimensions.width / 2;
+      // Handle "full" width - use pool width if full
+      const stairsWidth = stairs.width === 'full' ? dimensions.width : (typeof stairs.width === 'number' ? stairs.width : 1.5);
+      const stepCount = Math.ceil(dimensions.depth / (stairs.stepHeight || 0.29));
+      const stairsLength = stepCount * (stairs.stepDepth || 0.29);
+      
+      const corner = stairs.corner || 'back-left';
+      const direction = stairs.direction || 'along-width';
+      const isAlongLength = direction === 'along-length';
+      const position = stairs.position || 'inside';
+      
+      // Calculate stairs rectangle corners
+      let x1, y1, x2, y2;
+      const dirX = corner.includes('left') ? 1 : -1;
+      const dirY = corner.includes('back') ? 1 : -1;
+      const baseX = corner.includes('left') ? -halfL : halfL;
+      const baseY = corner.includes('back') ? -halfW : halfW;
+      
+      if (isAlongLength) {
+        const actualLength = position === 'inside' ? stairsLength : -stairsLength * dirX;
+        x1 = baseX;
+        x2 = baseX + dirX * (position === 'inside' ? stairsLength : 0);
+        y1 = baseY;
+        y2 = baseY + dirY * stairsWidth;
+      } else {
+        x1 = baseX;
+        x2 = baseX + dirX * stairsWidth;
+        y1 = baseY;
+        y2 = baseY + dirY * (position === 'inside' ? stairsLength : 0);
+      }
+      
+      // Only cut if stairs are inside
+      if (position === 'inside') {
+        const stairsHole = new THREE.Path([
+          new THREE.Vector2(Math.min(x1, x2), Math.min(y1, y2)),
+          new THREE.Vector2(Math.max(x1, x2), Math.min(y1, y2)),
+          new THREE.Vector2(Math.max(x1, x2), Math.max(y1, y2)),
+          new THREE.Vector2(Math.min(x1, x2), Math.max(y1, y2)),
+        ]);
+        shape.holes.push(stairsHole);
+      }
+    }
+    
+    // Cut out regular wading pool for non-custom shapes
+    if (dimensions.shape !== 'wlasny' && dimensions.wadingPool?.enabled) {
+      const wadingPool = dimensions.wadingPool;
+      const halfL = dimensions.length / 2;
+      const halfW = dimensions.width / 2;
+      
+      const corner = wadingPool.corner || 'back-left';
+      const direction = wadingPool.direction || 'along-width';
+      const isAlongLength = direction === 'along-length';
+      const wpWidth = wadingPool.width || 2;
+      const wpLength = wadingPool.length || 1.5;
+      
+      const sizeX = isAlongLength ? wpWidth : wpLength;
+      const sizeY = isAlongLength ? wpLength : wpWidth;
+      
+      let posX = 0, posY = 0;
+      switch (corner) {
+        case 'back-left':
+          posX = -halfL + sizeX / 2;
+          posY = -halfW + sizeY / 2;
+          break;
+        case 'back-right':
+          posX = halfL - sizeX / 2;
+          posY = -halfW + sizeY / 2;
+          break;
+        case 'front-left':
+          posX = -halfL + sizeX / 2;
+          posY = halfW - sizeY / 2;
+          break;
+        case 'front-right':
+          posX = halfL - sizeX / 2;
+          posY = halfW - sizeY / 2;
+          break;
+      }
+      
+      const wadingHole = new THREE.Path([
+        new THREE.Vector2(posX - sizeX / 2, posY - sizeY / 2),
+        new THREE.Vector2(posX + sizeX / 2, posY - sizeY / 2),
+        new THREE.Vector2(posX + sizeX / 2, posY + sizeY / 2),
+        new THREE.Vector2(posX - sizeX / 2, posY + sizeY / 2),
+      ]);
+      shape.holes.push(wadingHole);
+    }
+    
+    return shape;
+  }, [shape2D, dimensions, poolCenter]);
+  
   const geometry = useMemo(() => new THREE.ShapeGeometry(shapeObj), [shapeObj]);
   
   return (
@@ -965,11 +1264,12 @@ function WaterSurface({ dimensions, waterDepth }: { dimensions: PoolDimensions; 
 }
 
 // Custom stairs mesh (from drawn vertices) - uses actual polygon shape
-function CustomStairsMesh({ vertices, depth, poolVertices, rotation = 0 }: { 
+function CustomStairsMesh({ vertices, depth, poolVertices, rotation = 0, showDimensions = true }: { 
   vertices: CustomPoolVertex[]; 
   depth: number;
   poolVertices: CustomPoolVertex[];
   rotation?: number; // 0, 90, 180, 270 degrees
+  showDimensions?: boolean;
 }) {
   const stepHeight = 0.29;
   const stepCount = Math.ceil(depth / stepHeight);
@@ -1094,21 +1394,25 @@ function CustomStairsMesh({ vertices, depth, poolVertices, rotation = 0 }: {
   return (
     <group>
       {steps}
-      {/* Dimension lines for custom stairs */}
-      {/* Width dimension */}
-      <DimensionLine
-        start={[bounds.minX, bounds.minY - 0.3, 0.05]}
-        end={[bounds.maxX, bounds.minY - 0.3, 0.05]}
-        label={`${sizeX.toFixed(2)} m`}
-        color="#f97316"
-      />
-      {/* Length dimension */}
-      <DimensionLine
-        start={[bounds.maxX + 0.3, bounds.minY, 0.05]}
-        end={[bounds.maxX + 0.3, bounds.maxY, 0.05]}
-        label={`${sizeY.toFixed(2)} m`}
-        color="#f97316"
-      />
+      {/* Dimension lines for custom stairs - only show if showDimensions is true */}
+      {showDimensions && (
+        <>
+          {/* Width dimension */}
+          <DimensionLine
+            start={[bounds.minX, bounds.minY - 0.3, 0.05]}
+            end={[bounds.maxX, bounds.minY - 0.3, 0.05]}
+            label={`${sizeX.toFixed(2)} m`}
+            color="#f97316"
+          />
+          {/* Length dimension */}
+          <DimensionLine
+            start={[bounds.maxX + 0.3, bounds.minY, 0.05]}
+            end={[bounds.maxX + 0.3, bounds.maxY, 0.05]}
+            label={`${sizeY.toFixed(2)} m`}
+            color="#f97316"
+          />
+        </>
+      )}
     </group>
   );
 }
@@ -1184,11 +1488,12 @@ function slicePolygonX(vertices: { x: number; y: number }[], xMin: number, xMax:
 }
 
 // Custom wading pool mesh (from drawn vertices) - uses actual polygon shape
-function CustomWadingPoolMesh({ vertices, wadingDepth, poolDepth, poolVertices }: { 
+function CustomWadingPoolMesh({ vertices, wadingDepth, poolDepth, poolVertices, showDimensions = true }: { 
   vertices: CustomPoolVertex[]; 
   wadingDepth: number;
   poolDepth: number;
   poolVertices: CustomPoolVertex[];
+  showDimensions?: boolean;
 }) {
   const waterMaterial = useMemo(() => 
     new THREE.MeshStandardMaterial({ color: '#38bdf8', transparent: true, opacity: 0.5 }), []);
@@ -1368,34 +1673,38 @@ function CustomWadingPoolMesh({ vertices, wadingDepth, poolDepth, poolVertices }
       {/* Water */}
       {waterGeo && <mesh geometry={waterGeo} material={waterMaterial} />}
       
-      {/* Dimension lines */}
-      <DimensionLine
-        start={[minX, minY - 0.3, floorZ + 0.05]}
-        end={[maxX, minY - 0.3, floorZ + 0.05]}
-        label={`${sizeX.toFixed(2)} m`}
-        color="#8b5cf6"
-      />
-      <DimensionLine
-        start={[maxX + 0.3, minY, floorZ + 0.05]}
-        end={[maxX + 0.3, maxY, floorZ + 0.05]}
-        label={`${sizeY.toFixed(2)} m`}
-        color="#8b5cf6"
-      />
-      <group>
-        <Line
-          points={[
-            [minX - 0.3, minY, 0],
-            [minX - 0.3, minY, floorZ]
-          ]}
-          color="#8b5cf6"
-          lineWidth={1.5}
-        />
-        <Html position={[minX - 0.5, minY, floorZ / 2]} center>
-          <div className="bg-purple-50 px-2 py-0.5 rounded text-xs font-semibold text-purple-700 border border-purple-200 shadow-sm whitespace-nowrap">
-            {wadingDepth.toFixed(2)} m
-          </div>
-        </Html>
-      </group>
+      {/* Dimension lines - only show if showDimensions is true */}
+      {showDimensions && (
+        <>
+          <DimensionLine
+            start={[minX, minY - 0.3, floorZ + 0.05]}
+            end={[maxX, minY - 0.3, floorZ + 0.05]}
+            label={`${sizeX.toFixed(2)} m`}
+            color="#8b5cf6"
+          />
+          <DimensionLine
+            start={[maxX + 0.3, minY, floorZ + 0.05]}
+            end={[maxX + 0.3, maxY, floorZ + 0.05]}
+            label={`${sizeY.toFixed(2)} m`}
+            color="#8b5cf6"
+          />
+          <group>
+            <Line
+              points={[
+                [minX - 0.3, minY, 0],
+                [minX - 0.3, minY, floorZ]
+              ]}
+              color="#8b5cf6"
+              lineWidth={1.5}
+            />
+            <Html position={[minX - 0.5, minY, floorZ / 2]} center>
+              <div className="bg-purple-50 px-2 py-0.5 rounded text-xs font-semibold text-purple-700 border border-purple-200 shadow-sm whitespace-nowrap">
+                {wadingDepth.toFixed(2)} m
+              </div>
+            </Html>
+          </group>
+        </>
+      )}
     </group>
   );
 }
@@ -1444,7 +1753,7 @@ function insetPolygon(vertices: { x: number; y: number }[], amount: number): { x
 }
 
 // Main scene
-function Scene({ dimensions, calculations, showFoilLayout, rollWidth }: Pool3DVisualizationProps & { rollWidth: number }) {
+function Scene({ dimensions, calculations, showFoilLayout, rollWidth, dimensionDisplay }: Pool3DVisualizationProps & { rollWidth: number; dimensionDisplay: DimensionDisplay }) {
   const isCustomShape = dimensions.shape === 'wlasny';
   // Check for multiple custom stairs (array of arrays)
   const customStairsArrays = dimensions.customStairsVertices || [];
@@ -1462,7 +1771,7 @@ function Scene({ dimensions, calculations, showFoilLayout, rollWidth }: Pool3DVi
       <group rotation={[-Math.PI / 2, 0, 0]}>
         {/* Pool mesh - solid when showing foil, transparent otherwise */}
         <PoolMesh dimensions={dimensions} solid={showFoilLayout} />
-        <DimensionLines dimensions={dimensions} />
+        <DimensionLines dimensions={dimensions} display={dimensionDisplay} />
         
         {/* Custom stairs from drawn vertices - render all */}
         {hasCustomStairs && customStairsArrays.map((stairsVerts, index) => (
@@ -1473,6 +1782,7 @@ function Scene({ dimensions, calculations, showFoilLayout, rollWidth }: Pool3DVi
               depth={dimensions.depth} 
               poolVertices={dimensions.customVertices || []}
               rotation={dimensions.customStairsRotations?.[index] || 0}
+              showDimensions={dimensionDisplay === 'all' || dimensionDisplay === 'stairs'}
             />
           )
         ))}
@@ -1491,6 +1801,7 @@ function Scene({ dimensions, calculations, showFoilLayout, rollWidth }: Pool3DVi
               wadingDepth={dimensions.wadingPool?.depth || 0.4}
               poolDepth={dimensions.depth}
               poolVertices={dimensions.customVertices || []}
+              showDimensions={dimensionDisplay === 'all' || dimensionDisplay === 'wading'}
             />
           )
         ))}
@@ -1537,8 +1848,15 @@ export function Pool3DVisualization({
   showFoilLayout = false,
   height = 400,
 }: Pool3DVisualizationProps) {
+  const [dimensionDisplay, setDimensionDisplay] = useState<DimensionDisplay>('pool');
   const maxDimension = Math.max(dimensions.length, dimensions.width, dimensions.depth * 2);
   const cameraDistance = maxDimension * 1.8;
+
+  // Check if stairs or wading pool exist
+  const hasStairs = dimensions.stairs?.enabled || 
+    (dimensions.shape === 'wlasny' && dimensions.customStairsVertices?.some(arr => arr.length >= 3));
+  const hasWadingPool = dimensions.wadingPool?.enabled || 
+    (dimensions.shape === 'wlasny' && dimensions.customWadingPoolVertices?.some(arr => arr.length >= 3));
 
   return (
     <div 
@@ -1560,6 +1878,7 @@ export function Pool3DVisualization({
             calculations={calculations}
             showFoilLayout={showFoilLayout}
             rollWidth={rollWidth}
+            dimensionDisplay={dimensionDisplay}
           />
         </Canvas>
       </Suspense>
@@ -1568,7 +1887,7 @@ export function Pool3DVisualization({
         🖱️ Obracaj • Scroll: Zoom
       </div>
       
-      <div className="absolute top-2 right-2 text-xs space-y-1 bg-background/95 p-2 rounded border border-border shadow-sm">
+      <div className="absolute top-2 right-2 text-xs space-y-1 bg-background/95 p-2 rounded border border-border shadow-sm max-h-[80%] overflow-y-auto">
         <div className="flex items-center gap-2">
           <div className="w-3 h-3 rounded bg-gray-300 border border-gray-400" />
           <span>Konstrukcja</span>
@@ -1587,13 +1906,13 @@ export function Pool3DVisualization({
             <span>Woda</span>
           </div>
         )}
-        {dimensions.stairs?.enabled && (
+        {hasStairs && (
           <div className="flex items-center gap-2">
             <div className="w-3 h-3 rounded bg-gray-200 border border-gray-300" />
             <span>Schodki</span>
           </div>
         )}
-        {dimensions.wadingPool?.enabled && (
+        {hasWadingPool && (
           <div className="flex items-center gap-2">
             <div className="w-3 h-3 rounded bg-sky-200 border border-sky-300" />
             <span>Brodzik</span>
@@ -1605,6 +1924,41 @@ export function Pool3DVisualization({
             <span>Linie folii ({rollWidth}m)</span>
           </div>
         )}
+        
+        {/* Dimension display controls */}
+        <div className="pt-2 mt-2 border-t border-border">
+          <div className="font-medium mb-1.5">Wymiary:</div>
+          <RadioGroup 
+            value={dimensionDisplay} 
+            onValueChange={(value) => setDimensionDisplay(value as DimensionDisplay)}
+            className="space-y-1"
+          >
+            <div className="flex items-center space-x-2">
+              <RadioGroupItem value="pool" id="dim-pool" className="h-3 w-3" />
+              <Label htmlFor="dim-pool" className="text-xs cursor-pointer">Niecka</Label>
+            </div>
+            {hasStairs && (
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="stairs" id="dim-stairs" className="h-3 w-3" />
+                <Label htmlFor="dim-stairs" className="text-xs cursor-pointer">Schody</Label>
+              </div>
+            )}
+            {hasWadingPool && (
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="wading" id="dim-wading" className="h-3 w-3" />
+                <Label htmlFor="dim-wading" className="text-xs cursor-pointer">Brodzik</Label>
+              </div>
+            )}
+            <div className="flex items-center space-x-2">
+              <RadioGroupItem value="all" id="dim-all" className="h-3 w-3" />
+              <Label htmlFor="dim-all" className="text-xs cursor-pointer">Wszystkie</Label>
+            </div>
+            <div className="flex items-center space-x-2">
+              <RadioGroupItem value="none" id="dim-none" className="h-3 w-3" />
+              <Label htmlFor="dim-none" className="text-xs cursor-pointer">Brak</Label>
+            </div>
+          </RadioGroup>
+        </div>
       </div>
     </div>
   );
