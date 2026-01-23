@@ -112,9 +112,15 @@ export const foilImportApi = {
             onlyMainContent: false, // Need full page for metadata
           });
 
-          if (result.success) {
-            // Firecrawl v1 nests data inside result.data
-            const responseData = result.data || result;
+          // Some Firecrawl responses don't include `success` and only return `{ data: ... }`.
+          // Treat as success unless explicitly `success: false`.
+          const successFlag = (result as any)?.success;
+          const isOk = successFlag === undefined ? true : Boolean(successFlag);
+
+          if (isOk && (result as any)?.data) {
+            // Firecrawl sometimes nests like { data: { ... } } and sometimes { success: true, data: { ... } }.
+            const payload: any = (result as any).data;
+            const responseData: any = payload?.data ?? payload;
             
             // Try metadata.ogImage first (most reliable)
             if (responseData.metadata?.ogImage) {
