@@ -5,15 +5,15 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Collection to foil category mapping
+// Collection to foil category mapping - keys match URL slugs
 const COLLECTION_MAPPING: Record<string, { foilCategory: string; thickness: number; description: string }> = {
   'touch': { foilCategory: 'strukturalna', thickness: 2.0, description: 'Tekstura 3D inspirowana naturą' },
   'vogue': { foilCategory: 'strukturalna', thickness: 2.0, description: 'Inspiracja trendami wnętrzarskimi' },
   'ceramics-evolve': { foilCategory: 'strukturalna', thickness: 2.0, description: 'Imitacja ceramiki' },
   'ceramics': { foilCategory: 'strukturalna', thickness: 1.5, description: 'Motyw mozaiki greckiej' },
   'alive': { foilCategory: 'strukturalna', thickness: 1.5, description: 'Nowoczesne wzory' },
-  'alkorplan-3000': { foilCategory: 'nadruk', thickness: 1.5, description: 'Współczesne wzory drukowane' },
-  'alkorplan-2000': { foilCategory: 'jednokolorowa', thickness: 1.5, description: 'Klasyczne kolory jednobarwne' },
+  'alkorplan3000': { foilCategory: 'nadruk', thickness: 1.5, description: 'Współczesne wzory drukowane' },
+  'alkorplan2000': { foilCategory: 'jednokolorowa', thickness: 1.5, description: 'Klasyczne kolory jednobarwne' },
   'relief': { foilCategory: 'antyposlizgowa', thickness: 1.5, description: 'Antypoślizgowa klasa 3' },
   'kolos': { foilCategory: 'strukturalna', thickness: 2.0, description: 'Do intensywnego użytku' },
   'natural-pool': { foilCategory: 'jednokolorowa', thickness: 1.5, description: 'Do stawów kąpielowych' },
@@ -31,30 +31,35 @@ interface FoilProduct {
   symbol: string;
 }
 
-function extractCollectionFromUrl(url: string): { collection: string; slug: string } | null {
-  // Pattern: /collections/{collection-name}/products/{product-name}
-  const match = url.match(/\/collections\/([^\/]+)\/products\/([^\/]+)/);
+function extractCollectionAndProductFromUrl(url: string): { collection: string; collectionSlug: string; productName: string } | null {
+  // Pattern: /collections/{collection-name}/{product-name}
+  // Example: /collections/touch/authentic or /collections/alkorplan2000/dark-grey
+  const match = url.match(/\/collections\/([^\/]+)\/([^\/\?]+)$/);
   if (match) {
-    const slug = match[1].toLowerCase();
+    const collectionSlug = match[1].toLowerCase();
+    const productSlug = match[2].toLowerCase();
+    
+    // Skip collection-only URLs (no product)
+    if (!productSlug || productSlug === 'sitemap.xml') {
+      return null;
+    }
+    
     // Get nice collection name from slug
-    const collectionName = slug
+    const collectionName = collectionSlug
+      .replace(/alkorplan(\d+)/i, 'Alkorplan $1')
       .split('-')
       .map(word => word.charAt(0).toUpperCase() + word.slice(1))
       .join(' ');
-    return { collection: collectionName, slug };
+    
+    // Get nice product name from slug
+    const productName = productSlug
+      .split('-')
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(' ');
+    
+    return { collection: collectionName, collectionSlug, productName };
   }
   return null;
-}
-
-function extractProductNameFromUrl(url: string): string {
-  const match = url.match(/\/products\/([^\/\?]+)/);
-  if (match) {
-    return match[1]
-      .split('-')
-      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-      .join(' ');
-  }
-  return 'Unknown';
 }
 
 function generateSymbol(collectionSlug: string, productName: string): string {
@@ -84,26 +89,25 @@ Deno.serve(async (req) => {
       const parsedProducts: FoilProduct[] = [];
       
       for (const url of urls || []) {
-        const collectionInfo = extractCollectionFromUrl(url);
-        if (!collectionInfo) continue;
+        const extracted = extractCollectionAndProductFromUrl(url);
+        if (!extracted) continue;
         
-        const mapping = COLLECTION_MAPPING[collectionInfo.slug];
+        const mapping = COLLECTION_MAPPING[extracted.collectionSlug];
         if (!mapping) {
-          console.log('Unknown collection:', collectionInfo.slug);
+          console.log('Unknown collection:', extracted.collectionSlug);
           continue;
         }
         
-        const productName = extractProductNameFromUrl(url);
-        const symbol = generateSymbol(collectionInfo.slug, productName);
+        const symbol = generateSymbol(extracted.collectionSlug, extracted.productName);
         
         parsedProducts.push({
           url,
-          name: `ALKORPLAN ${collectionInfo.collection} - ${productName}`,
-          collection: collectionInfo.collection,
-          collectionSlug: collectionInfo.slug,
+          name: `ALKORPLAN ${extracted.collection} - ${extracted.productName}`,
+          collection: extracted.collection,
+          collectionSlug: extracted.collectionSlug,
           foilCategory: mapping.foilCategory,
           thickness: mapping.thickness,
-          description: `${mapping.description}. ${productName}`,
+          description: `${mapping.description}. ${extracted.productName}`,
           symbol,
         });
       }
