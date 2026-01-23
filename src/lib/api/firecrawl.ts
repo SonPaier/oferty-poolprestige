@@ -110,8 +110,8 @@ export const foilImportApi = {
         const updated = { ...product };
         try {
           const result = await firecrawlApi.scrape(product.url, {
-            formats: ['html'],
-            onlyMainContent: false, // Need full page for metadata
+            formats: ['links'],  // Use links format to get all URLs including images
+            onlyMainContent: false,
           });
 
           // Firecrawl responses: either { success, data } or just { data }
@@ -120,10 +120,8 @@ export const foilImportApi = {
           const isOk = successFlag === undefined ? true : Boolean(successFlag);
 
           // Handle nested structure: edge fn returns { data: firecrawlResponse }
-          // firecrawlResponse = { data: { html, metadata, ... }, success: true }
           let scrapeData: any = null;
           if (isOk && raw?.data) {
-            // If nested one more level (from invoke wrapper)
             if (raw.data.data) {
               scrapeData = raw.data.data;
             } else {
@@ -132,25 +130,30 @@ export const foilImportApi = {
           }
 
           if (scrapeData) {
-            // Try metadata.ogImage first (most reliable)
-            if (scrapeData.metadata?.ogImage) {
-              updated.imageUrl = scrapeData.metadata.ogImage;
-              console.log(`[scrape] ${product.symbol} -> ogImage: ${updated.imageUrl}`);
+            // Extract image from links array
+            const links: string[] = scrapeData.links || [];
+            
+            // First try: find image from fileadmin/_processed_ (product images)
+            let imageLink = links.find((link: string) => 
+              link.includes('/fileadmin/_processed_/') && 
+              /\.(jpg|jpeg|png|webp)$/i.test(link)
+            );
+            
+            // Fallback: any image that's not favicon/logo
+            if (!imageLink) {
+              imageLink = links.find((link: string) => 
+                /\.(jpg|jpeg|png|webp)$/i.test(link) && 
+                !link.includes('favicon') && 
+                !link.includes('logo') &&
+                !link.includes('icon')
+              );
+            }
+
+            if (imageLink) {
+              updated.imageUrl = imageLink;
+              console.log(`[scrape] ${product.symbol} -> found image: ${updated.imageUrl}`);
             } else {
-              // Fallback: extract from HTML
-              const html = scrapeData.html || '';
-              const imgMatch = 
-                html.match(/property="og:image"\s*content="([^"]+)"/i) ||
-                html.match(/content="([^"]+)"\s*property="og:image"/i) ||
-                html.match(/<img[^>]*src="([^"]+)"[^>]*class="[^"]*main[^"]*"/i) ||
-                html.match(/data-src="([^"]+\.(?:jpg|jpeg|png|webp))"/i);
-              
-              if (imgMatch) {
-                updated.imageUrl = imgMatch[1];
-                console.log(`[scrape] ${product.symbol} -> html match: ${updated.imageUrl}`);
-              } else {
-                console.warn(`[scrape] ${product.symbol} -> no image found`);
-              }
+              console.warn(`[scrape] ${product.symbol} -> no image found in ${links.length} links`);
             }
           } else {
             console.warn(`[scrape] ${product.symbol} -> no scrapeData`, raw);
