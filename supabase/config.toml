@@ -26,3 +26,6 @@ verify_jwt = false
 
 [functions.import-foils-from-web]
 verify_jwt = false
+
+[functions.extract-dominant-color]
+verify_jwt = false

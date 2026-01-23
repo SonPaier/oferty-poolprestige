@@ -31,45 +31,50 @@ export interface FoilProduct {
   symbol: string;
   brand: 'alkorplan' | 'elbe';
   shade?: string;
+  extractedHex?: string;
+  shadeSource?: 'producer' | 'image' | 'name';
 }
 
-// Polish shade/color mapping for automatic assignment
-const SHADE_MAPPING: Record<string, string> = {
-  // Direct colors (jednokolorowe)
+// Simplified palette - 8 base colors
+const SIMPLIFIED_SHADE_MAP: Record<string, string> = {
+  // Direct colors -> simplified palette
   'white': 'biały',
-  'sand': 'piaskowy',
+  'sand': 'beżowy',
   'beige': 'beżowy',
-  'light blue': 'jasnoniebieski',
+  'cream': 'biały',
+  'light blue': 'niebieski',
   'adriatic blue': 'niebieski',
-  'caribbean blue': 'niebieski',
+  'caribbean blue': 'turkusowy',
   'caribbean green': 'zielony',
   'greek blue': 'niebieski',
   'blue': 'niebieski',
-  'light grey': 'jasnoszary',
-  'dark grey': 'ciemnoszary',
+  'light grey': 'szary',
+  'dark grey': 'szary',
   'grey': 'szary',
-  'anthracite': 'antracytowy',
+  'gray': 'szary',
+  'anthracite': 'szary',
   'black': 'czarny',
+  'graphite': 'czarny',
   'green': 'zielony',
   'turquoise': 'turkusowy',
   
-  // Alkorplan structural collections (Touch, Alive, Vogue, etc.)
-  'bhumi': 'piaskowy',
-  'nara': 'piaskowy',
+  // Alkorplan structural collections
+  'bhumi': 'beżowy',
+  'nara': 'beżowy',
   'chandra': 'szary',
   'kohinoor': 'niebieski',
   'prestige': 'czarny',
   'sublime': 'beżowy',
-  'volcanic': 'ciemnoszary',
+  'volcanic': 'szary',
   'travertine': 'beżowy',
-  'authentic': 'piaskowy',
+  'authentic': 'beżowy',
   'concrete': 'szary',
   'mediterranean blue': 'niebieski',
   'malta': 'beżowy',
   'bysance': 'niebieski',
   'persia': 'niebieski',
   'persia blue': 'niebieski',
-  'persia sand': 'piaskowy',
+  'persia sand': 'beżowy',
   'carrara': 'biały',
   'atenea': 'niebieski',
   'byzance': 'niebieski',
@@ -79,37 +84,33 @@ const SHADE_MAPPING: Record<string, string> = {
   
   // ELBE colors
   'amber': 'beżowy',
-  'basalt': 'ciemnoszary',
+  'basalt': 'szary',
   'marble': 'biały',
   'pearl': 'biały',
   'shine': 'biały',
   'ocean': 'niebieski',
   'azure': 'niebieski',
-  'sky': 'jasnoniebieski',
+  'sky': 'niebieski',
   'terra': 'brązowy',
-  'coral': 'koralowy',
+  'coral': 'beżowy',
   'slate': 'szary',
-  'graphite': 'ciemnoszary',
-  'platinum': 'jasnoszary',
-  'cream': 'kremowy',
-  'ivory': 'kremowy',
-  'classic': 'piaskowy',
+  'platinum': 'szary',
+  'ivory': 'biały',
+  'classic': 'beżowy',
 };
 
-// Keyword-based shade detection fallback
+// Keyword-based shade detection fallback (simplified to 8 base colors)
 const SHADE_KEYWORDS: Record<string, string> = {
   'blue': 'niebieski',
   'white': 'biały',
   'grey': 'szary',
   'gray': 'szary',
-  'sand': 'piaskowy',
+  'sand': 'beżowy',
   'beige': 'beżowy',
   'green': 'zielony',
   'black': 'czarny',
   'brown': 'brązowy',
   'turquoise': 'turkusowy',
-  'light': 'jasny',
-  'dark': 'ciemny',
 };
 
 /**
@@ -120,46 +121,65 @@ export function determineShade(productName: string, collectionSlug?: string): st
   const nameLower = productName.toLowerCase();
   
   // 1. Try full product name match (for structured names like "Light Blue")
-  if (SHADE_MAPPING[nameLower]) {
-    return SHADE_MAPPING[nameLower];
+  if (SIMPLIFIED_SHADE_MAP[nameLower]) {
+    return SIMPLIFIED_SHADE_MAP[nameLower];
   }
   
   // 2. Try to extract the color part from product names like "SOLID Amber" or "ALKORPLAN Touch - Bhumi"
-  // Extract last word(s) after dash or collection prefix
   const parts = productName.split(/\s*[-–]\s*/);
   const lastPart = parts[parts.length - 1].trim().toLowerCase();
   
-  if (SHADE_MAPPING[lastPart]) {
-    return SHADE_MAPPING[lastPart];
+  if (SIMPLIFIED_SHADE_MAP[lastPart]) {
+    return SIMPLIFIED_SHADE_MAP[lastPart];
   }
   
   // 3. Try individual words
   const words = nameLower.split(/\s+/);
   for (const word of words.reverse()) { // Start from end (color often at end)
-    if (SHADE_MAPPING[word]) {
-      return SHADE_MAPPING[word];
+    if (SIMPLIFIED_SHADE_MAP[word]) {
+      return SIMPLIFIED_SHADE_MAP[word];
     }
   }
   
-  // 4. Keyword-based detection with modifiers
-  let shade: string | undefined;
-  let modifier: string | undefined;
-  
+  // 4. Keyword-based detection (simplified - no modifiers)
   for (const [keyword, value] of Object.entries(SHADE_KEYWORDS)) {
     if (nameLower.includes(keyword)) {
-      if (keyword === 'light' || keyword === 'dark') {
-        modifier = value;
-      } else if (!shade) {
-        shade = value;
-      }
+      return value;
     }
   }
   
-  if (shade && modifier) {
-    return `${modifier}${shade}`;
+  return undefined;
+}
+
+// Call extract-dominant-color edge function
+export async function extractColorFromImage(
+  imageUrl: string, 
+  productName?: string, 
+  description?: string
+): Promise<{ shade?: string; extractedHex?: string; source?: 'producer' | 'image' | 'name' }> {
+  try {
+    const { data, error } = await supabase.functions.invoke('extract-dominant-color', {
+      body: { 
+        imageUrl, 
+        productName, 
+        description 
+      },
+    });
+    
+    if (error) {
+      console.warn('[extractColorFromImage] Error:', error);
+      return {};
+    }
+    
+    return {
+      shade: data?.shade || undefined,
+      extractedHex: data?.extractedHex || undefined,
+      source: data?.source || undefined,
+    };
+  } catch (e) {
+    console.warn('[extractColorFromImage] Exception:', e);
+    return {};
   }
-  
-  return shade;
 }
 
 export const firecrawlApi = {

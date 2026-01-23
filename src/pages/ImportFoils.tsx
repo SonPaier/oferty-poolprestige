@@ -8,8 +8,8 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
 import { Header } from '@/components/Header';
-import { foilImportApi, elbeImportApi, FoilProduct } from '@/lib/api/firecrawl';
-import { Search, Download, Save, CheckCircle, Loader2, ExternalLink } from 'lucide-react';
+import { foilImportApi, elbeImportApi, FoilProduct, extractColorFromImage } from '@/lib/api/firecrawl';
+import { Search, Download, Save, CheckCircle, Loader2, ExternalLink, Factory, ImageIcon, Type } from 'lucide-react';
 
 type ImportStep = 'idle' | 'mapping' | 'parsing' | 'scraping' | 'ready' | 'saving' | 'done';
 type ImportSource = 'alkorplan' | 'elbe';
@@ -111,7 +111,7 @@ export default function ImportFoils() {
   const handleScrapeImages = async () => {
     setStep('scraping');
     setProgress(0);
-    setProgressText('Pobieranie zdjęć produktów...');
+    setProgressText('Pobieranie zdjęć i ekstrakcja kolorów...');
 
     try {
       const selectedProductsList = products.filter(p => selectedProducts.has(p.symbol));
@@ -124,7 +124,26 @@ export default function ImportFoils() {
       for (let i = 0; i < selectedProductsList.length; i += batchSize) {
         const batch = selectedProductsList.slice(i, i + batchSize);
         const batchResults = await foilImportApi.scrapeProductDetails(batch);
-        updatedProducts.push(...batchResults);
+        
+        // Extract colors from images for products that have them
+        const batchWithColors = await Promise.all(batchResults.map(async (product) => {
+          if (product.imageUrl && !product.shade) {
+            const colorResult = await extractColorFromImage(
+              product.imageUrl, 
+              product.name, 
+              product.description
+            );
+            return {
+              ...product,
+              shade: colorResult.shade || product.shade,
+              extractedHex: colorResult.extractedHex,
+              shadeSource: colorResult.source,
+            };
+          }
+          return { ...product, shadeSource: product.shade ? 'name' as const : undefined };
+        }));
+        
+        updatedProducts.push(...batchWithColors);
         
         const progressPercent = Math.round(((i + batch.length) / totalProducts) * 100);
         setProgress(progressPercent);
@@ -137,8 +156,8 @@ export default function ImportFoils() {
       
       setStep('ready');
       setProgress(100);
-      setProgressText('Zdjęcia pobrane!');
-      toast.success('Pobrano zdjęcia produktów');
+      setProgressText('Zdjęcia i kolory pobrane!');
+      toast.success('Pobrano zdjęcia i wyekstrahowano kolory');
     } catch (error) {
       console.error('Error scraping:', error);
       toast.error('Błąd pobierania zdjęć');
@@ -352,9 +371,27 @@ export default function ImportFoils() {
                                   {foilCategoryLabels[product.foilCategory]}
                                 </Badge>
                                 {product.shade && (
-                                  <Badge variant="outline" className="text-xs">
-                                    {product.shade}
-                                  </Badge>
+                                  <div className="flex items-center gap-1">
+                                    {product.extractedHex && (
+                                      <div 
+                                        className="w-4 h-4 rounded-full border border-gray-300 flex-shrink-0"
+                                        style={{ backgroundColor: product.extractedHex }}
+                                        title={`HEX: ${product.extractedHex}`}
+                                      />
+                                    )}
+                                    <Badge variant="outline" className="text-xs">
+                                      {product.shade}
+                                    </Badge>
+                                    {product.shadeSource === 'producer' && (
+                                      <span title="Dane producenta"><Factory className="w-3 h-3 text-muted-foreground" /></span>
+                                    )}
+                                    {product.shadeSource === 'image' && (
+                                      <span title="Ekstrakcja z obrazka"><ImageIcon className="w-3 h-3 text-muted-foreground" /></span>
+                                    )}
+                                    {product.shadeSource === 'name' && (
+                                      <span title="Z nazwy produktu"><Type className="w-3 h-3 text-muted-foreground" /></span>
+                                    )}
+                                  </div>
                                 )}
                                 <span className="text-xs text-muted-foreground">
                                   {product.thickness}mm
