@@ -5,11 +5,12 @@ import { Progress } from '@/components/ui/progress';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
 import { Header } from '@/components/Header';
 import { foilImportApi, elbeImportApi, FoilProduct, extractColorFromImage } from '@/lib/api/firecrawl';
 import { Search, Download, Save, CheckCircle, Loader2, ExternalLink, Factory, ImageIcon, Type } from 'lucide-react';
+import { ShadeSelect, getShadeHex } from '@/components/ShadeSelect';
 
 type ImportStep = 'idle' | 'mapping' | 'parsing' | 'scraping' | 'ready' | 'saving' | 'done';
 type ImportSource = 'alkorplan' | 'elbe';
@@ -212,6 +213,19 @@ export default function ImportFoils() {
     }
   };
 
+  const handleShadeChange = (symbol: string, newShade: string | null) => {
+    setProducts(prev => prev.map(p => 
+      p.symbol === symbol 
+        ? { 
+            ...p, 
+            shade: newShade || undefined, 
+            extractedHex: newShade ? getShadeHex(newShade) || undefined : undefined,
+            shadeSource: 'name' as const
+          } 
+        : p
+    ));
+  };
+
   const handleReset = () => {
     setStep('idle');
     setProducts([]);
@@ -370,29 +384,26 @@ export default function ImportFoils() {
                                 <Badge className={foilCategoryColors[product.foilCategory]}>
                                   {foilCategoryLabels[product.foilCategory]}
                                 </Badge>
-                                {product.shade && (
-                                  <div className="flex items-center gap-1">
-                                    {product.extractedHex && (
-                                      <div 
-                                        className="w-4 h-4 rounded-full border border-gray-300 flex-shrink-0"
-                                        style={{ backgroundColor: product.extractedHex }}
-                                        title={`HEX: ${product.extractedHex}`}
-                                      />
-                                    )}
-                                    <Badge variant="outline" className="text-xs">
-                                      {product.shade}
-                                    </Badge>
-                                    {product.shadeSource === 'producer' && (
-                                      <span title="Dane producenta"><Factory className="w-3 h-3 text-muted-foreground" /></span>
-                                    )}
-                                    {product.shadeSource === 'image' && (
-                                      <span title="Ekstrakcja z obrazka"><ImageIcon className="w-3 h-3 text-muted-foreground" /></span>
-                                    )}
-                                    {product.shadeSource === 'name' && (
-                                      <span title="Z nazwy produktu"><Type className="w-3 h-3 text-muted-foreground" /></span>
-                                    )}
-                                  </div>
-                                )}
+                                <div 
+                                  className="flex items-center gap-1"
+                                  onClick={e => e.stopPropagation()}
+                                >
+                                  <ShadeSelect
+                                    value={product.shade}
+                                    onChange={(newShade) => handleShadeChange(product.symbol, newShade)}
+                                    placeholder="Odcień"
+                                    className="h-7 w-32 text-xs"
+                                  />
+                                  {product.shadeSource === 'producer' && (
+                                    <span title="Dane producenta"><Factory className="w-3 h-3 text-muted-foreground" /></span>
+                                  )}
+                                  {product.shadeSource === 'image' && (
+                                    <span title="Ekstrakcja z obrazka"><ImageIcon className="w-3 h-3 text-muted-foreground" /></span>
+                                  )}
+                                  {product.shadeSource === 'name' && (
+                                    <span title="Z nazwy produktu"><Type className="w-3 h-3 text-muted-foreground" /></span>
+                                  )}
+                                </div>
                                 <span className="text-xs text-muted-foreground">
                                   {product.thickness}mm
                                 </span>

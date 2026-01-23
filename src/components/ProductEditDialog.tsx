@@ -5,11 +5,13 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Loader2, Upload, X, Trash2 } from 'lucide-react';
+import { Loader2, Upload, X } from 'lucide-react';
 import { DbProduct } from '@/hooks/useProducts';
 import { useUpdateProduct, useProductImages, useAddProductImage, useDeleteProductImage } from '@/hooks/useProductsManagement';
 import { toast } from 'sonner';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
+import { ShadeSelect } from '@/components/ShadeSelect';
+import { Separator } from '@/components/ui/separator';
 
 interface ProductEditDialogProps {
   product: DbProduct | null;
@@ -27,6 +29,8 @@ export function ProductEditDialog({ product, open, onOpenChange }: ProductEditDi
   const addImage = useAddProductImage();
   const deleteImage = useDeleteProductImage();
 
+  const isFoilProduct = formData.category === 'folia';
+
   useEffect(() => {
     if (product) {
       setFormData({
@@ -37,6 +41,9 @@ export function ProductEditDialog({ product, open, onOpenChange }: ProductEditDi
         description: product.description,
         stock_quantity: product.stock_quantity,
         category: product.category,
+        shade: product.shade,
+        foil_category: product.foil_category,
+        foil_width: product.foil_width,
       });
     }
   }, [product]);
@@ -177,6 +184,54 @@ export function ProductEditDialog({ product, open, onOpenChange }: ProductEditDi
               onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
             />
           </div>
+
+          {/* Foil-specific attributes */}
+          {isFoilProduct && (
+            <>
+              <Separator />
+              <div className="space-y-4">
+                <h4 className="font-medium text-sm text-muted-foreground">Atrybuty folii</h4>
+                <div className="grid grid-cols-3 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="shade">Odcień</Label>
+                    <ShadeSelect
+                      value={formData.shade}
+                      onChange={(value) => setFormData(prev => ({ ...prev, shade: value }))}
+                      placeholder="Wybierz odcień"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="foil_category">Typ folii</Label>
+                    <Select
+                      value={formData.foil_category || ''}
+                      onValueChange={(value) => setFormData(prev => ({ ...prev, foil_category: value }))}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Wybierz typ" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="jednokolorowa">Jednokolorowa</SelectItem>
+                        <SelectItem value="strukturalna">Strukturalna</SelectItem>
+                        <SelectItem value="nadruk">Z nadrukiem</SelectItem>
+                        <SelectItem value="antyposlizgowa">Antypoślizgowa</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="foil_width">Szerokość (m)</Label>
+                    <Input
+                      id="foil_width"
+                      type="number"
+                      step="0.01"
+                      value={formData.foil_width || ''}
+                      onChange={(e) => setFormData(prev => ({ ...prev, foil_width: parseFloat(e.target.value) || null }))}
+                      placeholder="np. 1.65"
+                    />
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
 
           {/* Images section */}
           <div className="space-y-3">

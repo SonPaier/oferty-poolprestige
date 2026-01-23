@@ -1,3 +1,5 @@
+import { Image } from "https://deno.land/x/imagescript@1.3.0/mod.ts";
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -75,21 +77,41 @@ const PRODUCER_COLOR_MAP: Record<string, string> = {
   'slate': 'szary',
   'platinum': 'szary',
   'ivory': 'biały',
+  
+  // Vogue collection
+  'summer': 'niebieski',
+  'tropical': 'niebieski',
+  'urban': 'szary',
+  'vintage': 'beżowy',
+  
+  // Kolos collection
+  'delos': 'niebieski',
+  'milos': 'niebieski',
+  'naxos': 'niebieski',
+  'paros': 'biały',
+  'syros': 'szary',
+  
+  // Alive collection
+  'aquarelle': 'niebieski',
+  'mist': 'szary',
+  'coral': 'beżowy',
+  
+  // Touch collection
+  'relax': 'niebieski',
+  'elegance': 'szary',
+  'serenity': 'niebieski',
+  'vanity': 'beżowy',
+  'origin': 'beżowy',
+  'genuine': 'beżowy',
+  
+  // Alkorplan colors
+  'adriatic': 'niebieski',
 };
 
 interface RGB {
   r: number;
   g: number;
   b: number;
-}
-
-function hexToRgb(hex: string): RGB {
-  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-  return result ? {
-    r: parseInt(result[1], 16),
-    g: parseInt(result[2], 16),
-    b: parseInt(result[3], 16)
-  } : { r: 0, g: 0, b: 0 };
 }
 
 function rgbToHex(r: number, g: number, b: number): string {
@@ -109,12 +131,11 @@ function colorDistance(c1: RGB, c2: RGB): number {
 }
 
 // Map any HEX to simplified Polish shade
-function mapHexToSimplifiedShade(hex: string): { shade: string; paletteHex: string } {
-  const inputRgb = hexToRgb(hex);
+function mapRgbToSimplifiedShade(rgb: RGB): { shade: string; paletteHex: string } {
   let closest = { shade: 'nieznany', paletteHex: '#808080', distance: Infinity };
   
   for (const color of SIMPLIFIED_PALETTE) {
-    const dist = colorDistance(inputRgb, color.rgb);
+    const dist = colorDistance(rgb, color.rgb);
     if (dist < closest.distance) {
       closest = { shade: color.shade, paletteHex: color.hex, distance: dist };
     }
@@ -155,7 +176,7 @@ function extractShadeFromText(text: string): string | null {
   return null;
 }
 
-// Decode image and extract dominant color
+// Decode image and extract dominant color using ImageScript
 async function extractDominantColorFromImage(imageUrl: string): Promise<{ hex: string; shade: string } | null> {
   try {
     console.log(`[extract-color] Fetching image: ${imageUrl}`);
@@ -181,26 +202,42 @@ async function extractDominantColorFromImage(imageUrl: string): Promise<{ hex: s
     const buffer = await response.arrayBuffer();
     const bytes = new Uint8Array(buffer);
     
-    // Simple color extraction: sample pixels from the image
-    // For PNG/JPEG we use a simplified approach: analyze raw bytes for color patterns
-    // This is a heuristic that works well for solid-color product images
+    // Decode image using ImageScript
+    let image: Image;
+    try {
+      image = await Image.decode(bytes);
+    } catch (decodeError) {
+      console.warn(`[extract-color] Failed to decode image:`, decodeError);
+      return null;
+    }
+    
+    console.log(`[extract-color] Image decoded: ${image.width}x${image.height}`);
+    
+    // Sample pixels from center region (avoid edges which might have borders/backgrounds)
+    const startX = Math.floor(image.width * 0.25);
+    const endX = Math.floor(image.width * 0.75);
+    const startY = Math.floor(image.height * 0.25);
+    const endY = Math.floor(image.height * 0.75);
     
     let totalR = 0, totalG = 0, totalB = 0, pixelCount = 0;
+    const step = Math.max(1, Math.floor((endX - startX) / 20)); // Sample ~20x20 grid
     
-    // For JPEG images, look for color data in the middle section
-    // JPEG structure: header -> data -> EOF
-    // We'll sample bytes that look like RGB triplets
-    const startOffset = Math.floor(bytes.length * 0.2);
-    const endOffset = Math.floor(bytes.length * 0.8);
-    const step = 3;
-    
-    for (let i = startOffset; i < endOffset - 2; i += step) {
-      const r = bytes[i];
-      const g = bytes[i + 1];
-      const b = bytes[i + 2];
-      
-      // Skip likely non-color data (very low values often indicate headers/metadata)
-      if (r + g + b > 50 && r + g + b < 750) {
+    for (let y = startY; y < endY; y += step) {
+      for (let x = startX; x < endX; x += step) {
+        const pixel = image.getPixelAt(x + 1, y + 1); // 1-indexed
+        
+        // Extract RGBA from pixel (32-bit integer)
+        const r = (pixel >> 24) & 0xFF;
+        const g = (pixel >> 16) & 0xFF;
+        const b = (pixel >> 8) & 0xFF;
+        const a = pixel & 0xFF;
+        
+        // Skip transparent pixels
+        if (a < 128) continue;
+        
+        // Skip pure white/black backgrounds
+        if ((r > 250 && g > 250 && b > 250) || (r < 5 && g < 5 && b < 5)) continue;
+        
         totalR += r;
         totalG += g;
         totalB += b;
@@ -208,19 +245,19 @@ async function extractDominantColorFromImage(imageUrl: string): Promise<{ hex: s
       }
     }
     
-    if (pixelCount === 0) {
-      console.warn('[extract-color] No valid color data found');
+    if (pixelCount < 10) {
+      console.warn('[extract-color] Not enough valid pixels found');
       return null;
     }
     
-    const avgR = totalR / pixelCount;
-    const avgG = totalG / pixelCount;
-    const avgB = totalB / pixelCount;
+    const avgR = Math.round(totalR / pixelCount);
+    const avgG = Math.round(totalG / pixelCount);
+    const avgB = Math.round(totalB / pixelCount);
     
     const dominantHex = rgbToHex(avgR, avgG, avgB);
-    const { shade } = mapHexToSimplifiedShade(dominantHex);
+    const { shade } = mapRgbToSimplifiedShade({ r: avgR, g: avgG, b: avgB });
     
-    console.log(`[extract-color] Extracted: ${dominantHex} -> ${shade}`);
+    console.log(`[extract-color] Extracted: RGB(${avgR},${avgG},${avgB}) = ${dominantHex} -> ${shade}`);
     
     return { hex: dominantHex, shade };
   } catch (error) {
@@ -259,7 +296,7 @@ Deno.serve(async (req) => {
       }
     }
     
-    // Priority 3: Image extraction
+    // Priority 3: Image extraction (with proper decoding)
     if (!shade && imageUrl) {
       const colorResult = await extractDominantColorFromImage(imageUrl);
       if (colorResult && colorResult.shade !== 'nieznany') {
