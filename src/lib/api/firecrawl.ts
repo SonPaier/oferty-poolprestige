@@ -29,6 +29,7 @@ export interface FoilProduct {
   description: string;
   imageUrl?: string;
   symbol: string;
+  brand: 'alkorplan' | 'elbe';
 }
 
 export const firecrawlApi = {
@@ -277,6 +278,145 @@ export const foilImportApi = {
 
   // Step 4: Save products to database
   async saveProducts(products: FoilProduct[]): Promise<{ success: boolean; inserted?: number; total?: number; errors?: string[]; error?: string }> {
+    const { data, error } = await supabase.functions.invoke('import-foils-from-web', {
+      body: { action: 'save', products },
+    });
+
+    if (error) {
+      return { success: false, error: error.message };
+    }
+
+    return data;
+  },
+};
+
+// ELBE Pools collection mapping
+const ELBE_COLLECTIONS: Record<string, { foilCategory: string; thickness: number; description: string }> = {
+  'solid': { foilCategory: 'strukturalna', thickness: 1.5, description: 'SOLID Stone - folia z teksturą 3D imitującą kamień' },
+  'unique': { foilCategory: 'strukturalna', thickness: 1.5, description: 'UNIQUE Tile - folia z teksturą 3D imitującą płytki' },
+  'motion': { foilCategory: 'strukturalna', thickness: 1.5, description: 'MOTION - folia z tłoczeniem 3D i lakierowaną powierzchnią' },
+  'elite': { foilCategory: 'jednokolorowa', thickness: 1.5, description: 'elite® - folia bez ftalanów z ekstremalną odpornością' },
+  'pearl': { foilCategory: 'strukturalna', thickness: 1.5, description: 'PEARL - folia z efektem brokatu' },
+  'plain-color': { foilCategory: 'jednokolorowa', thickness: 1.5, description: 'Jednokolorowa folia basenowa' },
+  'printed': { foilCategory: 'nadruk', thickness: 1.5, description: 'Folia z nadrukiem mozaikowym' },
+  'natural-pools': { foilCategory: 'jednokolorowa', thickness: 1.0, description: 'Folia do stawów i basenów naturalnych' },
+};
+
+// Helper: Parse ELBE products from collection page markdown
+function parseElbeProductsFromMarkdown(
+  markdown: string, 
+  collectionSlug: string,
+  collectionUrl: string
+): FoilProduct[] {
+  const products: FoilProduct[] = [];
+  const collectionInfo = ELBE_COLLECTIONS[collectionSlug] || { 
+    foilCategory: 'jednokolorowa', 
+    thickness: 1.5, 
+    description: 'Folia basenowa ELBE' 
+  };
+  
+  // Pattern to match product entries:
+  // [![](thumbnail.jpg)](bigImage.jpg)
+  // [codes]...
+  // ProductName
+  // Look for thumbnail images followed by product names
+  const productPattern = /\[!\[[^\]]*\]\((https:\/\/elbepools\.com\/app\/uploads\/[^)]+?-150x150\.(?:jpg|jpeg|png))\)\]\([^)]+\)[^\n]*\n(?:\[[^\]]+\][^\n]*\n)*([a-zA-Z®]+(?:\s+[a-zA-Z]+)*)/gi;
+  
+  const matches = [...markdown.matchAll(productPattern)];
+  
+  for (const match of matches) {
+    const thumbnailUrl = match[1];
+    const productName = match[2].trim();
+    
+    // Skip non-product matches (like icons, logos)
+    if (!productName || 
+        productName.toLowerCase().includes('icon') || 
+        productName.toLowerCase().includes('logo') ||
+        productName.length < 3 ||
+        productName.includes('phthalate') ||
+        productName.includes('resistant') ||
+        productName.includes('easy')) {
+      continue;
+    }
+    
+    // Generate symbol from collection and product name
+    const symbol = `ELBE-${collectionSlug.toUpperCase()}-${productName.replace(/[®\s]+/g, '-').toUpperCase()}`;
+    
+    // Get full-size image URL (remove -150x150)
+    const fullImageUrl = thumbnailUrl.replace(/-150x150\./, '-scaled.');
+    
+    const product: FoilProduct = {
+      url: collectionUrl,
+      name: productName,
+      collection: `ELBE ${collectionSlug.charAt(0).toUpperCase() + collectionSlug.slice(1)}`,
+      collectionSlug,
+      foilCategory: collectionInfo.foilCategory,
+      thickness: collectionInfo.thickness,
+      description: collectionInfo.description,
+      imageUrl: thumbnailUrl, // Use thumbnail for now, we have full-size URL too
+      symbol,
+      brand: 'elbe',
+    };
+    
+    products.push(product);
+  }
+  
+  return products;
+}
+
+export const elbeImportApi = {
+  // Get list of ELBE collection URLs
+  getCollectionUrls(): string[] {
+    return Object.keys(ELBE_COLLECTIONS).map(slug => `https://elbepools.com/products/${slug}`);
+  },
+
+  // Scrape all ELBE collections and extract products
+  async scrapeAllProducts(onProgress?: (progress: number, text: string) => void): Promise<{ success: boolean; products?: FoilProduct[]; error?: string }> {
+    const collections = Object.keys(ELBE_COLLECTIONS);
+    const allProducts: FoilProduct[] = [];
+    
+    for (let i = 0; i < collections.length; i++) {
+      const slug = collections[i];
+      const url = `https://elbepools.com/products/${slug}`;
+      
+      onProgress?.(Math.round((i / collections.length) * 100), `Pobieranie kolekcji ${slug}...`);
+      
+      try {
+        const result = await firecrawlApi.scrape(url, {
+          formats: ['markdown'],
+          onlyMainContent: true,
+        });
+        
+        const raw = result as any;
+        const isOk = raw?.success !== false;
+        
+        if (isOk && raw?.data) {
+          const markdown = raw.data.data?.markdown || raw.data.markdown;
+          if (markdown) {
+            const products = parseElbeProductsFromMarkdown(markdown, slug, url);
+            console.log(`[ELBE] ${slug}: found ${products.length} products`);
+            allProducts.push(...products);
+          }
+        }
+      } catch (error) {
+        console.warn(`[ELBE] Failed to scrape ${slug}:`, error);
+      }
+      
+      // Rate limiting
+      await new Promise(resolve => setTimeout(resolve, 300));
+    }
+    
+    // Deduplicate by symbol
+    const uniqueProducts = Array.from(
+      new Map(allProducts.map(p => [p.symbol, p])).values()
+    );
+    
+    console.log(`[ELBE] Total unique products: ${uniqueProducts.length}`);
+    return { success: true, products: uniqueProducts };
+  },
+
+  // Save products to database (reuses Alkorplan save function)
+  async saveProducts(products: FoilProduct[]): Promise<{ success: boolean; inserted?: number; total?: number; error?: string }> {
     const { data, error } = await supabase.functions.invoke('import-foils-from-web', {
       body: { action: 'save', products },
     });

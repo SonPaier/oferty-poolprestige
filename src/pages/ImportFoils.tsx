@@ -5,12 +5,14 @@ import { Progress } from '@/components/ui/progress';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
 import { Header } from '@/components/Header';
-import { foilImportApi, FoilProduct } from '@/lib/api/firecrawl';
+import { foilImportApi, elbeImportApi, FoilProduct } from '@/lib/api/firecrawl';
 import { Search, Download, Save, CheckCircle, Loader2, ExternalLink } from 'lucide-react';
 
 type ImportStep = 'idle' | 'mapping' | 'parsing' | 'scraping' | 'ready' | 'saving' | 'done';
+type ImportSource = 'alkorplan' | 'elbe';
 
 const foilCategoryLabels: Record<string, string> = {
   'jednokolorowa': 'Jednokolorowa',
@@ -27,6 +29,7 @@ const foilCategoryColors: Record<string, string> = {
 };
 
 export default function ImportFoils() {
+  const [source, setSource] = useState<ImportSource>('alkorplan');
   const [step, setStep] = useState<ImportStep>('idle');
   const [progress, setProgress] = useState(0);
   const [progressText, setProgressText] = useState('');
@@ -35,7 +38,7 @@ export default function ImportFoils() {
   const [selectedProducts, setSelectedProducts] = useState<Set<string>>(new Set());
   const [result, setResult] = useState<{ inserted: number; total: number } | null>(null);
 
-  const handleMap = async () => {
+  const handleMapAlkorplan = async () => {
     setStep('mapping');
     setProgress(10);
     setProgressText('Mapowanie strony renolit-alkorplan.com...');
@@ -59,16 +62,47 @@ export default function ImportFoils() {
         throw new Error(parseResult.error || 'Nie udało się sparsować URLi');
       }
 
-      setProducts(parseResult.products);
-      setSelectedProducts(new Set(parseResult.products.map(p => p.symbol)));
+      const productsWithBrand = parseResult.products.map(p => ({ ...p, brand: 'alkorplan' as const }));
+      setProducts(productsWithBrand);
+      setSelectedProducts(new Set(productsWithBrand.map(p => p.symbol)));
       setProgress(100);
-      setProgressText(`Gotowe! Znaleziono ${parseResult.products.length} produktów folii.`);
+      setProgressText(`Gotowe! Znaleziono ${productsWithBrand.length} produktów folii.`);
       setStep('ready');
       
-      toast.success(`Znaleziono ${parseResult.products.length} produktów folii`);
+      toast.success(`Znaleziono ${productsWithBrand.length} produktów folii Alkorplan`);
     } catch (error) {
       console.error('Error mapping:', error);
       toast.error(error instanceof Error ? error.message : 'Błąd mapowania');
+      setStep('idle');
+      setProgress(0);
+    }
+  };
+
+  const handleScanElbe = async () => {
+    setStep('mapping');
+    setProgress(10);
+    setProgressText('Skanowanie strony elbepools.com...');
+
+    try {
+      const result = await elbeImportApi.scrapeAllProducts((prog, text) => {
+        setProgress(prog);
+        setProgressText(text);
+      });
+      
+      if (!result.success || !result.products) {
+        throw new Error(result.error || 'Nie udało się pobrać produktów');
+      }
+
+      setProducts(result.products);
+      setSelectedProducts(new Set(result.products.map(p => p.symbol)));
+      setProgress(100);
+      setProgressText(`Gotowe! Znaleziono ${result.products.length} produktów folii ELBE.`);
+      setStep('ready');
+      
+      toast.success(`Znaleziono ${result.products.length} produktów folii ELBE`);
+    } catch (error) {
+      console.error('Error scanning ELBE:', error);
+      toast.error(error instanceof Error ? error.message : 'Błąd skanowania');
       setStep('idle');
       setProgress(0);
     }
@@ -119,7 +153,8 @@ export default function ImportFoils() {
 
     try {
       const selectedProductsList = products.filter(p => selectedProducts.has(p.symbol));
-      const saveResult = await foilImportApi.saveProducts(selectedProductsList);
+      const saveApi = source === 'alkorplan' ? foilImportApi : elbeImportApi;
+      const saveResult = await saveApi.saveProducts(selectedProductsList);
 
       if (!saveResult.success) {
         throw new Error(saveResult.error || 'Błąd zapisu');
@@ -158,6 +193,24 @@ export default function ImportFoils() {
     }
   };
 
+  const handleReset = () => {
+    setStep('idle');
+    setProducts([]);
+    setUrls([]);
+    setResult(null);
+    setProgress(0);
+    setSelectedProducts(new Set());
+  };
+
+  const handleSourceChange = (newSource: string) => {
+    if (step !== 'idle' && step !== 'done') {
+      toast.error('Zakończ lub anuluj bieżący import przed zmianą źródła');
+      return;
+    }
+    setSource(newSource as ImportSource);
+    handleReset();
+  };
+
   const groupedProducts = products.reduce((acc, product) => {
     if (!acc[product.collection]) {
       acc[product.collection] = [];
@@ -176,13 +229,25 @@ export default function ImportFoils() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Download className="h-6 w-6" />
-              Import folii Alkorplan
+              Import folii basenowych
             </CardTitle>
             <CardDescription>
-              Automatyczne pobieranie bazy folii basenowych Renolit Alkorplan ze strony producenta
+              Automatyczne pobieranie bazy folii basenowych ze stron producentów
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
+            {/* Source selection tabs */}
+            <Tabs value={source} onValueChange={handleSourceChange}>
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="alkorplan" disabled={isWorking}>
+                  Renolit Alkorplan
+                </TabsTrigger>
+                <TabsTrigger value="elbe" disabled={isWorking}>
+                  ELBE Pool Surface
+                </TabsTrigger>
+              </TabsList>
+            </Tabs>
+
             {/* Progress section */}
             {isWorking && (
               <div className="space-y-2">
@@ -194,15 +259,24 @@ export default function ImportFoils() {
               </div>
             )}
 
-            {/* Step 1: Map */}
+            {/* Step 1: Scan/Map */}
             {step === 'idle' && (
               <div className="text-center py-8">
                 <Search className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
-                <h3 className="text-lg font-medium mb-2">Skanuj stronę Renolit Alkorplan</h3>
+                <h3 className="text-lg font-medium mb-2">
+                  {source === 'alkorplan' 
+                    ? 'Skanuj stronę Renolit Alkorplan' 
+                    : 'Skanuj stronę ELBE Pool Surface'}
+                </h3>
                 <p className="text-muted-foreground mb-6">
-                  Przeskanuj renolit-alkorplan.com aby znaleźć wszystkie dostępne folie basenowe.
+                  {source === 'alkorplan'
+                    ? 'Przeskanuj renolit-alkorplan.com aby znaleźć wszystkie dostępne folie basenowe.'
+                    : 'Przeskanuj elbepools.com aby znaleźć wszystkie dostępne folie basenowe ELBE.'}
                 </p>
-                <Button onClick={handleMap} size="lg">
+                <Button 
+                  onClick={source === 'alkorplan' ? handleMapAlkorplan : handleScanElbe} 
+                  size="lg"
+                >
                   <Search className="h-4 w-4 mr-2" />
                   Rozpocznij skanowanie
                 </Button>
@@ -223,10 +297,12 @@ export default function ImportFoils() {
                     <Button variant="outline" onClick={toggleAll}>
                       {selectedProducts.size === products.length ? 'Odznacz wszystko' : 'Zaznacz wszystko'}
                     </Button>
-                    <Button variant="outline" onClick={handleScrapeImages}>
-                      <Download className="h-4 w-4 mr-2" />
-                      Pobierz zdjęcia
-                    </Button>
+                    {source === 'alkorplan' && (
+                      <Button variant="outline" onClick={handleScrapeImages}>
+                        <Download className="h-4 w-4 mr-2" />
+                        Pobierz zdjęcia
+                      </Button>
+                    )}
                     <Button onClick={handleSave} disabled={selectedProducts.size === 0}>
                       <Save className="h-4 w-4 mr-2" />
                       Zapisz ({selectedProducts.size})
@@ -307,13 +383,7 @@ export default function ImportFoils() {
                   Zaimportowano {result.inserted} z {result.total} produktów folii do bazy danych.
                 </p>
                 <div className="flex gap-2 justify-center">
-                  <Button variant="outline" onClick={() => {
-                    setStep('idle');
-                    setProducts([]);
-                    setUrls([]);
-                    setResult(null);
-                    setProgress(0);
-                  }}>
+                  <Button variant="outline" onClick={handleReset}>
                     Importuj ponownie
                   </Button>
                   <Button onClick={() => window.location.href = '/produkty'}>
