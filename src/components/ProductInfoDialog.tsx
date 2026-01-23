@@ -52,6 +52,7 @@ export function ProductInfoDialog({ product, open, onOpenChange }: ProductInfoDi
     image_id: null,
     foil_category: null,
     foil_width: null,
+    shade: null,
     created_at: '',
     updated_at: '',
   };

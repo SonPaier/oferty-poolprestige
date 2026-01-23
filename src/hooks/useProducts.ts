@@ -11,6 +11,10 @@ export interface DbProduct {
   stock_quantity: number | null;
   image_id: string | null;
   category: string | null;
+  foil_category: string | null;
+  subcategory: string | null;
+  shade: string | null;
+  foil_width: number | null;
 }
 
 const EUR_TO_PLN = 4.35;

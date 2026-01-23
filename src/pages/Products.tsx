@@ -5,13 +5,21 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious, PaginationEllipsis } from '@/components/ui/pagination';
-import { Search, Download, Upload, Edit, Trash2, Loader2, Package, FileSpreadsheet } from 'lucide-react';
-import { useProductsPaginated, useDeleteProduct } from '@/hooks/useProductsManagement';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Badge } from '@/components/ui/badge';
+import { Search, Download, Upload, Edit, Trash2, Loader2, Package, FileSpreadsheet, LayoutGrid, List, ImageOff, ArrowUpDown } from 'lucide-react';
+import { useProductsWithThumbnails, SortField, SortOrder } from '@/hooks/useProductsWithThumbnails';
+import { useProductCategories } from '@/hooks/useProductCategories';
+import { useDeleteProduct } from '@/hooks/useProductsManagement';
 import { DbProduct, getDbProductPriceInPLN } from '@/hooks/useProducts';
 import { ProductEditDialog } from '@/components/ProductEditDialog';
+import { ProductGridCard } from '@/components/ProductGridCard';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
+import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
+
+type ViewMode = 'table' | 'grid';
 
 export default function Products() {
   const [searchQuery, setSearchQuery] = useState('');
@@ -20,9 +28,20 @@ export default function Products() {
   const [editProduct, setEditProduct] = useState<DbProduct | null>(null);
   const [isImporting, setIsImporting] = useState(false);
   const [importMode, setImportMode] = useState<'full' | 'partial'>('full');
+  const [viewMode, setViewMode] = useState<ViewMode>('table');
+  const [categoryFilter, setCategoryFilter] = useState('all');
+  const [sortBy, setSortBy] = useState<SortField>('name');
+  const [sortOrder, setSortOrder] = useState<SortOrder>('asc');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const { data, isLoading, error } = useProductsPaginated(debouncedSearch, currentPage);
+  const { data, isLoading, error } = useProductsWithThumbnails({
+    searchQuery: debouncedSearch,
+    categoryFilter,
+    sortBy,
+    sortOrder,
+    page: currentPage,
+  });
+  const { data: categories } = useProductCategories();
   const deleteProduct = useDeleteProduct();
 
   // Debounce search
@@ -48,6 +67,18 @@ export default function Products() {
       console.error('Error deleting product:', error);
       toast.error('Błąd podczas usuwania produktu');
     }
+  };
+
+  const handleCategoryChange = (value: string) => {
+    setCategoryFilter(value);
+    setCurrentPage(1);
+  };
+
+  const handleSortChange = (value: string) => {
+    const [field, order] = value.split('-') as [SortField, SortOrder];
+    setSortBy(field);
+    setSortOrder(order);
+    setCurrentPage(1);
   };
 
   // Export to CSV
@@ -234,6 +265,16 @@ export default function Products() {
     return items;
   };
 
+  // Get category badge variant based on type
+  const getCategoryBadgeVariant = (type: string) => {
+    switch (type) {
+      case 'main': return 'default';
+      case 'foil': return 'secondary';
+      case 'subcategory': return 'outline';
+      default: return 'outline';
+    }
+  };
+
   return (
     <div className="min-h-screen bg-background">
       <Header showNavLinks />
@@ -252,6 +293,26 @@ export default function Products() {
                 )}
               </div>
               <div className="flex flex-wrap items-center gap-2">
+                {/* View toggle */}
+                <div className="flex items-center border rounded-md">
+                  <Button
+                    variant={viewMode === 'table' ? 'secondary' : 'ghost'}
+                    size="icon"
+                    className="rounded-r-none"
+                    onClick={() => setViewMode('table')}
+                  >
+                    <List className="w-4 h-4" />
+                  </Button>
+                  <Button
+                    variant={viewMode === 'grid' ? 'secondary' : 'ghost'}
+                    size="icon"
+                    className="rounded-l-none"
+                    onClick={() => setViewMode('grid')}
+                  >
+                    <LayoutGrid className="w-4 h-4" />
+                  </Button>
+                </div>
+                
                 <Button variant="outline" size="sm" onClick={handleExportCSV}>
                   <Download className="w-4 h-4 mr-2" />
                   Eksport CSV
@@ -295,18 +356,57 @@ export default function Products() {
             </div>
           </CardHeader>
           <CardContent>
-            {/* Search */}
-            <div className="relative mb-4">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-              <Input
-                placeholder="Szukaj po nazwie lub symbolu..."
-                value={searchQuery}
-                onChange={(e) => handleSearchChange(e.target.value)}
-                className="pl-10"
-              />
+            {/* Search and filters row */}
+            <div className="flex flex-col sm:flex-row gap-4 mb-4">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Input
+                  placeholder="Szukaj po nazwie lub symbolu (np. Alkorplan Bhumi)..."
+                  value={searchQuery}
+                  onChange={(e) => handleSearchChange(e.target.value)}
+                  className="pl-10"
+                />
+              </div>
+              <Select value={`${sortBy}-${sortOrder}`} onValueChange={handleSortChange}>
+                <SelectTrigger className="w-[180px]">
+                  <ArrowUpDown className="w-4 h-4 mr-2" />
+                  <SelectValue placeholder="Sortuj" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="name-asc">Nazwa (A-Z)</SelectItem>
+                  <SelectItem value="name-desc">Nazwa (Z-A)</SelectItem>
+                  <SelectItem value="price-asc">Cena (rosnąco)</SelectItem>
+                  <SelectItem value="price-desc">Cena (malejąco)</SelectItem>
+                  <SelectItem value="category-asc">Kategoria (A-Z)</SelectItem>
+                  <SelectItem value="category-desc">Kategoria (Z-A)</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
 
-            {/* Table */}
+            {/* Category filters */}
+            {categories && categories.length > 0 && (
+              <ScrollArea className="w-full whitespace-nowrap mb-4">
+                <div className="flex gap-2 pb-2">
+                  {categories.map((cat) => (
+                    <Badge
+                      key={cat.value}
+                      variant={categoryFilter === cat.value ? 'default' : getCategoryBadgeVariant(cat.type) as any}
+                      className={`cursor-pointer shrink-0 ${
+                        categoryFilter === cat.value 
+                          ? 'ring-2 ring-primary ring-offset-2' 
+                          : 'hover:bg-accent'
+                      }`}
+                      onClick={() => handleCategoryChange(cat.value)}
+                    >
+                      {cat.label} ({cat.count})
+                    </Badge>
+                  ))}
+                </div>
+                <ScrollBar orientation="horizontal" />
+              </ScrollArea>
+            )}
+
+            {/* Content */}
             {isLoading ? (
               <div className="flex items-center justify-center py-12">
                 <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
@@ -319,12 +419,26 @@ export default function Products() {
               <div className="text-center py-12 text-muted-foreground">
                 Nie znaleziono produktów
               </div>
+            ) : viewMode === 'grid' ? (
+              /* Grid view */
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+                {data?.products.map((product) => (
+                  <ProductGridCard
+                    key={product.id}
+                    product={product}
+                    onEdit={setEditProduct}
+                    onDelete={handleDeleteProduct}
+                  />
+                ))}
+              </div>
             ) : (
+              /* Table view */
               <>
                 <div className="rounded-md border overflow-x-auto">
                   <Table>
                     <TableHeader>
                       <TableRow>
+                        <TableHead className="w-[60px]">Zdjęcie</TableHead>
                         <TableHead className="w-[120px]">Symbol</TableHead>
                         <TableHead>Nazwa</TableHead>
                         <TableHead className="text-right w-[120px]">Cena</TableHead>
@@ -336,6 +450,19 @@ export default function Products() {
                     <TableBody>
                       {data?.products.map((product) => (
                         <TableRow key={product.id}>
+                          <TableCell>
+                            <div className="w-10 h-10 rounded bg-muted overflow-hidden flex items-center justify-center">
+                              {product.thumbnail_url ? (
+                                <img 
+                                  src={product.thumbnail_url} 
+                                  alt={product.name}
+                                  className="w-full h-full object-cover"
+                                />
+                              ) : (
+                                <ImageOff className="w-4 h-4 text-muted-foreground" />
+                              )}
+                            </div>
+                          </TableCell>
                           <TableCell className="font-mono text-sm">{product.symbol}</TableCell>
                           <TableCell className="max-w-[300px] truncate">{product.name}</TableCell>
                           <TableCell className="text-right">{formatPrice(product)}</TableCell>
@@ -380,30 +507,30 @@ export default function Products() {
                     </TableBody>
                   </Table>
                 </div>
-
-                {/* Pagination */}
-                {data && data.totalPages > 1 && (
-                  <div className="mt-4">
-                    <Pagination>
-                      <PaginationContent>
-                        <PaginationItem>
-                          <PaginationPrevious
-                            onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
-                            className={currentPage === 1 ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
-                          />
-                        </PaginationItem>
-                        {renderPaginationItems()}
-                        <PaginationItem>
-                          <PaginationNext
-                            onClick={() => setCurrentPage(Math.min(data.totalPages, currentPage + 1))}
-                            className={currentPage === data.totalPages ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
-                          />
-                        </PaginationItem>
-                      </PaginationContent>
-                    </Pagination>
-                  </div>
-                )}
               </>
+            )}
+
+            {/* Pagination */}
+            {data && data.totalPages > 1 && (
+              <div className="mt-4">
+                <Pagination>
+                  <PaginationContent>
+                    <PaginationItem>
+                      <PaginationPrevious
+                        onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+                        className={currentPage === 1 ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
+                      />
+                    </PaginationItem>
+                    {renderPaginationItems()}
+                    <PaginationItem>
+                      <PaginationNext
+                        onClick={() => setCurrentPage(Math.min(data.totalPages, currentPage + 1))}
+                        className={currentPage === data.totalPages ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
+                      />
+                    </PaginationItem>
+                  </PaginationContent>
+                </Pagination>
+              </div>
             )}
           </CardContent>
         </Card>
