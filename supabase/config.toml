@@ -11,3 +11,18 @@ verify_jwt = false
 
 [functions.receive-offer-email]
 verify_jwt = false
+
+[functions.import-products]
+verify_jwt = false
+
+[functions.seed-attraction-images]
+verify_jwt = false
+
+[functions.firecrawl-map]
+verify_jwt = false
+
+[functions.firecrawl-scrape]
+verify_jwt = false
+
+[functions.import-foils-from-web]
+verify_jwt = false
