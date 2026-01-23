@@ -1,76 +1,76 @@
 
-# Plan naprawy pobierania zdjęć folii
+# Plan naprawy pobierania zdjęć dla brakujących folii
 
-## Diagnoza problemu
+## Diagnoza
 
-Przeprowadzono szczegółową analizę i znaleziono przyczynę:
+Odkryto, że format `links` w Firecrawl **nie zwraca obrazków dla niektórych kolekcji** (Alive, Kolos, Ceramics Evolve, Vogue Nordic), ponieważ te strony ładują obrazki przez JavaScript (lazy-loading).
 
-1. **Strona Renolit Alkorplan NIE zawiera tagu `og:image`** w metadanych
-2. Obecny kod w `scrapeProductDetails` szuka `metadata.ogImage`, którego nie ma
-3. Fallback do HTML regex też nie działa, bo szuka specyficznych wzorców których ta strona nie używa
-4. **Rozwiązanie**: Firecrawl zwraca format `links` z pełną listą URLi - wśród nich są obrazki produktów
+**Rozwiazanie**: Format `markdown` zawiera obrazki w formie `![alt](url)` - Firecrawl renderuje stronę i konwertuje do markdown, wliczając obrazki.
 
-### Dowód z testu API
-
-Wywołanie Firecrawl z `formats: ['links']` zwraca m.in.:
-```
-https://renolit-alkorplan.com/fileadmin/_processed_/7/4/csm_1_RENOLIT_Persia_Blue-_013_751748a086.jpg
-https://renolit-alkorplan.com/fileadmin/_processed_/9/6/csm_Swimming_pool_RENOLIT_ALKORPLAN3000_Persia_Blue__1__fe54e92865.jpg
+Przykład odpowiedzi dla `/collections/alive/chandra`:
+```markdown
+![](https://renolit-alkorplan.com/fileadmin/_processed_/0/c/csm_DSC_0002_6af9569512.jpg)
+![](https://renolit-alkorplan.com/fileadmin/_processed_/3/7/csm_DSC_0003_13479525a2.jpg)
 ...
 ```
-
-Pierwszy obrazek z `fileadmin/_processed_` to główne zdjęcie produktu.
 
 ---
 
 ## Plan zmian
 
-### 1. Zmiana formatu scrape na `links` (zamiast `html`)
+### 1. Zmiana strategii scrape na dwuetapową
 
 **Plik**: `src/lib/api/firecrawl.ts`
 
-Zmienić wywołanie:
+Zmienić logikę `scrapeProductDetails`:
+
 ```typescript
+// Krok 1: Najpierw sprobuj format 'links' (szybki, dziala dla wiekszosci)
 const result = await firecrawlApi.scrape(product.url, {
-  formats: ['links'],  // Zamiast ['html']
+  formats: ['links'],
   onlyMainContent: false,
 });
-```
 
-### 2. Nowa logika ekstrakcji obrazka
+// Wyciagnij imageUrl z links
+let imageUrl = extractImageFromLinks(scrapeData.links);
 
-Zamiast szukać `metadata.ogImage`, wybrać pierwszy link kończący się na rozszerzenie obrazka z katalogu `fileadmin/_processed_`:
-
-```typescript
-// Szukaj pierwszego obrazka z fileadmin/_processed_
-const links: string[] = scrapeData.links || [];
-const imageLink = links.find((link: string) => 
-  link.includes('/fileadmin/_processed_/') && 
-  /\.(jpg|jpeg|png|webp)$/i.test(link)
-);
-
-if (imageLink) {
-  updated.imageUrl = imageLink;
-  console.log(`[scrape] ${product.symbol} -> found image: ${updated.imageUrl}`);
+// Krok 2: Jesli brak obrazka, uzyj formatu 'markdown' (fallback)
+if (!imageUrl) {
+  const mdResult = await firecrawlApi.scrape(product.url, {
+    formats: ['markdown'],
+    onlyMainContent: true,
+  });
+  imageUrl = extractImageFromMarkdown(mdResult.data?.markdown);
 }
 ```
 
-### 3. Fallback do ogólnego wyszukiwania obrazka
-
-Jeśli nie znajdzie w `fileadmin/_processed_`, szuka dowolnego pierwszego `.jpg/.png`:
+### 2. Nowa funkcja ekstrakcji obrazka z markdown
 
 ```typescript
-if (!imageLink) {
-  const anyImage = links.find((link: string) => 
-    /\.(jpg|jpeg|png|webp)$/i.test(link) && 
-    !link.includes('favicon') && 
-    !link.includes('logo')
+function extractImageFromMarkdown(markdown: string): string | undefined {
+  if (!markdown) return undefined;
+  
+  // Szukaj wzorca ![alt](url) lub ![](url)
+  const imgRegex = /!\[[^\]]*\]\((https?:\/\/[^)]+\.(?:jpg|jpeg|png|webp))\)/gi;
+  const matches = [...markdown.matchAll(imgRegex)];
+  
+  // Filtruj obrazki produktowe (z fileadmin/_processed_)
+  const productImage = matches.find(m => m[1].includes('/fileadmin/_processed_/'));
+  if (productImage) return productImage[1];
+  
+  // Fallback: pierwszy obrazek ktory nie jest favicon/logo
+  const anyImage = matches.find(m => 
+    !m[1].includes('favicon') && 
+    !m[1].includes('logo') && 
+    !m[1].includes('icon')
   );
-  if (anyImage) {
-    updated.imageUrl = anyImage;
-  }
+  return anyImage?.[1];
 }
 ```
+
+### 3. Zachowanie istniejącej logiki jako pierwszego kroku
+
+Obecna logika z formatem `links` pozostaje jako **pierwszy krok** - działa dla 33 z 43 produktów. Format `markdown` będzie tylko **fallback** dla brakujących 10 produktów.
 
 ---
 
@@ -78,20 +78,16 @@ if (!imageLink) {
 
 | Plik | Zmiana |
 |------|--------|
-| `src/lib/api/firecrawl.ts` | Zmiana formatu z `html` na `links`, nowa logika ekstrakcji URL obrazka z listy linków |
-
-## Po wdrożeniu
-
-1. Przejdź do `/import-foils`
-2. Kliknij "Rozpocznij skanowanie"
-3. Kliknij "Pobierz zdjęcia" - teraz powinny się pojawić miniatury
-4. Kliknij "Zapisz" - obrazki zostaną zapisane do `product_images`
-5. W `/produkty` zdjęcia będą widoczne
+| `src/lib/api/firecrawl.ts` | Dodanie fallback do formatu `markdown` gdy `links` nie zawiera obrazka |
 
 ## Oczekiwany rezultat
 
-W konsoli zobaczysz:
-```
-[scrape] ALKORPLAN-ALKORPLAN3000-PERSIA-BLUE -> found image: https://renolit-alkorplan.com/fileadmin/_processed_/.../csm_1_RENOLIT_Persia_Blue-_013_751748a086.jpg
-[scrapeProductDetails] Total with images: 43
-```
+- **33 produkty**: obrazek z formatu `links` (jak dotychczas)
+- **10 produktow** (Alive, Kolos, Ceramics Evolve, Vogue Nordic): obrazek z formatu `markdown`
+- **Logi konsoli**: `[scrape] SYMBOL -> markdown image: URL`
+- **Zapis**: 43 produkty z obrazkami
+
+## Koszty
+
+- Dodatkowe 10 requestow do Firecrawl (tylko dla produktow bez obrazka)
+- Lekko wolniejszy import dla tych 10 produktow (2 requesty zamiast 1)
