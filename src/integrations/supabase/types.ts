@@ -177,6 +177,7 @@ export type Database = {
           image_id: string | null
           name: string
           price: number
+          shade: string | null
           stock_quantity: number | null
           subcategory: string | null
           symbol: string
@@ -193,6 +194,7 @@ export type Database = {
           image_id?: string | null
           name: string
           price?: number
+          shade?: string | null
           stock_quantity?: number | null
           subcategory?: string | null
           symbol: string
@@ -209,6 +211,7 @@ export type Database = {
           image_id?: string | null
           name?: string
           price?: number
+          shade?: string | null
           stock_quantity?: number | null
           subcategory?: string | null
           symbol?: string
