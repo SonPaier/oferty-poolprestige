@@ -69,10 +69,15 @@ export const foilImportApi = {
       return { success: false, error: result.error };
     }
 
-    // Filter only product URLs
-    const productUrls = (result.links || []).filter((url: string) => 
-      url.includes('/collections/') && url.includes('/products/')
-    );
+    // Filter only product URLs (format: /collections/{collection}/{product})
+    // Exclude collection-only URLs and sitemap
+    const productUrls = (result.links || []).filter((url: string) => {
+      const match = url.match(/\/collections\/([^\/]+)\/([^\/\?]+)$/);
+      if (!match) return false;
+      const productSlug = match[2];
+      // Exclude sitemap and collection-only pages
+      return productSlug && productSlug !== 'sitemap.xml';
+    });
 
     return { success: true, urls: productUrls };
   },
