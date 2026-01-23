@@ -315,35 +315,34 @@ function parseElbeProductsFromMarkdown(
     description: 'Folia basenowa ELBE' 
   };
   
-  // Pattern to match product entries:
-  // [![](thumbnail.jpg)](bigImage.jpg)
-  // [codes]...
-  // ProductName
-  // Look for thumbnail images followed by product names
-  const productPattern = /\[!\[[^\]]*\]\((https:\/\/elbepools\.com\/app\/uploads\/[^)]+?-150x150\.(?:jpg|jpeg|png))\)\]\([^)]+\)[^\n]*\n(?:\[[^\]]+\][^\n]*\n)*([a-zA-Z®]+(?:\s+[a-zA-Z]+)*)/gi;
+  // ELBE product structure in markdown:
+  // [![](https://elbepools.com/app/uploads/.../PRODUCT-NAME-top-150x150.jpg)](gallery-link)
+  // [code](link) [code](link) ...
+  // PRODUCT NAME (e.g., "SOLID Amber", "elite® White", "PEARL Shine")
+  
+  // Pattern: Find 150x150 thumbnail, then skip code links, then capture product name on next line
+  // Match: [![](thumbnail-150x150.jpg)](link) followed eventually by product name
+  const productPattern = /\[!\[\]\((https:\/\/elbepools\.com\/app\/uploads\/[^)]+?-150x150\.(?:jpg|jpeg|png))\)\]\([^)]+\)\s*\n(?:\[[^\]]+\]\([^)]+\)\s*)+\n([A-Z][a-zA-Z®]+(?:\s+[a-zA-Z®]+)*)/g;
   
   const matches = [...markdown.matchAll(productPattern)];
+  console.log(`[ELBE] ${collectionSlug}: regex found ${matches.length} matches`);
   
   for (const match of matches) {
     const thumbnailUrl = match[1];
     const productName = match[2].trim();
     
-    // Skip non-product matches (like icons, logos)
+    // Skip non-product matches
     if (!productName || 
-        productName.toLowerCase().includes('icon') || 
-        productName.toLowerCase().includes('logo') ||
         productName.length < 3 ||
+        productName.toLowerCase().includes('icon') ||
+        productName.toLowerCase().includes('logo') ||
         productName.includes('phthalate') ||
-        productName.includes('resistant') ||
-        productName.includes('easy')) {
+        productName.includes('resistant')) {
       continue;
     }
     
-    // Generate symbol from collection and product name
-    const symbol = `ELBE-${collectionSlug.toUpperCase()}-${productName.replace(/[®\s]+/g, '-').toUpperCase()}`;
-    
-    // Get full-size image URL (remove -150x150)
-    const fullImageUrl = thumbnailUrl.replace(/-150x150\./, '-scaled.');
+    // Generate symbol from product name
+    const symbol = `ELBE-${productName.replace(/[®\s]+/g, '-').toUpperCase()}`;
     
     const product: FoilProduct = {
       url: collectionUrl,
@@ -353,12 +352,13 @@ function parseElbeProductsFromMarkdown(
       foilCategory: collectionInfo.foilCategory,
       thickness: collectionInfo.thickness,
       description: collectionInfo.description,
-      imageUrl: thumbnailUrl, // Use thumbnail for now, we have full-size URL too
+      imageUrl: thumbnailUrl,
       symbol,
       brand: 'elbe',
     };
     
     products.push(product);
+    console.log(`[ELBE] Found product: ${productName} -> ${thumbnailUrl}`);
   }
   
   return products;
