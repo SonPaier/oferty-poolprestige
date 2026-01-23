@@ -171,6 +171,7 @@ export type Database = {
           created_at: string
           currency: string
           description: string | null
+          extracted_hex: string | null
           foil_category: string | null
           foil_width: number | null
           id: string
@@ -188,6 +189,7 @@ export type Database = {
           created_at?: string
           currency?: string
           description?: string | null
+          extracted_hex?: string | null
           foil_category?: string | null
           foil_width?: number | null
           id?: string
@@ -205,6 +207,7 @@ export type Database = {
           created_at?: string
           currency?: string
           description?: string | null
+          extracted_hex?: string | null
           foil_category?: string | null
           foil_width?: number | null
           id?: string
