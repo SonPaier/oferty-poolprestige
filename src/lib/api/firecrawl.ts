@@ -57,6 +57,27 @@ export const firecrawlApi = {
   },
 };
 
+// Helper: Extract image URL from markdown syntax ![alt](url)
+function extractImageFromMarkdown(markdown: string | undefined): string | undefined {
+  if (!markdown) return undefined;
+  
+  // Match ![alt](url) or ![](url) patterns
+  const imgRegex = /!\[[^\]]*\]\((https?:\/\/[^)]+\.(?:jpg|jpeg|png|webp))\)/gi;
+  const matches = [...markdown.matchAll(imgRegex)];
+  
+  // Prefer images from fileadmin/_processed_ (product images)
+  const productImage = matches.find(m => m[1].includes('/fileadmin/_processed_/'));
+  if (productImage) return productImage[1];
+  
+  // Fallback: first image that's not favicon/logo/icon
+  const anyImage = matches.find(m => 
+    !m[1].includes('favicon') && 
+    !m[1].includes('logo') && 
+    !m[1].includes('icon')
+  );
+  return anyImage?.[1];
+}
+
 export const foilImportApi = {
   // Step 1: Map the Renolit website to get all product URLs
   async mapProductUrls(): Promise<{ success: boolean; urls?: string[]; error?: string }> {
@@ -109,54 +130,68 @@ export const foilImportApi = {
         // Clone so we don't mutate original
         const updated = { ...product };
         try {
+          // Step 1: Try 'links' format first (fast, works for most products)
           const result = await firecrawlApi.scrape(product.url, {
-            formats: ['links'],  // Use links format to get all URLs including images
+            formats: ['links'],
             onlyMainContent: false,
           });
 
-          // Firecrawl responses: either { success, data } or just { data }
           const raw = result as any;
           const successFlag = raw?.success;
           const isOk = successFlag === undefined ? true : Boolean(successFlag);
 
-          // Handle nested structure: edge fn returns { data: firecrawlResponse }
           let scrapeData: any = null;
           if (isOk && raw?.data) {
-            if (raw.data.data) {
-              scrapeData = raw.data.data;
-            } else {
-              scrapeData = raw.data;
-            }
+            scrapeData = raw.data.data || raw.data;
           }
 
+          let imageUrl: string | undefined;
+
           if (scrapeData) {
-            // Extract image from links array
             const links: string[] = scrapeData.links || [];
             
             // First try: find image from fileadmin/_processed_ (product images)
-            let imageLink = links.find((link: string) => 
+            imageUrl = links.find((link: string) => 
               link.includes('/fileadmin/_processed_/') && 
               /\.(jpg|jpeg|png|webp)$/i.test(link)
             );
             
             // Fallback: any image that's not favicon/logo
-            if (!imageLink) {
-              imageLink = links.find((link: string) => 
+            if (!imageUrl) {
+              imageUrl = links.find((link: string) => 
                 /\.(jpg|jpeg|png|webp)$/i.test(link) && 
                 !link.includes('favicon') && 
                 !link.includes('logo') &&
                 !link.includes('icon')
               );
             }
+          }
 
-            if (imageLink) {
-              updated.imageUrl = imageLink;
-              console.log(`[scrape] ${product.symbol} -> found image: ${updated.imageUrl}`);
-            } else {
-              console.warn(`[scrape] ${product.symbol} -> no image found in ${links.length} links`);
+          // Step 2: If no image found, fallback to 'markdown' format (for JS-heavy pages)
+          if (!imageUrl) {
+            console.log(`[scrape] ${product.symbol} -> no image in links, trying markdown...`);
+            const mdResult = await firecrawlApi.scrape(product.url, {
+              formats: ['markdown'],
+              onlyMainContent: true,
+            });
+
+            const mdRaw = mdResult as any;
+            const mdOk = mdRaw?.success === undefined ? true : Boolean(mdRaw?.success);
+            
+            if (mdOk && mdRaw?.data) {
+              const markdown = mdRaw.data.data?.markdown || mdRaw.data.markdown;
+              imageUrl = extractImageFromMarkdown(markdown);
+              if (imageUrl) {
+                console.log(`[scrape] ${product.symbol} -> markdown image: ${imageUrl}`);
+              }
             }
+          }
+
+          if (imageUrl) {
+            updated.imageUrl = imageUrl;
+            console.log(`[scrape] ${product.symbol} -> found image: ${updated.imageUrl}`);
           } else {
-            console.warn(`[scrape] ${product.symbol} -> no scrapeData`, raw);
+            console.warn(`[scrape] ${product.symbol} -> no image found`);
           }
         } catch (err) {
           console.warn(`Failed to scrape ${product.url}:`, err);
