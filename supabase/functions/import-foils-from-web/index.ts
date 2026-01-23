@@ -134,6 +134,12 @@ Deno.serve(async (req) => {
         );
       }
 
+      // Map symbol -> imageUrl (scraped on the client)
+      const imageBySymbol = new Map<string, string>();
+      for (const p of products as FoilProduct[]) {
+        if (p?.symbol && p?.imageUrl) imageBySymbol.set(p.symbol, p.imageUrl);
+      }
+
       // Map products to database format
       const dbProducts = products.map((p: FoilProduct) => ({
         symbol: p.symbol,
@@ -143,7 +149,8 @@ Deno.serve(async (req) => {
         subcategory: p.collection,
         foil_width: 1.65,
         description: p.description,
-        image_id: p.imageUrl || null,
+        // Images are stored in `product_images` table. Keep this column unused.
+        image_id: null,
         price: 0,
         currency: 'PLN',
       }));
@@ -159,32 +166,93 @@ Deno.serve(async (req) => {
       // Insert in batches
       const batchSize = 50;
       let inserted = 0;
+      let imagesInserted = 0;
       const errors: string[] = [];
 
       for (let i = 0; i < productsToInsert.length; i += batchSize) {
         const batch = productsToInsert.slice(i, i + batchSize);
         
-        const { error } = await supabase
+        const { error: upsertError } = await supabase
           .from('products')
           .upsert(batch, { 
             onConflict: 'symbol',
             ignoreDuplicates: false 
           });
 
-        if (error) {
-          errors.push(`Batch ${Math.floor(i / batchSize) + 1}: ${error.message}`);
+        if (upsertError) {
+          errors.push(`Batch ${Math.floor(i / batchSize) + 1}: ${upsertError.message}`);
         } else {
           inserted += batch.length;
+
+          // Attach images to `product_images` (so the rest of the app can display them)
+          try {
+            const symbols = batch.map((p: any) => p.symbol).filter(Boolean);
+            if (symbols.length > 0) {
+              const { data: savedProducts, error: selectError } = await supabase
+                .from('products')
+                .select('id, symbol')
+                .in('symbol', symbols);
+
+              if (selectError) {
+                console.warn('Failed selecting saved products for image insert:', selectError.message);
+              } else if (savedProducts && savedProducts.length > 0) {
+                const productIds = savedProducts.map(p => p.id);
+
+                // Skip products that already have a primary image (sort_order = 0)
+                const { data: existingImages, error: existingError } = await supabase
+                  .from('product_images')
+                  .select('product_id')
+                  .in('product_id', productIds)
+                  .eq('sort_order', 0);
+
+                if (existingError) {
+                  console.warn('Failed selecting existing images:', existingError.message);
+                }
+
+                const existingProductIds = new Set((existingImages || []).map(img => img.product_id));
+
+                const imagesToInsert = savedProducts
+                  .map(p => {
+                    const imageUrl = imageBySymbol.get(p.symbol);
+                    if (!imageUrl) return null;
+                    if (existingProductIds.has(p.id)) return null;
+                    return {
+                      product_id: p.id,
+                      image_url: imageUrl,
+                      file_name: `imported:${p.symbol}`,
+                      file_size: null,
+                      sort_order: 0,
+                    };
+                  })
+                  .filter(Boolean) as any[];
+
+                if (imagesToInsert.length > 0) {
+                  const { error: imgInsertError } = await supabase
+                    .from('product_images')
+                    .insert(imagesToInsert);
+
+                  if (imgInsertError) {
+                    console.warn('Failed inserting product images:', imgInsertError.message);
+                  } else {
+                    imagesInserted += imagesToInsert.length;
+                  }
+                }
+              }
+            }
+          } catch (e) {
+            console.warn('Unexpected error while attaching images:', e);
+          }
         }
       }
 
-      console.log(`Saved ${inserted} products, errors: ${errors.length}`);
+      console.log(`Saved ${inserted} products, images: ${imagesInserted}, errors: ${errors.length}`);
 
       return new Response(
         JSON.stringify({ 
           success: errors.length === 0, 
           inserted,
           total: productsToInsert.length,
+          imagesInserted,
           errors: errors.length > 0 ? errors : undefined 
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
