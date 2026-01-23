@@ -1,201 +1,224 @@
 
-# Plan: Rozbudowa widoku produktów
+
+# Plan: Automatyczne wykrywanie odcienia folii z obrazka (HEX) - wersja uproszczona
 
 ## Podsumowanie zmian
 
-Rozbuduję stronę `/produkty` o:
-1. **Filtrowanie po kategoriach** - dynamiczne pobieranie kategorii z bazy
-2. **Miniatury zdjęć** - wyświetlanie pierwszego zdjęcia produktu
-3. **Lepsze wyszukiwanie** - dzielenie frazy na słowa (AND logic)
-4. **Przełączany widok** - tabela ↔ karty (grid)
-5. **Sortowanie** - po nazwie, cenie, kategorii
+Implementuję automatyczną ekstrakcję dominującego koloru z obrazków produktów z:
+1. **Uproszczoną paletą** - 8 podstawowych odcieni zamiast szczegółowych gradacji
+2. **Hierarchią źródeł** - priorytet dla danych producenta
+
+---
+
+## Uproszczona paleta kolorów
+
+Zamiast wielu podobnych odcieni (beżowy/piaskowy/kremowy, szary/ciemnoszary/jasnoszary), używam 8 podstawowych kategorii:
+
+| Odcień | Obejmuje | Przykładowy HEX |
+|--------|----------|-----------------|
+| biały | biały, kremowy, perłowy | #FFFFFF, #FFFDD0 |
+| beżowy | beżowy, piaskowy, kremowy, cappuccino | #C2B280, #F5F5DC |
+| szary | szary, jasnoszary, ciemnoszary, antracyt | #808080, #A9A9A9, #404040 |
+| czarny | czarny, grafitowy | #000000, #1a1a1a |
+| niebieski | niebieski, jasnoniebieski, adriatycki, grecki | #0000FF, #87CEEB, #1E90FF |
+| turkusowy | turkusowy, morski, aqua | #008080, #40E0D0 |
+| zielony | zielony, oliwkowy, karaibski | #008000, #6B8E23 |
+| brązowy | brązowy, czekoladowy, terakota | #8B4513, #A0522D |
+
+---
+
+## Hierarchia źródeł odcienia
+
+System określa odcień w następującej kolejności priorytetów:
+
+```text
+┌─────────────────────────────────────────────────────────────┐
+│  1. DANE PRODUCENTA (najwyższy priorytet)                   │
+│     - Kolor/shade z metadanych strony                       │
+│     - Nazwa kolekcji sugerująca kolor (np. "Blue Line")     │
+│     - Opis produktu zawierający nazwę koloru                │
+├─────────────────────────────────────────────────────────────┤
+│  2. EKSTRAKCJA Z OBRAZKA                                    │
+│     - Analiza dominującego koloru pikseli                   │
+│     - Mapowanie HEX na uproszczoną paletę                   │
+├─────────────────────────────────────────────────────────────┤
+│  3. MAPOWANIE Z NAZWY PRODUKTU (fallback)                   │
+│     - Słownik SHADE_MAPPING                                 │
+│     - Wykrywanie słów kluczowych (blue, grey, sand...)      │
+├─────────────────────────────────────────────────────────────┤
+│  4. null - brak możliwości określenia                       │
+└─────────────────────────────────────────────────────────────┘
+```
 
 ---
 
 ## Szczegóły implementacji
 
-### 1. Nowy hook: `useProductCategories`
+### 1. Nowa Edge Function: `extract-dominant-color`
 
-Pobiera unikalne kategorie z bazy danych do filtrowania:
+```typescript
+// Uproszczona paleta - 8 kolorów bazowych
+const SIMPLIFIED_PALETTE = [
+  { hex: '#FFFFFF', shade: 'biały', range: ['white', 'cream', 'pearl'] },
+  { hex: '#D2B48C', shade: 'beżowy', range: ['beige', 'sand', 'cappuccino', 'cream'] },
+  { hex: '#808080', shade: 'szary', range: ['grey', 'gray', 'anthracite', 'stone'] },
+  { hex: '#000000', shade: 'czarny', range: ['black', 'graphite'] },
+  { hex: '#4169E1', shade: 'niebieski', range: ['blue', 'adriatic', 'greek', 'azure'] },
+  { hex: '#20B2AA', shade: 'turkusowy', range: ['turquoise', 'aqua', 'teal', 'caribbean'] },
+  { hex: '#228B22', shade: 'zielony', range: ['green', 'olive'] },
+  { hex: '#8B4513', shade: 'brązowy', range: ['brown', 'chocolate', 'terracotta'] },
+];
 
-```text
-Źródła kategorii:
-- category: "folia", "attraction", null → "Pozostałe"
-- foil_category: "strukturalna", "jednokolorowa", "nadruk", "antypoślizgowa"
-- subcategory: "Alkorplan 2000", "Touch", "ELBE Solid"...
-
-Zwraca:
-[
-  { value: "all", label: "Wszystkie", count: 3467 },
-  { value: "folia", label: "Folie", count: 76 },
-  { value: "attraction", label: "Atrakcje", count: 20 },
-  { value: "other", label: "Pozostałe", count: 3371 }
-]
+// Funkcja mapująca HEX na uproszczony odcień
+function mapHexToSimplifiedShade(hex: string): string {
+  const rgb = hexToRgb(hex);
+  let closest = { shade: 'nieznany', distance: Infinity };
+  
+  for (const color of SIMPLIFIED_PALETTE) {
+    const dist = colorDistance(rgb, hexToRgb(color.hex));
+    if (dist < closest.distance) {
+      closest = { shade: color.shade, distance: dist };
+    }
+  }
+  return closest.shade;
+}
 ```
 
-### 2. Ulepszone wyszukiwanie (word splitting)
+### 2. Wykrywanie koloru producenta
 
-Zmiana logiki w `useProductsPaginated`:
+Rozszerzenie scrapera o ekstrakcję danych producenta:
 
-```text
-Obecna logika:
-  "Alkorplan Bhumi" → name.ilike.%Alkorplan Bhumi%
-  (wymaga dokładnej frazy)
-
-Nowa logika:
-  "Alkorplan Bhumi" → rozdziel na ["Alkorplan", "Bhumi"]
-  → name.ilike.%Alkorplan% AND name.ilike.%Bhumi%
-  (znajduje nawet "Folia Alkorplan Touch Bhumi 1.65m")
+```typescript
+// Sprawdź dane producenta przed ekstrakcją z obrazka
+function determineShadeWithProducerData(
+  productName: string,
+  producerColor?: string,  // np. "Adriatic Blue" z metadanych
+  description?: string,    // opis produktu
+  imageUrl?: string
+): { shade: string, source: 'producer' | 'image' | 'name' } {
+  
+  // 1. Priorytet: Dane producenta
+  if (producerColor) {
+    const shade = mapProducerColorToShade(producerColor);
+    if (shade) return { shade, source: 'producer' };
+  }
+  
+  // 2. Sprawdź opis produktu
+  if (description) {
+    const shade = extractShadeFromText(description);
+    if (shade) return { shade, source: 'producer' };
+  }
+  
+  // 3. Ekstrakcja z obrazka
+  if (imageUrl) {
+    const { hex, shade } = await extractColorFromImage(imageUrl);
+    if (shade !== 'nieznany') return { shade, source: 'image' };
+  }
+  
+  // 4. Fallback: mapowanie z nazwy
+  const shade = determineShadeFromName(productName);
+  return { shade: shade || null, source: 'name' };
+}
 ```
 
-### 3. Pobieranie miniatur wraz z produktami
+### 3. Mapowanie kolorów producenta
 
-Zmodyfikuję query aby pobierać pierwsze zdjęcie produktu:
+```typescript
+// Mapowanie nazw kolorów producenta na uproszczoną paletę
+const PRODUCER_COLOR_MAP: Record<string, string> = {
+  // Angielskie
+  'white': 'biały',
+  'sand': 'beżowy',
+  'beige': 'beżowy', 
+  'cream': 'biały',
+  'grey': 'szary',
+  'gray': 'szary',
+  'light grey': 'szary',
+  'dark grey': 'szary',
+  'anthracite': 'szary',
+  'black': 'czarny',
+  'blue': 'niebieski',
+  'light blue': 'niebieski',
+  'adriatic blue': 'niebieski',
+  'greek blue': 'niebieski',
+  'turquoise': 'turkusowy',
+  'caribbean': 'turkusowy',
+  'green': 'zielony',
+  'brown': 'brązowy',
+  
+  // Niemieckie (ELBE)
+  'weiß': 'biały',
+  'grau': 'szary',
+  'blau': 'niebieski',
+  'schwarz': 'czarny',
+};
 
-```text
-SELECT p.*, 
-  (SELECT image_url FROM product_images 
-   WHERE product_id = p.id 
-   ORDER BY sort_order LIMIT 1) as thumbnail_url
-FROM products p
+function mapProducerColorToShade(producerColor: string): string | null {
+  const normalized = producerColor.toLowerCase().trim();
+  
+  // Bezpośrednie dopasowanie
+  if (PRODUCER_COLOR_MAP[normalized]) {
+    return PRODUCER_COLOR_MAP[normalized];
+  }
+  
+  // Częściowe dopasowanie (np. "Adriatic Blue 2mm" → "niebieski")
+  for (const [key, shade] of Object.entries(PRODUCER_COLOR_MAP)) {
+    if (normalized.includes(key)) {
+      return shade;
+    }
+  }
+  
+  return null;
+}
 ```
 
-Alternatywnie: LEFT JOIN z agregacją lub osobne zapytanie dla widocznych produktów.
+### 4. Nowa kolumna w bazie danych
 
-### 4. Przełączany widok (tabela/karty)
-
-Dodanie przycisku toggle:
-- **Tabela**: obecny widok + miniatura 40x40px w pierwszej kolumnie
-- **Karty**: grid 4 kolumny, każda karta zawiera zdjęcie, nazwę, cenę, kategorię
-
-```text
-┌─────────────────────────────────────────────────────────┐
-│  [🔍 Szukaj...]                     [📋 Tabela] [⊞ Karty] │
-│  ┌─────────┐ ┌─────────┐ ┌─────────┐                    │
-│  │ Wszystkie│ │ Folie   │ │ Atrakcje│ │ Pozostałe │      │
-│  └─────────┘ └─────────┘ └─────────┘                    │
-│  Sortuj: [Nazwa ▼]                                      │
-└─────────────────────────────────────────────────────────┘
+```sql
+ALTER TABLE products ADD COLUMN extracted_hex text;
 ```
-
-### 5. Sortowanie
-
-Dropdown z opcjami:
-- Nazwa (A-Z / Z-A)
-- Cena (rosnąco / malejąco)
-- Kategoria
 
 ---
 
 ## Zmiany w plikach
 
-### `src/hooks/useProductsManagement.ts`
-- Dodanie parametrów: `categoryFilter`, `sortBy`, `sortOrder`
-- Zmiana logiki wyszukiwania na word splitting
-- Pobieranie thumbnail_url z product_images
-
-### `src/pages/Products.tsx`
-- Dodanie stanu: `selectedCategory`, `viewMode`, `sortBy`, `sortOrder`
-- Nowy pasek filtrów z Badge/chips dla kategorii
-- Toggle przełączania widoku (ikony Table/Grid)
-- Dropdown sortowania
-- Widok kart (grid) jako alternatywa dla tabeli
-- Miniatura w tabeli (40x40px z fallback placeholder)
-
-### Nowy komponent: `src/components/ProductGridCard.tsx`
-- Karta produktu dla widoku grid
-- Większe zdjęcie (aspect-ratio 4:3)
-- Nazwa, cena, kategoria jako badge
-- Przyciski akcji (edycja, usunięcie)
-
----
-
-## Interfejs użytkownika
-
-### Pasek filtrów kategorii
-Chips/badges poziomo z licznikami:
-```
-[Wszystkie (3467)] [Folie (76)] [Atrakcje (20)] [Pozostałe (3371)]
-```
-
-### Widok tabeli z miniaturą
-| Zdjęcie | Symbol | Nazwa | Cena | Waluta | Kategoria | Akcje |
-|---------|--------|-------|------|--------|-----------|-------|
-| 📷40x40 | ALK-01 | Folia...| 123 | PLN    | folia     | ✏️🗑️  |
-
-### Widok kart (grid)
-```
-┌────────────┐ ┌────────────┐ ┌────────────┐ ┌────────────┐
-│   [📷]     │ │   [📷]     │ │   [📷]     │ │   [📷]     │
-│ Folia Alko │ │ Prysznic   │ │ Pompa      │ │ Drabinka   │
-│ 123,00 PLN │ │ 456,00 PLN │ │ 789,00 PLN │ │ 99,00 PLN  │
-│ [folia]    │ │ [atrakcja] │ │            │ │            │
-│  ✏️   🗑️   │ │  ✏️   🗑️   │ │  ✏️   🗑️   │ │  ✏️   🗑️   │
-└────────────┘ └────────────┘ └────────────┘ └────────────┘
-```
-
----
-
-## Szczegóły techniczne
-
-### Word splitting w wyszukiwaniu
-
-```typescript
-// Rozdziel szukaną frazę na słowa
-const words = searchQuery.trim().split(/\s+/).filter(w => w.length >= 2);
-
-// Dla każdego słowa utwórz warunek ILIKE
-// Supabase nie wspiera wielu AND w .or(), więc użyjemy textSearch lub raw filter
-// Alternatywa: filtrowanie po stronie klienta dla małych zbiorów
-
-// Rozwiązanie: wiele .ilike() z AND
-let query = supabase.from('products').select('*');
-for (const word of words) {
-  query = query.or(`name.ilike.%${word}%,symbol.ilike.%${word}%`);
-}
-```
-
-### Pobieranie miniatur
-
-Opcja 1: Subquery (wymaga funkcji DB)
-Opcja 2: Osobne zapytanie dla widocznych produktów (po paginacji)
-Opcja 3: LEFT JOIN z agregacją
-
-Rekomenduję **Opcję 2** - najprostsza, bez zmian w schemacie:
-```typescript
-// Po pobraniu produktów
-const productIds = products.map(p => p.id);
-const { data: images } = await supabase
-  .from('product_images')
-  .select('product_id, image_url')
-  .in('product_id', productIds)
-  .order('sort_order')
-  .limit(1); // per product - wymaga distinct on
-
-// Mapowanie: productId → thumbnail_url
-```
-
-### Responsywność kart
-
-```css
-/* Grid responsywny */
-grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5
-```
-
----
-
-## Podsumowanie zmian w plikach
-
 | Plik | Zmiana |
 |------|--------|
-| `src/hooks/useProductsManagement.ts` | Word splitting, filtry kategorii, sortowanie, pobieranie miniatur |
-| `src/pages/Products.tsx` | Pasek filtrów, toggle widoku, dropdown sortowania, widok kart |
-| `src/components/ProductGridCard.tsx` | Nowy komponent karty produktu |
+| `supabase/functions/extract-dominant-color/index.ts` | Nowa edge function z uproszczoną paletą |
+| `supabase/functions/import-foils-from-web/index.ts` | Hierarchia źródeł: producent → obrazek → nazwa |
+| `src/lib/api/firecrawl.ts` | Mapowanie kolorów producenta, uproszczona paleta |
+| `supabase/config.toml` | Rejestracja nowej funkcji |
+| Baza danych | Kolumna `extracted_hex` |
+| `src/pages/ImportFoils.tsx` | Wizualna próbka koloru + źródło (ikona) |
+
+---
+
+## UI - wyświetlanie odcienia z próbką
+
+```tsx
+// W podglądzie importu i liście produktów
+<div className="flex items-center gap-2">
+  {product.extractedHex && (
+    <div 
+      className="w-4 h-4 rounded-full border border-gray-300"
+      style={{ backgroundColor: product.extractedHex }}
+      title={`HEX: ${product.extractedHex}`}
+    />
+  )}
+  <Badge variant="outline">{product.shade}</Badge>
+  {/* Ikona źródła */}
+  {product.shadeSource === 'producer' && <Factory className="w-3 h-3" />}
+  {product.shadeSource === 'image' && <Image className="w-3 h-3" />}
+</div>
+```
+
+---
 
 ## Oczekiwany rezultat
 
-- Wyszukiwanie "Alkorplan Bhumi" znajdzie wszystkie produkty zawierające oba słowa
-- Szybkie filtrowanie po kategoriach jednym kliknięciem
-- Podgląd miniatur produktów w obu widokach
-- Elastyczne sortowanie listy
-- Przełączanie między widokiem tabeli a kartami
+- 8 podstawowych odcieni zamiast ~15 szczegółowych
+- Priorytet dla danych producenta (bardziej wiarygodne)
+- Wizualna próbka koloru HEX w UI
+- Automatyczne wykrywanie ~95% produktów
+- Informacja o źródle odcienia (producent/obrazek/nazwa)
+
