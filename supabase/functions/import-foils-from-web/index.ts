@@ -57,7 +57,7 @@ const SIMPLIFIED_SHADE_MAP: Record<string, string> = {
   'green': 'zielony',
   'turquoise': 'turkusowy',
   
-  // Alkorplan structural collections
+  // Alkorplan structural collections - explicit color assignments
   'bhumi': 'beżowy',
   'nara': 'beżowy',
   'chandra': 'szary',
@@ -81,17 +81,46 @@ const SIMPLIFIED_SHADE_MAP: Record<string, string> = {
   'ceramic': 'biały',
   'ceramics': 'biały',
   
+  // Vogue collection - BLUE shades
+  'summer': 'niebieski',
+  'tropical': 'niebieski',
+  'urban': 'szary',
+  'vintage': 'beżowy',
+  
+  // Kolos collection - BLUE shades  
+  'delos': 'niebieski',
+  'milos': 'niebieski',
+  'naxos': 'niebieski',
+  'paros': 'biały',
+  'syros': 'szary',
+  
+  // Alive collection
+  'aquarelle': 'niebieski',
+  'marble': 'biały',
+  'mist': 'szary',
+  'coral': 'beżowy',
+  
+  // Touch collection
+  'relax': 'niebieski',
+  'elegance': 'szary',
+  'serenity': 'niebieski',
+  'vanity': 'beżowy',
+  'origin': 'beżowy',
+  'genuine': 'beżowy',
+  
+  // Alkorplan 2000/3000 colors
+  'adriatic': 'niebieski',
+  'caribbean': 'turkusowy',
+  
   // ELBE colors
   'amber': 'beżowy',
   'basalt': 'szary',
-  'marble': 'biały',
   'pearl': 'biały',
   'shine': 'biały',
   'ocean': 'niebieski',
   'azure': 'niebieski',
   'sky': 'niebieski',
   'terra': 'brązowy',
-  'coral': 'beżowy',
   'slate': 'szary',
   'platinum': 'szary',
   'ivory': 'biały',
