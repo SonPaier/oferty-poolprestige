@@ -1,93 +1,139 @@
 
-# Plan naprawy pobierania zdjęć dla brakujących folii
 
-## Diagnoza
+# Plan: Automatyczne określanie odcieni folii podczas importu
 
-Odkryto, że format `links` w Firecrawl **nie zwraca obrazków dla niektórych kolekcji** (Alive, Kolos, Ceramics Evolve, Vogue Nordic), ponieważ te strony ładują obrazki przez JavaScript (lazy-loading).
+## Analiza problemu
 
-**Rozwiazanie**: Format `markdown` zawiera obrazki w formie `![alt](url)` - Firecrawl renderuje stronę i konwertuje do markdown, wliczając obrazki.
+Strony produktowe Alkorplan i ELBE nie zawierają ustandaryzowanych kodów kolorów (RAL/RGB). Jednak nazwy produktów i kolekcji pozwalają na automatyczne przypisanie odcienia:
 
-Przykład odpowiedzi dla `/collections/alive/chandra`:
-```markdown
-![](https://renolit-alkorplan.com/fileadmin/_processed_/0/c/csm_DSC_0002_6af9569512.jpg)
-![](https://renolit-alkorplan.com/fileadmin/_processed_/3/7/csm_DSC_0003_13479525a2.jpg)
-...
-```
+| Typ produktu | Źródło odcienia | Przykład |
+|--------------|-----------------|----------|
+| Jednokolorowe (Alkorplan 2000) | Nazwa produktu = kolor | "White" → biały, "Sand" → piaskowy |
+| Nadruk (Alkorplan 3000) | Dominujący kolor w nazwie | "Persia Blue" → niebieski |
+| Strukturalne (Alive, Touch) | Mapowanie z katalogu | "Bhumi" → piaskowy, "Chandra" → szary |
+| ELBE Plain Color | Nazwa produktu = kolor | "Sand Classic" → piaskowy |
+| ELBE SOLID/MOTION | Drugi człon nazwy | "SOLID Amber" → beżowy |
 
 ---
 
 ## Plan zmian
 
-### 1. Zmiana strategii scrape na dwuetapową
+### 1. Nowa kolumna w bazie danych
 
-**Plik**: `src/lib/api/firecrawl.ts`
+Dodanie kolumny `shade` (TEXT, nullable) do tabeli `products`:
 
-Zmienić logikę `scrapeProductDetails`:
+```sql
+ALTER TABLE products ADD COLUMN shade text;
+```
 
-```typescript
-// Krok 1: Najpierw sprobuj format 'links' (szybki, dziala dla wiekszosci)
-const result = await firecrawlApi.scrape(product.url, {
-  formats: ['links'],
-  onlyMainContent: false,
-});
+### 2. Mapowanie odcieni w kodzie
 
-// Wyciagnij imageUrl z links
-let imageUrl = extractImageFromLinks(scrapeData.links);
+Nowy słownik mapujący nazwy produktów na polskie odcienie:
 
-// Krok 2: Jesli brak obrazka, uzyj formatu 'markdown' (fallback)
-if (!imageUrl) {
-  const mdResult = await firecrawlApi.scrape(product.url, {
-    formats: ['markdown'],
-    onlyMainContent: true,
-  });
-  imageUrl = extractImageFromMarkdown(mdResult.data?.markdown);
+```text
+SHADE_MAPPING = {
+  // Bezpośrednie mapowanie (jednokolorowe)
+  'white': 'biały',
+  'sand': 'piaskowy',
+  'light blue': 'jasnoniebieski',
+  'adriatic blue': 'niebieski',
+  'caribbean green': 'zielony',
+  'light grey': 'jasnoszary',
+  'dark grey': 'ciemnoszary',
+  'black': 'czarny',
+  
+  // Strukturalne Alkorplan (na podstawie katalogu)
+  'bhumi': 'piaskowy',
+  'chandra': 'szary',
+  'kohinoor': 'niebieski',
+  'prestige': 'czarny',
+  'sublime': 'beżowy',
+  'volcanic': 'ciemnoszary',
+  'travertine': 'beżowy',
+  'authentic': 'piaskowy',
+  ...
+  
+  // ELBE
+  'amber': 'beżowy',
+  'basalt': 'ciemnoszary',
+  'marble': 'biały',
+  ...
 }
 ```
 
-### 2. Nowa funkcja ekstrakcji obrazka z markdown
+### 3. Funkcja automatycznego określania odcienia
 
-```typescript
-function extractImageFromMarkdown(markdown: string): string | undefined {
-  if (!markdown) return undefined;
-  
-  // Szukaj wzorca ![alt](url) lub ![](url)
-  const imgRegex = /!\[[^\]]*\]\((https?:\/\/[^)]+\.(?:jpg|jpeg|png|webp))\)/gi;
-  const matches = [...markdown.matchAll(imgRegex)];
-  
-  // Filtruj obrazki produktowe (z fileadmin/_processed_)
-  const productImage = matches.find(m => m[1].includes('/fileadmin/_processed_/'));
-  if (productImage) return productImage[1];
-  
-  // Fallback: pierwszy obrazek ktory nie jest favicon/logo
-  const anyImage = matches.find(m => 
-    !m[1].includes('favicon') && 
-    !m[1].includes('logo') && 
-    !m[1].includes('icon')
-  );
-  return anyImage?.[1];
-}
+```text
+function determineShade(productName, collectionSlug):
+  1. Wyciągnij ostatni człon nazwy (np. "SOLID Amber" → "Amber")
+  2. Sprawdź w SHADE_MAPPING
+  3. Jeśli brak - spróbuj dopasować słowa kluczowe (blue, grey, white...)
+  4. Fallback: null (do ręcznego uzupełnienia)
 ```
 
-### 3. Zachowanie istniejącej logiki jako pierwszego kroku
+### 4. Modyfikacja procesu importu
 
-Obecna logika z formatem `links` pozostaje jako **pierwszy krok** - działa dla 33 z 43 produktów. Format `markdown` będzie tylko **fallback** dla brakujących 10 produktów.
+**Plik: `src/lib/api/firecrawl.ts`**
+- Rozszerzenie interfejsu `FoilProduct` o pole `shade?: string`
+- Dodanie słownika `SHADE_MAPPING` z ~50 mapowaniami
+- Funkcja `determineShade(name, collection)` do automatycznego przypisania
+
+**Plik: `supabase/functions/import-foils-from-web/index.ts`**
+- Dodanie kolumny `shade` do insert/upsert
+- Przekazywanie shade z frontendu do bazy
+
+---
+
+## Szczegółowe mapowania kolorów
+
+### Alkorplan - Kolekcje strukturalne
+
+| Produkt | Odcień |
+|---------|--------|
+| Bhumi, Nara | piaskowy |
+| Chandra, Kohinoor | szary |
+| Prestige, Volcanic | czarny |
+| Sublime, Travertine | beżowy |
+| Authentic, Concrete | szary |
+| Mediterranean Blue | niebieski |
+
+### Alkorplan - Jednokolorowe (2000/Relief)
+
+| Produkt | Odcień |
+|---------|--------|
+| White | biały |
+| Sand | piaskowy |
+| Light Blue | jasnoniebieski |
+| Adriatic Blue, Greek Blue | niebieski |
+| Caribbean Green | zielony |
+| Light Grey | jasnoszary |
+| Dark Grey | ciemnoszary |
+| Black | czarny |
+
+### ELBE
+
+| Wzorzec nazwy | Odcień |
+|---------------|--------|
+| *White, *Pearl | biały |
+| *Sand, *Beige, *Amber | beżowy/piaskowy |
+| *Blue, *Adriatic | niebieski |
+| *Grey, *Basalt | szary |
+| *Black, *Anthracite | czarny |
 
 ---
 
 ## Podsumowanie zmian
 
-| Plik | Zmiana |
-|------|--------|
-| `src/lib/api/firecrawl.ts` | Dodanie fallback do formatu `markdown` gdy `links` nie zawiera obrazka |
+| Komponent | Zmiana |
+|-----------|--------|
+| Baza danych | Nowa kolumna `shade` w tabeli `products` |
+| `src/lib/api/firecrawl.ts` | Słownik SHADE_MAPPING + funkcja determineShade() |
+| Edge function | Zapisywanie shade do bazy |
+| Interface FoilProduct | Nowe pole `shade?: string` |
 
 ## Oczekiwany rezultat
 
-- **33 produkty**: obrazek z formatu `links` (jak dotychczas)
-- **10 produktow** (Alive, Kolos, Ceramics Evolve, Vogue Nordic): obrazek z formatu `markdown`
-- **Logi konsoli**: `[scrape] SYMBOL -> markdown image: URL`
-- **Zapis**: 43 produkty z obrazkami
+- Import folii automatycznie przypisze odcień dla ~90% produktów
+- Pozostałe ~10% (nietypowe nazwy) będzie miało `shade = null` do ręcznego uzupełnienia
+- W przyszłości można dodać filtrowanie folii po odcieniu w konfiguratorze
 
-## Koszty
-
-- Dodatkowe 10 requestow do Firecrawl (tylko dla produktow bez obrazka)
-- Lekko wolniejszy import dla tych 10 produktow (2 requesty zamiast 1)
