@@ -78,29 +78,42 @@ function extractImageFromMarkdown(markdown: string | undefined): string | undefi
   return anyImage?.[1];
 }
 
-// Helper: Extract product image from collection page markdown
-// Looks for pattern: [![alt](IMAGE_URL)](PRODUCT_URL) where PRODUCT_URL matches the product
+// Helper: Extract product TEXTURE image from collection page markdown
+// On collection pages, each product has 2 linked images:
+// 1. Realization photo (pool with foil)
+// 2. Texture/pattern image (directly before product name text)
+// Pattern: [![alt](IMAGE)](URL)[**ProductName**](URL)
 function extractProductImageFromCollectionMarkdown(
   markdown: string | undefined, 
   productSlug: string
 ): string | undefined {
   if (!markdown) return undefined;
   
-  // Pattern: [![alt](imageUrl)](productUrl) - linked image to product
-  // We need to find images that link to the specific product
+  // Pattern: [![alt](imageUrl)](productUrl)[**ProductName**](productUrl)
+  // The texture image is the one DIRECTLY BEFORE the bold product name link
+  const textureImgRegex = new RegExp(
+    `\\[!\\[[^\\]]*\\]\\((https?:\\/\\/[^)]+\\.(?:jpg|jpeg|png|webp))\\)\\]\\([^)]*\\/${productSlug}\\)\\[\\*\\*[^\\]]+\\*\\*\\]`,
+    'i'
+  );
+  
+  const match = markdown.match(textureImgRegex);
+  if (match) {
+    console.log(`[collection] Found texture image for ${productSlug}: ${match[1]}`);
+    return match[1];
+  }
+  
+  // Fallback: get the LAST image linking to this product (usually the texture)
   const linkedImgRegex = /\[!\[[^\]]*\]\((https?:\/\/[^)]+\.(?:jpg|jpeg|png|webp))\)\]\((https?:\/\/[^)]+)\)/gi;
   const matches = [...markdown.matchAll(linkedImgRegex)];
   
-  // Find image that links to our product (URL ends with product slug)
-  for (const match of matches) {
-    const imageUrl = match[1];
-    const linkUrl = match[2];
-    
-    // Check if link points to our product
-    if (linkUrl.endsWith(`/${productSlug}`)) {
-      console.log(`[collection] Found texture image for ${productSlug}: ${imageUrl}`);
-      return imageUrl;
-    }
+  // Find all images that link to our product
+  const productImages = matches.filter(m => m[2].endsWith(`/${productSlug}`));
+  
+  if (productImages.length > 0) {
+    // Return the LAST one (texture is usually second/last)
+    const lastImage = productImages[productImages.length - 1][1];
+    console.log(`[collection] Found texture image (fallback) for ${productSlug}: ${lastImage}`);
+    return lastImage;
   }
   
   return undefined;
