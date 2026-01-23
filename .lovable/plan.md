@@ -1,139 +1,201 @@
 
-
-# Plan: Automatyczne określanie odcieni folii podczas importu
-
-## Analiza problemu
-
-Strony produktowe Alkorplan i ELBE nie zawierają ustandaryzowanych kodów kolorów (RAL/RGB). Jednak nazwy produktów i kolekcji pozwalają na automatyczne przypisanie odcienia:
-
-| Typ produktu | Źródło odcienia | Przykład |
-|--------------|-----------------|----------|
-| Jednokolorowe (Alkorplan 2000) | Nazwa produktu = kolor | "White" → biały, "Sand" → piaskowy |
-| Nadruk (Alkorplan 3000) | Dominujący kolor w nazwie | "Persia Blue" → niebieski |
-| Strukturalne (Alive, Touch) | Mapowanie z katalogu | "Bhumi" → piaskowy, "Chandra" → szary |
-| ELBE Plain Color | Nazwa produktu = kolor | "Sand Classic" → piaskowy |
-| ELBE SOLID/MOTION | Drugi człon nazwy | "SOLID Amber" → beżowy |
-
----
-
-## Plan zmian
-
-### 1. Nowa kolumna w bazie danych
-
-Dodanie kolumny `shade` (TEXT, nullable) do tabeli `products`:
-
-```sql
-ALTER TABLE products ADD COLUMN shade text;
-```
-
-### 2. Mapowanie odcieni w kodzie
-
-Nowy słownik mapujący nazwy produktów na polskie odcienie:
-
-```text
-SHADE_MAPPING = {
-  // Bezpośrednie mapowanie (jednokolorowe)
-  'white': 'biały',
-  'sand': 'piaskowy',
-  'light blue': 'jasnoniebieski',
-  'adriatic blue': 'niebieski',
-  'caribbean green': 'zielony',
-  'light grey': 'jasnoszary',
-  'dark grey': 'ciemnoszary',
-  'black': 'czarny',
-  
-  // Strukturalne Alkorplan (na podstawie katalogu)
-  'bhumi': 'piaskowy',
-  'chandra': 'szary',
-  'kohinoor': 'niebieski',
-  'prestige': 'czarny',
-  'sublime': 'beżowy',
-  'volcanic': 'ciemnoszary',
-  'travertine': 'beżowy',
-  'authentic': 'piaskowy',
-  ...
-  
-  // ELBE
-  'amber': 'beżowy',
-  'basalt': 'ciemnoszary',
-  'marble': 'biały',
-  ...
-}
-```
-
-### 3. Funkcja automatycznego określania odcienia
-
-```text
-function determineShade(productName, collectionSlug):
-  1. Wyciągnij ostatni człon nazwy (np. "SOLID Amber" → "Amber")
-  2. Sprawdź w SHADE_MAPPING
-  3. Jeśli brak - spróbuj dopasować słowa kluczowe (blue, grey, white...)
-  4. Fallback: null (do ręcznego uzupełnienia)
-```
-
-### 4. Modyfikacja procesu importu
-
-**Plik: `src/lib/api/firecrawl.ts`**
-- Rozszerzenie interfejsu `FoilProduct` o pole `shade?: string`
-- Dodanie słownika `SHADE_MAPPING` z ~50 mapowaniami
-- Funkcja `determineShade(name, collection)` do automatycznego przypisania
-
-**Plik: `supabase/functions/import-foils-from-web/index.ts`**
-- Dodanie kolumny `shade` do insert/upsert
-- Przekazywanie shade z frontendu do bazy
-
----
-
-## Szczegółowe mapowania kolorów
-
-### Alkorplan - Kolekcje strukturalne
-
-| Produkt | Odcień |
-|---------|--------|
-| Bhumi, Nara | piaskowy |
-| Chandra, Kohinoor | szary |
-| Prestige, Volcanic | czarny |
-| Sublime, Travertine | beżowy |
-| Authentic, Concrete | szary |
-| Mediterranean Blue | niebieski |
-
-### Alkorplan - Jednokolorowe (2000/Relief)
-
-| Produkt | Odcień |
-|---------|--------|
-| White | biały |
-| Sand | piaskowy |
-| Light Blue | jasnoniebieski |
-| Adriatic Blue, Greek Blue | niebieski |
-| Caribbean Green | zielony |
-| Light Grey | jasnoszary |
-| Dark Grey | ciemnoszary |
-| Black | czarny |
-
-### ELBE
-
-| Wzorzec nazwy | Odcień |
-|---------------|--------|
-| *White, *Pearl | biały |
-| *Sand, *Beige, *Amber | beżowy/piaskowy |
-| *Blue, *Adriatic | niebieski |
-| *Grey, *Basalt | szary |
-| *Black, *Anthracite | czarny |
-
----
+# Plan: Rozbudowa widoku produktów
 
 ## Podsumowanie zmian
 
-| Komponent | Zmiana |
-|-----------|--------|
-| Baza danych | Nowa kolumna `shade` w tabeli `products` |
-| `src/lib/api/firecrawl.ts` | Słownik SHADE_MAPPING + funkcja determineShade() |
-| Edge function | Zapisywanie shade do bazy |
-| Interface FoilProduct | Nowe pole `shade?: string` |
+Rozbuduję stronę `/produkty` o:
+1. **Filtrowanie po kategoriach** - dynamiczne pobieranie kategorii z bazy
+2. **Miniatury zdjęć** - wyświetlanie pierwszego zdjęcia produktu
+3. **Lepsze wyszukiwanie** - dzielenie frazy na słowa (AND logic)
+4. **Przełączany widok** - tabela ↔ karty (grid)
+5. **Sortowanie** - po nazwie, cenie, kategorii
+
+---
+
+## Szczegóły implementacji
+
+### 1. Nowy hook: `useProductCategories`
+
+Pobiera unikalne kategorie z bazy danych do filtrowania:
+
+```text
+Źródła kategorii:
+- category: "folia", "attraction", null → "Pozostałe"
+- foil_category: "strukturalna", "jednokolorowa", "nadruk", "antypoślizgowa"
+- subcategory: "Alkorplan 2000", "Touch", "ELBE Solid"...
+
+Zwraca:
+[
+  { value: "all", label: "Wszystkie", count: 3467 },
+  { value: "folia", label: "Folie", count: 76 },
+  { value: "attraction", label: "Atrakcje", count: 20 },
+  { value: "other", label: "Pozostałe", count: 3371 }
+]
+```
+
+### 2. Ulepszone wyszukiwanie (word splitting)
+
+Zmiana logiki w `useProductsPaginated`:
+
+```text
+Obecna logika:
+  "Alkorplan Bhumi" → name.ilike.%Alkorplan Bhumi%
+  (wymaga dokładnej frazy)
+
+Nowa logika:
+  "Alkorplan Bhumi" → rozdziel na ["Alkorplan", "Bhumi"]
+  → name.ilike.%Alkorplan% AND name.ilike.%Bhumi%
+  (znajduje nawet "Folia Alkorplan Touch Bhumi 1.65m")
+```
+
+### 3. Pobieranie miniatur wraz z produktami
+
+Zmodyfikuję query aby pobierać pierwsze zdjęcie produktu:
+
+```text
+SELECT p.*, 
+  (SELECT image_url FROM product_images 
+   WHERE product_id = p.id 
+   ORDER BY sort_order LIMIT 1) as thumbnail_url
+FROM products p
+```
+
+Alternatywnie: LEFT JOIN z agregacją lub osobne zapytanie dla widocznych produktów.
+
+### 4. Przełączany widok (tabela/karty)
+
+Dodanie przycisku toggle:
+- **Tabela**: obecny widok + miniatura 40x40px w pierwszej kolumnie
+- **Karty**: grid 4 kolumny, każda karta zawiera zdjęcie, nazwę, cenę, kategorię
+
+```text
+┌─────────────────────────────────────────────────────────┐
+│  [🔍 Szukaj...]                     [📋 Tabela] [⊞ Karty] │
+│  ┌─────────┐ ┌─────────┐ ┌─────────┐                    │
+│  │ Wszystkie│ │ Folie   │ │ Atrakcje│ │ Pozostałe │      │
+│  └─────────┘ └─────────┘ └─────────┘                    │
+│  Sortuj: [Nazwa ▼]                                      │
+└─────────────────────────────────────────────────────────┘
+```
+
+### 5. Sortowanie
+
+Dropdown z opcjami:
+- Nazwa (A-Z / Z-A)
+- Cena (rosnąco / malejąco)
+- Kategoria
+
+---
+
+## Zmiany w plikach
+
+### `src/hooks/useProductsManagement.ts`
+- Dodanie parametrów: `categoryFilter`, `sortBy`, `sortOrder`
+- Zmiana logiki wyszukiwania na word splitting
+- Pobieranie thumbnail_url z product_images
+
+### `src/pages/Products.tsx`
+- Dodanie stanu: `selectedCategory`, `viewMode`, `sortBy`, `sortOrder`
+- Nowy pasek filtrów z Badge/chips dla kategorii
+- Toggle przełączania widoku (ikony Table/Grid)
+- Dropdown sortowania
+- Widok kart (grid) jako alternatywa dla tabeli
+- Miniatura w tabeli (40x40px z fallback placeholder)
+
+### Nowy komponent: `src/components/ProductGridCard.tsx`
+- Karta produktu dla widoku grid
+- Większe zdjęcie (aspect-ratio 4:3)
+- Nazwa, cena, kategoria jako badge
+- Przyciski akcji (edycja, usunięcie)
+
+---
+
+## Interfejs użytkownika
+
+### Pasek filtrów kategorii
+Chips/badges poziomo z licznikami:
+```
+[Wszystkie (3467)] [Folie (76)] [Atrakcje (20)] [Pozostałe (3371)]
+```
+
+### Widok tabeli z miniaturą
+| Zdjęcie | Symbol | Nazwa | Cena | Waluta | Kategoria | Akcje |
+|---------|--------|-------|------|--------|-----------|-------|
+| 📷40x40 | ALK-01 | Folia...| 123 | PLN    | folia     | ✏️🗑️  |
+
+### Widok kart (grid)
+```
+┌────────────┐ ┌────────────┐ ┌────────────┐ ┌────────────┐
+│   [📷]     │ │   [📷]     │ │   [📷]     │ │   [📷]     │
+│ Folia Alko │ │ Prysznic   │ │ Pompa      │ │ Drabinka   │
+│ 123,00 PLN │ │ 456,00 PLN │ │ 789,00 PLN │ │ 99,00 PLN  │
+│ [folia]    │ │ [atrakcja] │ │            │ │            │
+│  ✏️   🗑️   │ │  ✏️   🗑️   │ │  ✏️   🗑️   │ │  ✏️   🗑️   │
+└────────────┘ └────────────┘ └────────────┘ └────────────┘
+```
+
+---
+
+## Szczegóły techniczne
+
+### Word splitting w wyszukiwaniu
+
+```typescript
+// Rozdziel szukaną frazę na słowa
+const words = searchQuery.trim().split(/\s+/).filter(w => w.length >= 2);
+
+// Dla każdego słowa utwórz warunek ILIKE
+// Supabase nie wspiera wielu AND w .or(), więc użyjemy textSearch lub raw filter
+// Alternatywa: filtrowanie po stronie klienta dla małych zbiorów
+
+// Rozwiązanie: wiele .ilike() z AND
+let query = supabase.from('products').select('*');
+for (const word of words) {
+  query = query.or(`name.ilike.%${word}%,symbol.ilike.%${word}%`);
+}
+```
+
+### Pobieranie miniatur
+
+Opcja 1: Subquery (wymaga funkcji DB)
+Opcja 2: Osobne zapytanie dla widocznych produktów (po paginacji)
+Opcja 3: LEFT JOIN z agregacją
+
+Rekomenduję **Opcję 2** - najprostsza, bez zmian w schemacie:
+```typescript
+// Po pobraniu produktów
+const productIds = products.map(p => p.id);
+const { data: images } = await supabase
+  .from('product_images')
+  .select('product_id, image_url')
+  .in('product_id', productIds)
+  .order('sort_order')
+  .limit(1); // per product - wymaga distinct on
+
+// Mapowanie: productId → thumbnail_url
+```
+
+### Responsywność kart
+
+```css
+/* Grid responsywny */
+grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5
+```
+
+---
+
+## Podsumowanie zmian w plikach
+
+| Plik | Zmiana |
+|------|--------|
+| `src/hooks/useProductsManagement.ts` | Word splitting, filtry kategorii, sortowanie, pobieranie miniatur |
+| `src/pages/Products.tsx` | Pasek filtrów, toggle widoku, dropdown sortowania, widok kart |
+| `src/components/ProductGridCard.tsx` | Nowy komponent karty produktu |
 
 ## Oczekiwany rezultat
 
-- Import folii automatycznie przypisze odcień dla ~90% produktów
-- Pozostałe ~10% (nietypowe nazwy) będzie miało `shade = null` do ręcznego uzupełnienia
-- W przyszłości można dodać filtrowanie folii po odcieniu w konfiguratorze
-
+- Wyszukiwanie "Alkorplan Bhumi" znajdzie wszystkie produkty zawierające oba słowa
+- Szybkie filtrowanie po kategoriach jednym kliknięciem
+- Podgląd miniatur produktów w obu widokach
+- Elastyczne sortowanie listy
+- Przełączanie między widokiem tabeli a kartami
