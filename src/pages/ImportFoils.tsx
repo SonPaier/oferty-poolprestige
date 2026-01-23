@@ -351,6 +351,11 @@ export default function ImportFoils() {
                                 <Badge className={foilCategoryColors[product.foilCategory]}>
                                   {foilCategoryLabels[product.foilCategory]}
                                 </Badge>
+                                {product.shade && (
+                                  <Badge variant="outline" className="text-xs">
+                                    {product.shade}
+                                  </Badge>
+                                )}
                                 <span className="text-xs text-muted-foreground">
                                   {product.thickness}mm
                                 </span>

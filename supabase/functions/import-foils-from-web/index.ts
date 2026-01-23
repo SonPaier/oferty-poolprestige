@@ -29,29 +29,150 @@ interface FoilProduct {
   description: string;
   imageUrl?: string;
   symbol: string;
+  shade?: string;
+}
+
+// Polish shade/color mapping for automatic assignment
+const SHADE_MAPPING: Record<string, string> = {
+  // Direct colors (jednokolorowe)
+  'white': 'biały',
+  'sand': 'piaskowy',
+  'beige': 'beżowy',
+  'light blue': 'jasnoniebieski',
+  'adriatic blue': 'niebieski',
+  'caribbean blue': 'niebieski',
+  'caribbean green': 'zielony',
+  'greek blue': 'niebieski',
+  'blue': 'niebieski',
+  'light grey': 'jasnoszary',
+  'dark grey': 'ciemnoszary',
+  'grey': 'szary',
+  'anthracite': 'antracytowy',
+  'black': 'czarny',
+  'green': 'zielony',
+  'turquoise': 'turkusowy',
+  
+  // Alkorplan structural collections (Touch, Alive, Vogue, etc.)
+  'bhumi': 'piaskowy',
+  'nara': 'piaskowy',
+  'chandra': 'szary',
+  'kohinoor': 'niebieski',
+  'prestige': 'czarny',
+  'sublime': 'beżowy',
+  'volcanic': 'ciemnoszary',
+  'travertine': 'beżowy',
+  'authentic': 'piaskowy',
+  'concrete': 'szary',
+  'mediterranean blue': 'niebieski',
+  'malta': 'beżowy',
+  'bysance': 'niebieski',
+  'persia': 'niebieski',
+  'persia blue': 'niebieski',
+  'persia sand': 'piaskowy',
+  'carrara': 'biały',
+  'atenea': 'niebieski',
+  'byzance': 'niebieski',
+  'stone': 'szary',
+  'ceramic': 'biały',
+  'ceramics': 'biały',
+  
+  // ELBE colors
+  'amber': 'beżowy',
+  'basalt': 'ciemnoszary',
+  'marble': 'biały',
+  'pearl': 'biały',
+  'shine': 'biały',
+  'ocean': 'niebieski',
+  'azure': 'niebieski',
+  'sky': 'jasnoniebieski',
+  'terra': 'brązowy',
+  'coral': 'koralowy',
+  'slate': 'szary',
+  'graphite': 'ciemnoszary',
+  'platinum': 'jasnoszary',
+  'cream': 'kremowy',
+  'ivory': 'kremowy',
+  'classic': 'piaskowy',
+};
+
+// Keyword-based shade detection fallback
+const SHADE_KEYWORDS: Record<string, string> = {
+  'blue': 'niebieski',
+  'white': 'biały',
+  'grey': 'szary',
+  'gray': 'szary',
+  'sand': 'piaskowy',
+  'beige': 'beżowy',
+  'green': 'zielony',
+  'black': 'czarny',
+  'brown': 'brązowy',
+  'turquoise': 'turkusowy',
+  'light': 'jasny',
+  'dark': 'ciemny',
+};
+
+function determineShade(productName: string): string | undefined {
+  const nameLower = productName.toLowerCase();
+  
+  // 1. Try full product name match
+  if (SHADE_MAPPING[nameLower]) {
+    return SHADE_MAPPING[nameLower];
+  }
+  
+  // 2. Try to extract the color part from product names like "ALKORPLAN Touch - Bhumi"
+  const parts = productName.split(/\s*[-–]\s*/);
+  const lastPart = parts[parts.length - 1].trim().toLowerCase();
+  
+  if (SHADE_MAPPING[lastPart]) {
+    return SHADE_MAPPING[lastPart];
+  }
+  
+  // 3. Try individual words
+  const words = nameLower.split(/\s+/);
+  for (const word of words.reverse()) {
+    if (SHADE_MAPPING[word]) {
+      return SHADE_MAPPING[word];
+    }
+  }
+  
+  // 4. Keyword-based detection with modifiers
+  let shade: string | undefined;
+  let modifier: string | undefined;
+  
+  for (const [keyword, value] of Object.entries(SHADE_KEYWORDS)) {
+    if (nameLower.includes(keyword)) {
+      if (keyword === 'light' || keyword === 'dark') {
+        modifier = value;
+      } else if (!shade) {
+        shade = value;
+      }
+    }
+  }
+  
+  if (shade && modifier) {
+    return `${modifier}${shade}`;
+  }
+  
+  return shade;
 }
 
 function extractCollectionAndProductFromUrl(url: string): { collection: string; collectionSlug: string; productName: string } | null {
   // Pattern: /collections/{collection-name}/{product-name}
-  // Example: /collections/touch/authentic or /collections/alkorplan2000/dark-grey
   const match = url.match(/\/collections\/([^\/]+)\/([^\/\?]+)$/);
   if (match) {
     const collectionSlug = match[1].toLowerCase();
     const productSlug = match[2].toLowerCase();
     
-    // Skip collection-only URLs (no product)
     if (!productSlug || productSlug === 'sitemap.xml') {
       return null;
     }
     
-    // Get nice collection name from slug
     const collectionName = collectionSlug
       .replace(/alkorplan(\d+)/i, 'Alkorplan $1')
       .split('-')
       .map(word => word.charAt(0).toUpperCase() + word.slice(1))
       .join(' ');
     
-    // Get nice product name from slug
     const productName = productSlug
       .split('-')
       .map(word => word.charAt(0).toUpperCase() + word.slice(1))
@@ -99,16 +220,19 @@ Deno.serve(async (req) => {
         }
         
         const symbol = generateSymbol(extracted.collectionSlug, extracted.productName);
+        const fullName = `ALKORPLAN ${extracted.collection} - ${extracted.productName}`;
+        const shade = determineShade(extracted.productName);
         
         parsedProducts.push({
           url,
-          name: `ALKORPLAN ${extracted.collection} - ${extracted.productName}`,
+          name: fullName,
           collection: extracted.collection,
           collectionSlug: extracted.collectionSlug,
           foilCategory: mapping.foilCategory,
           thickness: mapping.thickness,
           description: `${mapping.description}. ${extracted.productName}`,
           symbol,
+          shade,
         });
       }
       
@@ -153,6 +277,7 @@ Deno.serve(async (req) => {
         image_id: null,
         price: 0,
         currency: 'PLN',
+        shade: p.shade || null,
       }));
 
       // Deduplicate by symbol

@@ -30,6 +30,136 @@ export interface FoilProduct {
   imageUrl?: string;
   symbol: string;
   brand: 'alkorplan' | 'elbe';
+  shade?: string;
+}
+
+// Polish shade/color mapping for automatic assignment
+const SHADE_MAPPING: Record<string, string> = {
+  // Direct colors (jednokolorowe)
+  'white': 'biały',
+  'sand': 'piaskowy',
+  'beige': 'beżowy',
+  'light blue': 'jasnoniebieski',
+  'adriatic blue': 'niebieski',
+  'caribbean blue': 'niebieski',
+  'caribbean green': 'zielony',
+  'greek blue': 'niebieski',
+  'blue': 'niebieski',
+  'light grey': 'jasnoszary',
+  'dark grey': 'ciemnoszary',
+  'grey': 'szary',
+  'anthracite': 'antracytowy',
+  'black': 'czarny',
+  'green': 'zielony',
+  'turquoise': 'turkusowy',
+  
+  // Alkorplan structural collections (Touch, Alive, Vogue, etc.)
+  'bhumi': 'piaskowy',
+  'nara': 'piaskowy',
+  'chandra': 'szary',
+  'kohinoor': 'niebieski',
+  'prestige': 'czarny',
+  'sublime': 'beżowy',
+  'volcanic': 'ciemnoszary',
+  'travertine': 'beżowy',
+  'authentic': 'piaskowy',
+  'concrete': 'szary',
+  'mediterranean blue': 'niebieski',
+  'malta': 'beżowy',
+  'bysance': 'niebieski',
+  'persia': 'niebieski',
+  'persia blue': 'niebieski',
+  'persia sand': 'piaskowy',
+  'carrara': 'biały',
+  'atenea': 'niebieski',
+  'byzance': 'niebieski',
+  'stone': 'szary',
+  'ceramic': 'biały',
+  'ceramics': 'biały',
+  
+  // ELBE colors
+  'amber': 'beżowy',
+  'basalt': 'ciemnoszary',
+  'marble': 'biały',
+  'pearl': 'biały',
+  'shine': 'biały',
+  'ocean': 'niebieski',
+  'azure': 'niebieski',
+  'sky': 'jasnoniebieski',
+  'terra': 'brązowy',
+  'coral': 'koralowy',
+  'slate': 'szary',
+  'graphite': 'ciemnoszary',
+  'platinum': 'jasnoszary',
+  'cream': 'kremowy',
+  'ivory': 'kremowy',
+  'classic': 'piaskowy',
+};
+
+// Keyword-based shade detection fallback
+const SHADE_KEYWORDS: Record<string, string> = {
+  'blue': 'niebieski',
+  'white': 'biały',
+  'grey': 'szary',
+  'gray': 'szary',
+  'sand': 'piaskowy',
+  'beige': 'beżowy',
+  'green': 'zielony',
+  'black': 'czarny',
+  'brown': 'brązowy',
+  'turquoise': 'turkusowy',
+  'light': 'jasny',
+  'dark': 'ciemny',
+};
+
+/**
+ * Determines the Polish shade name based on product name and collection.
+ * Returns undefined if no shade can be determined.
+ */
+export function determineShade(productName: string, collectionSlug?: string): string | undefined {
+  const nameLower = productName.toLowerCase();
+  
+  // 1. Try full product name match (for structured names like "Light Blue")
+  if (SHADE_MAPPING[nameLower]) {
+    return SHADE_MAPPING[nameLower];
+  }
+  
+  // 2. Try to extract the color part from product names like "SOLID Amber" or "ALKORPLAN Touch - Bhumi"
+  // Extract last word(s) after dash or collection prefix
+  const parts = productName.split(/\s*[-–]\s*/);
+  const lastPart = parts[parts.length - 1].trim().toLowerCase();
+  
+  if (SHADE_MAPPING[lastPart]) {
+    return SHADE_MAPPING[lastPart];
+  }
+  
+  // 3. Try individual words
+  const words = nameLower.split(/\s+/);
+  for (const word of words.reverse()) { // Start from end (color often at end)
+    if (SHADE_MAPPING[word]) {
+      return SHADE_MAPPING[word];
+    }
+  }
+  
+  // 4. Keyword-based detection with modifiers
+  let shade: string | undefined;
+  let modifier: string | undefined;
+  
+  for (const [keyword, value] of Object.entries(SHADE_KEYWORDS)) {
+    if (nameLower.includes(keyword)) {
+      if (keyword === 'light' || keyword === 'dark') {
+        modifier = value;
+      } else if (!shade) {
+        shade = value;
+      }
+    }
+  }
+  
+  if (shade && modifier) {
+    return `${modifier}${shade}`;
+  }
+  
+  return shade;
 }
 
 export const firecrawlApi = {
@@ -344,6 +474,9 @@ function parseElbeProductsFromMarkdown(
     // Generate symbol from product name
     const symbol = `ELBE-${productName.replace(/[®\s]+/g, '-').toUpperCase()}`;
     
+    // Determine shade automatically
+    const shade = determineShade(productName, collectionSlug);
+    
     const product: FoilProduct = {
       url: collectionUrl,
       name: productName,
@@ -355,6 +488,7 @@ function parseElbeProductsFromMarkdown(
       imageUrl: thumbnailUrl,
       symbol,
       brand: 'elbe',
+      shade,
     };
     
     products.push(product);
