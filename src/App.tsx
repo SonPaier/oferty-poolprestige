@@ -10,6 +10,7 @@ import Dashboard from "./pages/Dashboard";
 import NewOffer from "./pages/NewOffer";
 import Login from "./pages/Login";
 import ImportProducts from "./pages/ImportProducts";
+import ImportFoils from "./pages/ImportFoils";
 import Products from "./pages/Products";
 import OfferView from "./pages/OfferView";
 import OfferHistory from "./pages/OfferHistory";
@@ -83,6 +84,16 @@ const router = createBrowserRouter([
       <ProtectedRoute>
         <AppLayout>
           <Products />
+        </AppLayout>
+      </ProtectedRoute>
+    ),
+  },
+  {
+    path: "/import-foils",
+    element: (
+      <ProtectedRoute>
+        <AppLayout>
+          <ImportFoils />
         </AppLayout>
       </ProtectedRoute>
     ),
