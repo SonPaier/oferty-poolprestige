@@ -78,6 +78,34 @@ function extractImageFromMarkdown(markdown: string | undefined): string | undefi
   return anyImage?.[1];
 }
 
+// Helper: Extract product image from collection page markdown
+// Looks for pattern: [![alt](IMAGE_URL)](PRODUCT_URL) where PRODUCT_URL matches the product
+function extractProductImageFromCollectionMarkdown(
+  markdown: string | undefined, 
+  productSlug: string
+): string | undefined {
+  if (!markdown) return undefined;
+  
+  // Pattern: [![alt](imageUrl)](productUrl) - linked image to product
+  // We need to find images that link to the specific product
+  const linkedImgRegex = /\[!\[[^\]]*\]\((https?:\/\/[^)]+\.(?:jpg|jpeg|png|webp))\)\]\((https?:\/\/[^)]+)\)/gi;
+  const matches = [...markdown.matchAll(linkedImgRegex)];
+  
+  // Find image that links to our product (URL ends with product slug)
+  for (const match of matches) {
+    const imageUrl = match[1];
+    const linkUrl = match[2];
+    
+    // Check if link points to our product
+    if (linkUrl.endsWith(`/${productSlug}`)) {
+      console.log(`[collection] Found texture image for ${productSlug}: ${imageUrl}`);
+      return imageUrl;
+    }
+  }
+  
+  return undefined;
+}
+
 export const foilImportApi = {
   // Step 1: Map the Renolit website to get all product URLs
   async mapProductUrls(): Promise<{ success: boolean; urls?: string[]; error?: string }> {
@@ -120,6 +148,9 @@ export const foilImportApi = {
   async scrapeProductDetails(products: FoilProduct[]): Promise<FoilProduct[]> {
     const updatedProducts: FoilProduct[] = [];
     
+    // Cache for collection pages (to avoid re-fetching the same collection)
+    const collectionCache: Map<string, string | null> = new Map();
+    
     // Process in batches of 5 to avoid rate limiting
     const batchSize = 5;
     
@@ -129,6 +160,12 @@ export const foilImportApi = {
       const promises = batch.map(async (product) => {
         // Clone so we don't mutate original
         const updated = { ...product };
+        
+        // Extract collection slug and product slug from URL
+        const urlMatch = product.url.match(/\/collections\/([^\/]+)\/([^\/\?]+)$/);
+        const collectionSlug = urlMatch?.[1];
+        const productSlug = urlMatch?.[2];
+        
         try {
           // Step 1: Try 'links' format first (fast, works for most products)
           const result = await firecrawlApi.scrape(product.url, {
@@ -167,23 +204,36 @@ export const foilImportApi = {
             }
           }
 
-          // Step 2: If no image found, fallback to 'markdown' format (for JS-heavy pages)
-          if (!imageUrl) {
-            console.log(`[scrape] ${product.symbol} -> no image in links, trying markdown...`);
-            const mdResult = await firecrawlApi.scrape(product.url, {
-              formats: ['markdown'],
-              onlyMainContent: true,
-            });
-
-            const mdRaw = mdResult as any;
-            const mdOk = mdRaw?.success === undefined ? true : Boolean(mdRaw?.success);
+          // Step 2: If no image found, try collection page to get texture/pattern image
+          if (!imageUrl && collectionSlug && productSlug) {
+            console.log(`[scrape] ${product.symbol} -> no image in links, trying collection page...`);
             
-            if (mdOk && mdRaw?.data) {
-              const markdown = mdRaw.data.data?.markdown || mdRaw.data.markdown;
-              imageUrl = extractImageFromMarkdown(markdown);
-              if (imageUrl) {
-                console.log(`[scrape] ${product.symbol} -> markdown image: ${imageUrl}`);
+            // Check cache first
+            let collectionMarkdown = collectionCache.get(collectionSlug);
+            
+            if (collectionMarkdown === undefined) {
+              // Not in cache, fetch collection page
+              const collectionUrl = `https://renolit-alkorplan.com/collections/${collectionSlug}`;
+              const collResult = await firecrawlApi.scrape(collectionUrl, {
+                formats: ['markdown'],
+                onlyMainContent: false,
+              });
+              
+              const collRaw = collResult as any;
+              const collOk = collRaw?.success === undefined ? true : Boolean(collRaw?.success);
+              
+              if (collOk && collRaw?.data) {
+                collectionMarkdown = collRaw.data.data?.markdown || collRaw.data.markdown || null;
+                collectionCache.set(collectionSlug, collectionMarkdown);
+                console.log(`[scrape] Cached collection page: ${collectionSlug}`);
+              } else {
+                collectionCache.set(collectionSlug, null);
               }
+            }
+            
+            // Extract product's texture image from collection page
+            if (collectionMarkdown) {
+              imageUrl = extractProductImageFromCollectionMarkdown(collectionMarkdown, productSlug);
             }
           }
 
