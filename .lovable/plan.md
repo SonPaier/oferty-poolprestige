@@ -1,100 +1,97 @@
 
-# Plan: Import bazy folii Alkorplan z renolit-alkorplan.com
+# Plan naprawy pobierania zdjęć folii
 
-## Cel
-Automatyczne pobieranie bazy folii basenowych Renolit Alkorplan ze strony producenta, z uwzględnieniem że Alkorplan 3000 to folia z nadrukiem (nie strukturalna).
+## Diagnoza problemu
 
-## Architektura rozwiązania
+Przeprowadzono szczegółową analizę i znaleziono przyczynę:
 
-### Krok 1: Edge Functions Firecrawl
+1. **Strona Renolit Alkorplan NIE zawiera tagu `og:image`** w metadanych
+2. Obecny kod w `scrapeProductDetails` szuka `metadata.ogImage`, którego nie ma
+3. Fallback do HTML regex też nie działa, bo szuka specyficznych wzorców których ta strona nie używa
+4. **Rozwiązanie**: Firecrawl zwraca format `links` z pełną listą URLi - wśród nich są obrazki produktów
 
-**Plik: `supabase/functions/firecrawl-map/index.ts`**
-- Mapowanie URLi strony producenta
-- Wywołuje API Firecrawl `/v1/map`
-- Zwraca listę wszystkich podstron z kolekcjami folii
+### Dowód z testu API
 
-**Plik: `supabase/functions/firecrawl-scrape/index.ts`**
-- Scrapowanie pojedynczej strony produktu
-- Pobiera markdown i HTML z danymi produktu
-- Ekstrahuje zdjęcia i opisy
+Wywołanie Firecrawl z `formats: ['links']` zwraca m.in.:
+```
+https://renolit-alkorplan.com/fileadmin/_processed_/7/4/csm_1_RENOLIT_Persia_Blue-_013_751748a086.jpg
+https://renolit-alkorplan.com/fileadmin/_processed_/9/6/csm_Swimming_pool_RENOLIT_ALKORPLAN3000_Persia_Blue__1__fe54e92865.jpg
+...
+```
 
-### Krok 2: Główna funkcja importu
+Pierwszy obrazek z `fileadmin/_processed_` to główne zdjęcie produktu.
 
-**Plik: `supabase/functions/import-foils-from-web/index.ts`**
-- Trzy akcje: `map`, `scrape`, `save`
-- Mapowanie kolekcji na typy folii:
+---
 
-| Kolekcja | Typ folii | Grubość |
-|----------|-----------|---------|
-| Touch | strukturalna | 2.0mm |
-| Vogue | strukturalna | 2.0mm |
-| Ceramics Evolve | strukturalna | 2.0mm |
-| Ceramics | strukturalna | 1.5mm |
-| Alive | strukturalna | 1.5mm |
-| **Alkorplan 3000** | **nadruk** | 1.5mm |
-| Alkorplan 2000 | jednokolorowa | 1.5mm |
-| Relief | antyposlizgowa | 1.5mm |
-| Kolos | strukturalna | 2.0mm |
-| Natural Pool | jednokolorowa | 1.5mm |
+## Plan zmian
 
-### Krok 3: Frontend API Client
+### 1. Zmiana formatu scrape na `links` (zamiast `html`)
 
-**Plik: `src/lib/api/firecrawl.ts`**
-- `firecrawlApi.map()` - mapowanie URLi
-- `firecrawlApi.scrape()` - scrapowanie pojedynczej strony
-- `foilImportApi.mapProducts()` - mapowanie produktów folii
-- `foilImportApi.scrapeProducts(urls)` - pobieranie szczegółów
-- `foilImportApi.saveProducts(products)` - zapis do bazy
+**Plik**: `src/lib/api/firecrawl.ts`
 
-### Krok 4: Strona administracyjna
+Zmienić wywołanie:
+```typescript
+const result = await firecrawlApi.scrape(product.url, {
+  formats: ['links'],  // Zamiast ['html']
+  onlyMainContent: false,
+});
+```
 
-**Plik: `src/pages/ImportFoils.tsx`**
-- Interfejs 3-krokowy:
-  1. **Mapuj stronę** - skanowanie renolit-alkorplan.com
-  2. **Pobierz dane** - scrapowanie szczegółów produktów
-  3. **Zapisz** - wybór produktów i zapis do bazy
-- Podgląd produktów z obrazkami, typami i grubościami
-- Możliwość wyboru które produkty zaimportować
-- Progress bar i obsługa błędów
+### 2. Nowa logika ekstrakcji obrazka
 
-### Krok 5: Aktualizacje konfiguracji
+Zamiast szukać `metadata.ogImage`, wybrać pierwszy link kończący się na rozszerzenie obrazka z katalogu `fileadmin/_processed_`:
 
-**Plik: `supabase/config.toml`**
-- Dodanie funkcji: `firecrawl-map`, `firecrawl-scrape`, `import-foils-from-web`
-- Wszystkie z `verify_jwt = false`
+```typescript
+// Szukaj pierwszego obrazka z fileadmin/_processed_
+const links: string[] = scrapeData.links || [];
+const imageLink = links.find((link: string) => 
+  link.includes('/fileadmin/_processed_/') && 
+  /\.(jpg|jpeg|png|webp)$/i.test(link)
+);
 
-**Plik: `src/App.tsx`**
-- Import `ImportFoils` component
-- Nowa ścieżka `/import-foils`
+if (imageLink) {
+  updated.imageUrl = imageLink;
+  console.log(`[scrape] ${product.symbol} -> found image: ${updated.imageUrl}`);
+}
+```
 
-## Mapowanie danych produktu
+### 3. Fallback do ogólnego wyszukiwania obrazka
 
-| Pole w bazie | Źródło |
-|--------------|--------|
-| `symbol` | `ALKORPLAN-{KOLEKCJA}-{PRODUKT}` |
-| `name` | `ALKORPLAN {Kolekcja} - {Nazwa}` |
-| `category` | `'folia'` |
-| `foil_category` | `'jednokolorowa'` / `'strukturalna'` / `'nadruk'` / `'antyposlizgowa'` |
-| `subcategory` | Nazwa kolekcji |
-| `foil_width` | `1.65` (domyślnie) |
-| `description` | Opis z mapowania + nazwa produktu |
-| `image_id` | URL obrazu ze strony |
-| `price` | `0` (wymaga ręcznego uzupełnienia) |
+Jeśli nie znajdzie w `fileadmin/_processed_`, szuka dowolnego pierwszego `.jpg/.png`:
 
-## Pliki do utworzenia/modyfikacji
+```typescript
+if (!imageLink) {
+  const anyImage = links.find((link: string) => 
+    /\.(jpg|jpeg|png|webp)$/i.test(link) && 
+    !link.includes('favicon') && 
+    !link.includes('logo')
+  );
+  if (anyImage) {
+    updated.imageUrl = anyImage;
+  }
+}
+```
 
-1. `supabase/functions/firecrawl-map/index.ts` - NOWY
-2. `supabase/functions/firecrawl-scrape/index.ts` - NOWY
-3. `supabase/functions/import-foils-from-web/index.ts` - NOWY
-4. `src/lib/api/firecrawl.ts` - NOWY
-5. `src/pages/ImportFoils.tsx` - NOWY
-6. `supabase/config.toml` - EDYCJA (dodanie funkcji)
-7. `src/App.tsx` - EDYCJA (dodanie ścieżki)
+---
 
-## Uwagi techniczne
+## Podsumowanie zmian
 
-- Firecrawl API Key już skonfigurowany w konektorze
-- Scrapowanie w partiach po 10 produktów (rate limiting 500ms)
-- Obrazy linkowane bezpośrednio z serwera Renolit
-- Ceny wymagają ręcznego uzupełnienia po imporcie
-- Przewidywana liczba produktów: ~70
+| Plik | Zmiana |
+|------|--------|
+| `src/lib/api/firecrawl.ts` | Zmiana formatu z `html` na `links`, nowa logika ekstrakcji URL obrazka z listy linków |
+
+## Po wdrożeniu
+
+1. Przejdź do `/import-foils`
+2. Kliknij "Rozpocznij skanowanie"
+3. Kliknij "Pobierz zdjęcia" - teraz powinny się pojawić miniatury
+4. Kliknij "Zapisz" - obrazki zostaną zapisane do `product_images`
+5. W `/produkty` zdjęcia będą widoczne
+
+## Oczekiwany rezultat
+
+W konsoli zobaczysz:
+```
+[scrape] ALKORPLAN-ALKORPLAN3000-PERSIA-BLUE -> found image: https://renolit-alkorplan.com/fileadmin/_processed_/.../csm_1_RENOLIT_Persia_Blue-_013_751748a086.jpg
+[scrapeProductDetails] Total with images: 43
+```
