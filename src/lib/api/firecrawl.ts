@@ -109,18 +109,28 @@ export const foilImportApi = {
         try {
           const result = await firecrawlApi.scrape(product.url, {
             formats: ['html'],
-            onlyMainContent: true,
+            onlyMainContent: false, // Need full page for metadata
           });
 
-          if (result.success && result.data) {
-            // Try to extract image URL from HTML
-            const html = result.data.html || '';
-            const imgMatch = html.match(/og:image[^>]*content="([^"]+)"/i) ||
-                            html.match(/<img[^>]*src="([^"]+)"[^>]*class="[^"]*product[^"]*"/i) ||
-                            html.match(/data-src="([^"]+\.(?:jpg|jpeg|png|webp))"/i);
+          if (result.success) {
+            // Firecrawl v1 nests data inside result.data
+            const responseData = result.data || result;
             
-            if (imgMatch) {
-              product.imageUrl = imgMatch[1];
+            // Try metadata.ogImage first (most reliable)
+            if (responseData.metadata?.ogImage) {
+              product.imageUrl = responseData.metadata.ogImage;
+            } else {
+              // Fallback: extract from HTML
+              const html = responseData.html || '';
+              const imgMatch = 
+                html.match(/property="og:image"\s*content="([^"]+)"/i) ||
+                html.match(/content="([^"]+)"\s*property="og:image"/i) ||
+                html.match(/<img[^>]*src="([^"]+)"[^>]*class="[^"]*main[^"]*"/i) ||
+                html.match(/data-src="([^"]+\.(?:jpg|jpeg|png|webp))"/i);
+              
+              if (imgMatch) {
+                product.imageUrl = imgMatch[1];
+              }
             }
           }
         } catch (err) {
