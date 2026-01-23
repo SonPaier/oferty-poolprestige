@@ -106,28 +106,39 @@ export const foilImportApi = {
       const batch = products.slice(i, i + batchSize);
       
       const promises = batch.map(async (product) => {
+        // Clone so we don't mutate original
+        const updated = { ...product };
         try {
           const result = await firecrawlApi.scrape(product.url, {
             formats: ['html'],
             onlyMainContent: false, // Need full page for metadata
           });
 
-          // Some Firecrawl responses don't include `success` and only return `{ data: ... }`.
-          // Treat as success unless explicitly `success: false`.
-          const successFlag = (result as any)?.success;
+          // Firecrawl responses: either { success, data } or just { data }
+          const raw = result as any;
+          const successFlag = raw?.success;
           const isOk = successFlag === undefined ? true : Boolean(successFlag);
 
-          if (isOk && (result as any)?.data) {
-            // Firecrawl sometimes nests like { data: { ... } } and sometimes { success: true, data: { ... } }.
-            const payload: any = (result as any).data;
-            const responseData: any = payload?.data ?? payload;
-            
+          // Handle nested structure: edge fn returns { data: firecrawlResponse }
+          // firecrawlResponse = { data: { html, metadata, ... }, success: true }
+          let scrapeData: any = null;
+          if (isOk && raw?.data) {
+            // If nested one more level (from invoke wrapper)
+            if (raw.data.data) {
+              scrapeData = raw.data.data;
+            } else {
+              scrapeData = raw.data;
+            }
+          }
+
+          if (scrapeData) {
             // Try metadata.ogImage first (most reliable)
-            if (responseData.metadata?.ogImage) {
-              product.imageUrl = responseData.metadata.ogImage;
+            if (scrapeData.metadata?.ogImage) {
+              updated.imageUrl = scrapeData.metadata.ogImage;
+              console.log(`[scrape] ${product.symbol} -> ogImage: ${updated.imageUrl}`);
             } else {
               // Fallback: extract from HTML
-              const html = responseData.html || '';
+              const html = scrapeData.html || '';
               const imgMatch = 
                 html.match(/property="og:image"\s*content="([^"]+)"/i) ||
                 html.match(/content="([^"]+)"\s*property="og:image"/i) ||
@@ -135,14 +146,19 @@ export const foilImportApi = {
                 html.match(/data-src="([^"]+\.(?:jpg|jpeg|png|webp))"/i);
               
               if (imgMatch) {
-                product.imageUrl = imgMatch[1];
+                updated.imageUrl = imgMatch[1];
+                console.log(`[scrape] ${product.symbol} -> html match: ${updated.imageUrl}`);
+              } else {
+                console.warn(`[scrape] ${product.symbol} -> no image found`);
               }
             }
+          } else {
+            console.warn(`[scrape] ${product.symbol} -> no scrapeData`, raw);
           }
         } catch (err) {
           console.warn(`Failed to scrape ${product.url}:`, err);
         }
-        return product;
+        return updated;
       });
 
       const results = await Promise.all(promises);
@@ -154,6 +170,7 @@ export const foilImportApi = {
       }
     }
 
+    console.log('[scrapeProductDetails] Total with images:', updatedProducts.filter(p => p.imageUrl).length);
     return updatedProducts;
   },
 
