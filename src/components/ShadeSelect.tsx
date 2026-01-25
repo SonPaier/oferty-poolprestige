@@ -8,13 +8,12 @@ import {
 
 export const SHADE_OPTIONS = [
   { value: 'biały', label: 'Biały', hex: '#FFFFFF' },
-  { value: 'beżowy', label: 'Beżowy', hex: '#D2B48C' },
+  { value: 'beżowy/brązowy', label: 'Beżowy/Brązowy', hex: '#C4A67C' },
   { value: 'szary', label: 'Szary', hex: '#808080' },
   { value: 'czarny', label: 'Czarny', hex: '#1A1A1A' },
   { value: 'niebieski', label: 'Niebieski', hex: '#4169E1' },
   { value: 'turkusowy', label: 'Turkusowy', hex: '#20B2AA' },
   { value: 'zielony', label: 'Zielony', hex: '#228B22' },
-  { value: 'brązowy', label: 'Brązowy', hex: '#8B4513' },
 ] as const;
 
 export type ShadeValue = typeof SHADE_OPTIONS[number]['value'] | null;
