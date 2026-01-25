@@ -5,24 +5,23 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Simplified palette - 8 base colors that cover major foil shades
+// Simplified palette - 7 base colors that cover major foil shades
 const SIMPLIFIED_PALETTE = [
   { hex: '#FFFFFF', shade: 'biały', rgb: { r: 255, g: 255, b: 255 } },
-  { hex: '#D2B48C', shade: 'beżowy', rgb: { r: 210, g: 180, b: 140 } },
+  { hex: '#C4A67C', shade: 'beżowy/brązowy', rgb: { r: 196, g: 166, b: 124 } },
   { hex: '#808080', shade: 'szary', rgb: { r: 128, g: 128, b: 128 } },
   { hex: '#1A1A1A', shade: 'czarny', rgb: { r: 26, g: 26, b: 26 } },
   { hex: '#4169E1', shade: 'niebieski', rgb: { r: 65, g: 105, b: 225 } },
   { hex: '#20B2AA', shade: 'turkusowy', rgb: { r: 32, g: 178, b: 170 } },
   { hex: '#228B22', shade: 'zielony', rgb: { r: 34, g: 139, b: 34 } },
-  { hex: '#8B4513', shade: 'brązowy', rgb: { r: 139, g: 69, b: 19 } },
 ];
 
 // Producer color names mapping to simplified palette (Polish shades)
 const PRODUCER_COLOR_MAP: Record<string, string> = {
   // English
   'white': 'biały',
-  'sand': 'beżowy',
-  'beige': 'beżowy',
+  'sand': 'beżowy/brązowy',
+  'beige': 'beżowy/brązowy',
   'cream': 'biały',
   'grey': 'szary',
   'gray': 'szary',
@@ -42,10 +41,10 @@ const PRODUCER_COLOR_MAP: Record<string, string> = {
   'teal': 'turkusowy',
   'green': 'zielony',
   'olive': 'zielony',
-  'brown': 'brązowy',
-  'chocolate': 'brązowy',
-  'terracotta': 'brązowy',
-  'terra': 'brązowy',
+  'brown': 'beżowy/brązowy',
+  'chocolate': 'beżowy/brązowy',
+  'terracotta': 'beżowy/brązowy',
+  'terra': 'beżowy/brązowy',
   
   // German (ELBE)
   'weiß': 'biały',
@@ -53,23 +52,23 @@ const PRODUCER_COLOR_MAP: Record<string, string> = {
   'grau': 'szary',
   'blau': 'niebieski',
   'schwarz': 'czarny',
-  'braun': 'brązowy',
+  'braun': 'beżowy/brązowy',
   'grün': 'zielony',
   
   // Product-specific names
-  'bhumi': 'beżowy',
-  'nara': 'beżowy',
+  'bhumi': 'beżowy/brązowy',
+  'nara': 'beżowy/brązowy',
   'chandra': 'szary',
   'kohinoor': 'niebieski',
   'prestige': 'czarny',
-  'sublime': 'beżowy',
+  'sublime': 'beżowy/brązowy',
   'volcanic': 'szary',
-  'travertine': 'beżowy',
-  'authentic': 'beżowy',
+  'travertine': 'beżowy/brązowy',
+  'authentic': 'beżowy/brązowy',
   'concrete': 'szary',
   'marble': 'biały',
   'pearl': 'biały',
-  'amber': 'beżowy',
+  'amber': 'beżowy/brązowy',
   'basalt': 'szary',
   'ocean': 'niebieski',
   'azure': 'niebieski',
@@ -82,7 +81,7 @@ const PRODUCER_COLOR_MAP: Record<string, string> = {
   'summer': 'niebieski',
   'tropical': 'niebieski',
   'urban': 'szary',
-  'vintage': 'beżowy',
+  'vintage': 'beżowy/brązowy',
   
   // Kolos collection
   'delos': 'niebieski',
@@ -94,15 +93,15 @@ const PRODUCER_COLOR_MAP: Record<string, string> = {
   // Alive collection
   'aquarelle': 'niebieski',
   'mist': 'szary',
-  'coral': 'beżowy',
+  'coral': 'beżowy/brązowy',
   
   // Touch collection
   'relax': 'niebieski',
   'elegance': 'szary',
   'serenity': 'niebieski',
-  'vanity': 'beżowy',
-  'origin': 'beżowy',
-  'genuine': 'beżowy',
+  'vanity': 'beżowy/brązowy',
+  'origin': 'beżowy/brązowy',
+  'genuine': 'beżowy/brązowy',
   
   // Alkorplan colors
   'adriatic': 'niebieski',
