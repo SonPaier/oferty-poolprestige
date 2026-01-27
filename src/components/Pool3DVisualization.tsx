@@ -535,7 +535,10 @@ function StairsMesh({ dimensions, stairs }: { dimensions: PoolDimensions; stairs
     }), []);
 
   const actualStairsWidth = stairsWidth;
-  const actualStepCount = Math.ceil(poolDepth / stepHeight);
+  // Use step count from config, calculate equal step heights
+  const actualStepCount = stairs.stepCount && stairs.stepCount >= 2 ? stairs.stepCount : Math.max(2, Math.ceil(poolDepth / stepHeight));
+  // Each step has equal height, first step starts below pool edge
+  const actualStepHeight = poolDepth / actualStepCount;
 
   // For diagonal stairs, create triangular steps
   if (placement === 'diagonal') {
@@ -553,7 +556,8 @@ function StairsMesh({ dimensions, stairs }: { dimensions: PoolDimensions; stairs
       const totalDiagonalExtent = actualStepCount * stepDepth;
       
       for (let i = 0; i < actualStepCount; i++) {
-        const stepTop = -i * stepHeight;
+        // First step starts at -actualStepHeight (below pool edge), not at 0
+        const stepTop = -(i + 1) * actualStepHeight;
         const stepBottom = -poolDepth;
         const thisStepHeight = Math.abs(stepTop - stepBottom);
         const posZ = (stepTop + stepBottom) / 2;
@@ -603,7 +607,7 @@ function StairsMesh({ dimensions, stairs }: { dimensions: PoolDimensions; stairs
       }
       
       return stepsArr;
-    }, [actualStepCount, stepHeight, stepDepth, actualStairsWidth, corner, halfL, halfW, poolDepth, stepFrontMaterial, stepTopMaterial]);
+    }, [actualStepCount, actualStepHeight, stepDepth, actualStairsWidth, corner, halfL, halfW, poolDepth, stepFrontMaterial, stepTopMaterial]);
     
     return <group>{diagonalSteps}</group>;
   }
@@ -643,7 +647,8 @@ function StairsMesh({ dimensions, stairs }: { dimensions: PoolDimensions; stairs
     const stepsArr: JSX.Element[] = [];
     
     for (let i = 0; i < actualStepCount; i++) {
-      const stepTop = -i * stepHeight;
+      // First step starts at -actualStepHeight (below pool edge), not at 0
+      const stepTop = -(i + 1) * actualStepHeight;
       const stepZ = i * stepDepth;
       
       const stepBottom = -poolDepth;
@@ -709,7 +714,7 @@ function StairsMesh({ dimensions, stairs }: { dimensions: PoolDimensions; stairs
     }
     
     return stepsArr;
-  }, [actualStepCount, stepHeight, stepDepth, actualStairsWidth, corner, direction, position, placement, wall, baseX, baseY, xDir, yDir, isAlongLength, poolDepth, stepTopMaterial, stepFrontMaterial]);
+  }, [actualStepCount, actualStepHeight, stepDepth, actualStairsWidth, corner, direction, position, placement, wall, baseX, baseY, xDir, yDir, isAlongLength, poolDepth, stepTopMaterial, stepFrontMaterial]);
 
   return <group>{steps}</group>;
 }
