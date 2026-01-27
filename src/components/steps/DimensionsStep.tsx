@@ -43,12 +43,10 @@ import {
   PoolCorner,
   PoolWall,
   WallDirection,
-  StairsPosition,
   StairsPlacement,
   poolCornerLabels,
   poolWallLabels,
   wallDirectionLabels,
-  stairsPositionLabels,
   stairsPlacementLabels
 } from '@/types/configurator';
 import { calculatePoolMetrics, calculateFoilOptimization } from '@/lib/calculations';
@@ -128,7 +126,9 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
   // First step starts at -stepHeight (below pool edge)
   const calculateStepHeight = (poolDepth: number, stepCount: number) => {
     if (stepCount <= 0) return 0.20;
-    return poolDepth / stepCount;
+    // We intentionally divide by (stepCount + 1) so the last tread is NOT flush with the pool floor.
+    // This also ensures the first tread is lower than the pool edge.
+    return poolDepth / (stepCount + 1);
   };
 
   // Calculate actual step depth based on pool dimensions and step count
@@ -191,6 +191,10 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
   // Update stairs config
   const updateStairs = (updates: Partial<StairsConfig>) => {
     const newStairs = { ...dimensions.stairs, ...updates };
+
+    // Outside stairs are no longer supported
+    newStairs.position = 'inside';
+
     // Auto-calculate stepHeight when stepCount changes
     if (updates.stepCount !== undefined) {
       newStairs.stepHeight = calculateStepHeight(dimensions.depth, updates.stepCount);
@@ -826,11 +830,11 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
                     <div className="flex items-center gap-2">
                       <Calculator className="w-3 h-3" />
                       <span>
-                        Wysokość stopnia: {Math.round((dimensions.depth / (dimensions.stairs.stepCount || 4)) * 100)} cm
+                        Wysokość stopnia: {Math.round((dimensions.depth / ((dimensions.stairs.stepCount || 4) + 1)) * 100)} cm
                       </span>
                     </div>
                     <div className="text-muted-foreground/70">
-                      Pierwszy stopień zaczyna się {Math.round((dimensions.depth / (dimensions.stairs.stepCount || 4)) * 100)} cm poniżej krawędzi basenu
+                      Pierwszy stopień zaczyna się {Math.round((dimensions.depth / ((dimensions.stairs.stepCount || 4) + 1)) * 100)} cm poniżej krawędzi basenu
                     </div>
                     <div className="text-muted-foreground/70">
                       Głębokość stopnia (min): {Math.round((dimensions.stairs.stepDepth || 0.30) * 100)} cm
@@ -839,30 +843,8 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
                     </div>
                   </div>
                   
-                  {/* Position (inside/outside) */}
-                  <div>
-                    <Label className="text-sm font-medium mb-2 block">Pozycja</Label>
-                    <RadioGroup
-                      value={dimensions.stairs.position || 'inside'}
-                      onValueChange={(value) => updateStairs({ position: value as StairsPosition })}
-                      className="grid grid-cols-2 gap-2"
-                    >
-                      {(Object.keys(stairsPositionLabels) as StairsPosition[]).map((pos) => (
-                        <div key={pos} className="relative">
-                          <RadioGroupItem
-                            value={pos}
-                            id={`position-${pos}`}
-                            className="peer sr-only"
-                          />
-                          <Label
-                            htmlFor={`position-${pos}`}
-                            className="flex flex-col items-center justify-center p-2 rounded-lg border border-border bg-background cursor-pointer transition-all peer-data-[state=checked]:border-primary peer-data-[state=checked]:bg-primary/10 hover:bg-muted/50 text-xs"
-                          >
-                            {stairsPositionLabels[pos]}
-                          </Label>
-                        </div>
-                      ))}
-                    </RadioGroup>
+                  <div className="text-xs text-muted-foreground">
+                    Pozycja: wewnątrz basenu (schody na zewnątrz wyłączone)
                   </div>
                 </div>
               )}
