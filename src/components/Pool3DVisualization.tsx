@@ -514,8 +514,8 @@ function StairsMesh({ dimensions, stairs }: { dimensions: PoolDimensions; stairs
   const corner = stairs.corner || 'back-left';
   const direction = stairs.direction || 'along-width';
   const stairsWidth = typeof stairs.width === 'number' && !isNaN(stairs.width) ? stairs.width : 1.5;
-  const stepHeight = typeof stairs.stepHeight === 'number' && !isNaN(stairs.stepHeight) && stairs.stepHeight > 0 ? stairs.stepHeight : 0.29;
-  const stepDepth = typeof stairs.stepDepth === 'number' && !isNaN(stairs.stepDepth) && stairs.stepDepth > 0 ? stairs.stepDepth : 0.29;
+  const stepHeight = typeof stairs.stepHeight === 'number' && !isNaN(stairs.stepHeight) && stairs.stepHeight > 0 ? stairs.stepHeight : 0.20;
+  const stepDepth = typeof stairs.stepDepth === 'number' && !isNaN(stairs.stepDepth) && stairs.stepDepth > 0 ? stairs.stepDepth : 0.30;
   
   const poolDepth = depth || 1.5;
   const halfL = (length || 8) / 2;
@@ -1315,7 +1315,9 @@ function CustomStairsMesh({ vertices, depth, poolVertices, rotation = 0, showDim
   rotation?: number; // 0, 45, 90, 135, 180, 225, 270, 315 degrees
   showDimensions?: boolean;
 }) {
-  const stepHeight = 0.29;
+  // Step dimensions: 30cm depth (going into pool), 20cm height (max per building code)
+  const stepHeight = 0.20;
+  const stepDepth = 0.30;
   const stepCount = Math.ceil(depth / stepHeight);
   
   const stepTopMaterial = useMemo(() => 
@@ -1377,37 +1379,44 @@ function CustomStairsMesh({ vertices, depth, poolVertices, rotation = 0, showDim
       const stepDepth = diagonalExtent / stepCount;
       
       // Determine direction vector based on rotation angle
-      // 45°: from top-right corner to bottom-left (-X, +Y direction for steps)
-      // 135°: from bottom-right to top-left (-X, -Y direction for steps)
-      // 225°: from bottom-left to top-right (+X, -Y direction for steps)
-      // 315°: from top-left to bottom-right (+X, +Y direction for steps)
+      // The arrow shows the direction you WALK when entering (where you're going TO)
+      // Steps should be sliced so first step is at ENTRY point, last step at bottom
+      // Canvas: Y grows DOWN, X grows RIGHT
+      // Arrow drawn using: dx = sin(rotation), dy = cos(rotation)
+      // 
+      // 0°: Arrow points DOWN (0, +1 in canvas), entry from top, steps toward bottom
+      // 90°: Arrow points RIGHT (+1, 0), entry from left, steps toward right
+      // 180°: Arrow points UP (0, -1), entry from bottom, steps toward top
+      // 270°: Arrow points LEFT (-1, 0), entry from right, steps toward left
+      // 315°: Arrow points DOWN-LEFT (-0.707, +0.707), entry from top-right, steps toward bottom-left
+      
       let dirX: number, dirY: number;
       let startCornerX: number, startCornerY: number;
       
       switch (rotation) {
-        case 45: // Entry from top-right, steps go toward bottom-left
-          dirX = -1 / Math.SQRT2;
+        case 45: // Arrow points DOWN-RIGHT (+0.707, +0.707), steps go toward maxX, maxY
+          dirX = 1 / Math.SQRT2;
           dirY = 1 / Math.SQRT2;
-          startCornerX = bounds.maxX;
+          startCornerX = bounds.minX;
           startCornerY = bounds.minY;
           break;
-        case 135: // Entry from bottom-right, steps go toward top-left
+        case 135: // Arrow points UP-RIGHT (+0.707, -0.707), steps go toward maxX, minY
+          dirX = 1 / Math.SQRT2;
+          dirY = -1 / Math.SQRT2;
+          startCornerX = bounds.minX;
+          startCornerY = bounds.maxY;
+          break;
+        case 225: // Arrow points UP-LEFT (-0.707, -0.707), steps go toward minX, minY
           dirX = -1 / Math.SQRT2;
           dirY = -1 / Math.SQRT2;
           startCornerX = bounds.maxX;
           startCornerY = bounds.maxY;
           break;
-        case 225: // Entry from bottom-left, steps go toward top-right
-          dirX = 1 / Math.SQRT2;
-          dirY = -1 / Math.SQRT2;
-          startCornerX = bounds.minX;
-          startCornerY = bounds.maxY;
-          break;
-        case 315: // Entry from top-left, steps go toward bottom-right
+        case 315: // Arrow points DOWN-LEFT (-0.707, +0.707), steps go toward minX, maxY
         default:
-          dirX = 1 / Math.SQRT2;
+          dirX = -1 / Math.SQRT2;
           dirY = 1 / Math.SQRT2;
-          startCornerX = bounds.minX;
+          startCornerX = bounds.maxX;
           startCornerY = bounds.minY;
           break;
       }

@@ -53,9 +53,9 @@ export const defaultStairsConfig: StairsConfig = {
   corner: 'back-left',
   direction: 'along-width',
   width: 1.5,
-  stepHeight: 0.29,
+  stepHeight: 0.20, // 20cm max height per step
   stepCount: 4,
-  stepDepth: 0.29,
+  stepDepth: 0.30, // 30cm depth per step
 };
 
 export const defaultWadingPoolConfig: WadingPoolConfig = {
