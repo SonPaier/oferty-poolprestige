@@ -96,6 +96,8 @@ function getRegularStairsData(dimensions: PoolDimensions): StairsRenderData | nu
   
   if (placement === 'diagonal') {
     // Diagonal 45° corner stairs - triangle shape
+    // Size is based on stepCount × stepDepth (same as other stair types)
+    const diagonalSize = stepCount * stepDepth;
     const xDir = corner.includes('left') ? 1 : -1;
     const yDir = corner.includes('back') ? 1 : -1;
     const baseX = corner.includes('left') ? -halfL : halfL;
@@ -103,14 +105,14 @@ function getRegularStairsData(dimensions: PoolDimensions): StairsRenderData | nu
     
     outline = [
       { x: baseX, y: baseY },
-      { x: baseX + xDir * stairsWidth, y: baseY },
-      { x: baseX, y: baseY + yDir * stairsWidth }
+      { x: baseX + xDir * diagonalSize, y: baseY },
+      { x: baseX, y: baseY + yDir * diagonalSize }
     ];
     
     // Add diagonal step lines for triangle stairs
     for (let i = 1; i < stepCount; i++) {
       const progress = i / stepCount;
-      const lineLen = stairsWidth * (1 - progress);
+      const lineLen = diagonalSize * (1 - progress);
       stepLines.push({
         x1: baseX + xDir * lineLen,
         y1: baseY,

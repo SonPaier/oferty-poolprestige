@@ -546,12 +546,17 @@ function StairsMesh({ dimensions, stairs }: { dimensions: PoolDimensions; stairs
   const actualStepDepth = stepDepth;
 
   // For diagonal stairs, create triangular steps
+  // Size is based on stepCount × stepDepth (same as other stair types)
   if (placement === 'diagonal') {
     const diagonalSteps = useMemo(() => {
       const stepsArr: JSX.Element[] = [];
       
       const baseX = corner.includes('left') ? -halfL : halfL;
       const baseY = corner.includes('back') ? -halfW : halfW;
+      
+      // For 45° diagonal stairs, the triangle size is based on stepCount × stepDepth
+      // This ensures changing stepCount properly updates the stair size
+      const diagonalSize = actualStepCount * actualStepDepth;
 
       const makeTriangleShape = (size: number) => {
         const shape = new THREE.Shape();
@@ -592,9 +597,9 @@ function StairsMesh({ dimensions, stairs }: { dimensions: PoolDimensions; stairs
         const thisStepHeight = Math.abs(stepTop - stepBottom);
         
         // Calculate how much of the triangle remains at this step level
-        // First step (i=0) is full size, last step is smallest
-        const stepProgress = i / actualStepCount;
-        const remainingSize = actualStairsWidth * (1 - stepProgress);
+        // Each step is progressively smaller - from full size to smallest
+        const progress = (i + 1) / actualStepCount;
+        const remainingSize = diagonalSize * (1 - progress);
         
         if (remainingSize > 0.05) {
           const shape = makeTriangleShape(remainingSize);
@@ -614,7 +619,7 @@ function StairsMesh({ dimensions, stairs }: { dimensions: PoolDimensions; stairs
       }
       
       return stepsArr;
-    }, [actualStepCount, actualStepHeight, actualStairsWidth, corner, halfL, halfW, poolDepth, stepFrontMaterial, stepTopMaterial]);
+    }, [actualStepCount, actualStepHeight, actualStepDepth, corner, halfL, halfW, poolDepth, stepFrontMaterial, stepTopMaterial]);
     
     return <group>{diagonalSteps}</group>;
   }
@@ -1152,8 +1157,10 @@ function StairsDimensionLines({ dimensions }: { dimensions: PoolDimensions }) {
   const wall = stairs.wall || 'back';
   const corner = stairs.corner || 'back-left';
   const direction = stairs.direction || 'along-width';
-  const stepCount = Math.ceil(depth / (stairs.stepHeight || 0.29));
-  const stairsLength = stepCount * (stairs.stepDepth || 0.29);
+  // Use configured stepCount, calculate stairsLength based on stepCount × stepDepth
+  const stepCount = stairs.stepCount || 4;
+  const stepDepth = stairs.stepDepth || 0.30;
+  const stairsLength = stepCount * stepDepth;
   
   // Calculate position based on placement
   let posX: number, posY: number, dirX: number, dirY: number;
