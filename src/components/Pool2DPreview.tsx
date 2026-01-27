@@ -66,17 +66,24 @@ function getPoolPoints(dimensions: PoolDimensions): { x: number; y: number }[] {
   return points;
 }
 
-// Generate stairs points for rectangular/oval pools
-function getRegularStairsPoints(dimensions: PoolDimensions): { x: number; y: number }[] | null {
+// Stairs configuration with step lines for 2D visualization
+interface StairsRenderData {
+  outline: { x: number; y: number }[];
+  stepLines: { x1: number; y1: number; x2: number; y2: number }[];
+}
+
+// Generate stairs points for rectangular/oval pools with step lines
+function getRegularStairsData(dimensions: PoolDimensions): StairsRenderData | null {
   const stairs = dimensions.stairs;
   if (!stairs?.enabled || dimensions.shape === 'nieregularny') return null;
   
-  const { length, width, depth } = dimensions;
+  const { length, width } = dimensions;
   const halfL = length / 2;
   const halfW = width / 2;
   const stairsWidth = typeof stairs.width === 'number' ? stairs.width : 1.5;
-  const stepDepth = stairs.stepDepth || 0.29;
-  const stepCount = Math.ceil(depth / (stairs.stepHeight || 0.29));
+  const stepDepth = stairs.stepDepth || 0.30;
+  const stepCount = stairs.stepCount || 4;
+  // Stairs length = stepCount * stepDepth (NOT auto-scaled to pool dimensions)
   const stairsLength = stepCount * stepDepth;
   
   const placement = stairs.placement || 'wall';
@@ -84,7 +91,8 @@ function getRegularStairsPoints(dimensions: PoolDimensions): { x: number; y: num
   const corner = stairs.corner || 'back-left';
   const direction = stairs.direction || 'along-width';
   
-  let points: { x: number; y: number }[] = [];
+  let outline: { x: number; y: number }[] = [];
+  let stepLines: { x1: number; y1: number; x2: number; y2: number }[] = [];
   
   if (placement === 'diagonal') {
     // Diagonal 45° corner stairs - triangle shape
@@ -93,45 +101,94 @@ function getRegularStairsPoints(dimensions: PoolDimensions): { x: number; y: num
     const baseX = corner.includes('left') ? -halfL : halfL;
     const baseY = corner.includes('back') ? -halfW : halfW;
     
-    points = [
+    outline = [
       { x: baseX, y: baseY },
       { x: baseX + xDir * stairsWidth, y: baseY },
       { x: baseX, y: baseY + yDir * stairsWidth }
     ];
+    
+    // Add diagonal step lines for triangle stairs
+    for (let i = 1; i < stepCount; i++) {
+      const progress = i / stepCount;
+      const lineLen = stairsWidth * (1 - progress);
+      stepLines.push({
+        x1: baseX + xDir * lineLen,
+        y1: baseY,
+        x2: baseX,
+        y2: baseY + yDir * lineLen
+      });
+    }
   } else if (placement === 'wall') {
     // Wall placement: centered on wall
     switch (wall) {
       case 'back':
-        points = [
+        outline = [
           { x: -stairsWidth / 2, y: -halfW },
           { x: stairsWidth / 2, y: -halfW },
           { x: stairsWidth / 2, y: -halfW + stairsLength },
           { x: -stairsWidth / 2, y: -halfW + stairsLength }
         ];
+        // Step lines - horizontal lines across the stairs
+        for (let i = 1; i < stepCount; i++) {
+          const stepY = -halfW + i * stepDepth;
+          stepLines.push({
+            x1: -stairsWidth / 2,
+            y1: stepY,
+            x2: stairsWidth / 2,
+            y2: stepY
+          });
+        }
         break;
       case 'front':
-        points = [
+        outline = [
           { x: -stairsWidth / 2, y: halfW },
           { x: stairsWidth / 2, y: halfW },
           { x: stairsWidth / 2, y: halfW - stairsLength },
           { x: -stairsWidth / 2, y: halfW - stairsLength }
         ];
+        for (let i = 1; i < stepCount; i++) {
+          const stepY = halfW - i * stepDepth;
+          stepLines.push({
+            x1: -stairsWidth / 2,
+            y1: stepY,
+            x2: stairsWidth / 2,
+            y2: stepY
+          });
+        }
         break;
       case 'left':
-        points = [
+        outline = [
           { x: -halfL, y: -stairsWidth / 2 },
           { x: -halfL, y: stairsWidth / 2 },
           { x: -halfL + stairsLength, y: stairsWidth / 2 },
           { x: -halfL + stairsLength, y: -stairsWidth / 2 }
         ];
+        for (let i = 1; i < stepCount; i++) {
+          const stepX = -halfL + i * stepDepth;
+          stepLines.push({
+            x1: stepX,
+            y1: -stairsWidth / 2,
+            x2: stepX,
+            y2: stairsWidth / 2
+          });
+        }
         break;
       case 'right':
-        points = [
+        outline = [
           { x: halfL, y: -stairsWidth / 2 },
           { x: halfL, y: stairsWidth / 2 },
           { x: halfL - stairsLength, y: stairsWidth / 2 },
           { x: halfL - stairsLength, y: -stairsWidth / 2 }
         ];
+        for (let i = 1; i < stepCount; i++) {
+          const stepX = halfL - i * stepDepth;
+          stepLines.push({
+            x1: stepX,
+            y1: -stairsWidth / 2,
+            x2: stepX,
+            y2: stairsWidth / 2
+          });
+        }
         break;
     }
   } else {
@@ -143,23 +200,49 @@ function getRegularStairsPoints(dimensions: PoolDimensions): { x: number; y: num
     const baseY = corner.includes('back') ? -halfW : halfW;
     
     if (isAlongLength) {
-      points = [
+      outline = [
         { x: baseX, y: baseY },
         { x: baseX + xDir * stairsLength, y: baseY },
         { x: baseX + xDir * stairsLength, y: baseY + yDir * stairsWidth },
         { x: baseX, y: baseY + yDir * stairsWidth }
       ];
+      // Step lines - vertical lines across the stairs
+      for (let i = 1; i < stepCount; i++) {
+        const stepX = baseX + xDir * i * stepDepth;
+        stepLines.push({
+          x1: stepX,
+          y1: baseY,
+          x2: stepX,
+          y2: baseY + yDir * stairsWidth
+        });
+      }
     } else {
-      points = [
+      outline = [
         { x: baseX, y: baseY },
         { x: baseX + xDir * stairsWidth, y: baseY },
         { x: baseX + xDir * stairsWidth, y: baseY + yDir * stairsLength },
         { x: baseX, y: baseY + yDir * stairsLength }
       ];
+      // Step lines - horizontal lines across the stairs
+      for (let i = 1; i < stepCount; i++) {
+        const stepY = baseY + yDir * i * stepDepth;
+        stepLines.push({
+          x1: baseX,
+          y1: stepY,
+          x2: baseX + xDir * stairsWidth,
+          y2: stepY
+        });
+      }
     }
   }
   
-  return points;
+  return { outline, stepLines };
+}
+
+// Legacy wrapper for places that just need points
+function getRegularStairsPoints(dimensions: PoolDimensions): { x: number; y: number }[] | null {
+  const data = getRegularStairsData(dimensions);
+  return data?.outline || null;
 }
 
 // Generate wading pool points for rectangular pools
@@ -233,17 +316,22 @@ function transformCustomVertices(
 export default function Pool2DPreview({ dimensions, height = 300, dimensionDisplay = 'pool' }: Pool2DPreviewProps) {
   const poolPoints = useMemo(() => getPoolPoints(dimensions), [dimensions]);
   
-  const stairsPoints = useMemo(() => {
-    // Check for custom stairs vertices array
+  // Get full stairs data including step lines
+  const stairsData = useMemo(() => {
     if (dimensions.shape === 'nieregularny' && dimensions.customStairsVertices?.[0]) {
-      return transformCustomVertices(
+      // For custom shapes, just return outline without step lines for now
+      const outline = transformCustomVertices(
         dimensions.customStairsVertices[0],
         dimensions.customVertices
       );
+      return { outline, stepLines: [] };
     }
-    // For regular shapes, generate stairs points from config
-    return getRegularStairsPoints(dimensions);
+    // For regular shapes, get full stairs data
+    return getRegularStairsData(dimensions);
   }, [dimensions]);
+  
+  const stairsPoints = stairsData?.outline || null;
+  const stairsStepLines = stairsData?.stepLines || [];
   
   const wadingPoolPoints = useMemo(() => {
     // Check for custom wading pool vertices array
@@ -382,7 +470,7 @@ export default function Pool2DPreview({ dimensions, height = 300, dimensionDispl
           </g>
         ))}
         
-        {/* Stairs */}
+        {/* Stairs outline */}
         {stairsPath && (
           <path
             d={stairsPath}
@@ -392,6 +480,21 @@ export default function Pool2DPreview({ dimensions, height = 300, dimensionDispl
             strokeDasharray="0.1 0.05"
           />
         )}
+        
+        {/* Stairs step lines - dashed lines showing individual steps */}
+        {stairsStepLines.map((line, index) => (
+          <line
+            key={`step-${index}`}
+            x1={line.x1}
+            y1={-line.y1}
+            x2={line.x2}
+            y2={-line.y2}
+            stroke="#0c4a6e"
+            strokeWidth="0.02"
+            strokeDasharray="0.08 0.04"
+            opacity={0.7}
+          />
+        ))}
         
         {/* Wading pool */}
         {wadingPoolPath && (

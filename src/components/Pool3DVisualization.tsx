@@ -541,18 +541,9 @@ function StairsMesh({ dimensions, stairs }: { dimensions: PoolDimensions; stairs
   // Divide depth into (stepCount + 1) segments so the last tread is NOT flush with the pool floor
   const actualStepHeight = poolDepth / (actualStepCount + 1);
 
-  // Step depth is a MIN value; actual can grow depending on pool dimensions and placement
-  const availableDepth = (() => {
-    if (placement === 'wall') {
-      return wall === 'back' || wall === 'front' ? (width || 4) : (length || 8);
-    }
-    if (placement === 'corner') {
-      return direction === 'along-length' ? (length || 8) : (width || 4);
-    }
-    // diagonal
-    return Math.min(length || 8, width || 4);
-  })();
-  const actualStepDepth = Math.max(stepDepth, availableDepth / actualStepCount);
+  // Step depth (głębokość stopnia) - use configured value, DO NOT auto-scale to pool dimensions
+  // Stairs should NOT stretch across the entire pool
+  const actualStepDepth = stepDepth;
 
   // For diagonal stairs, create triangular steps
   if (placement === 'diagonal') {

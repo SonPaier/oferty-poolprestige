@@ -131,44 +131,12 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
     return poolDepth / (stepCount + 1);
   };
 
-  // Calculate actual step depth based on pool dimensions and step count
-  // Step depth should be at least the configured minimum, but may be larger
-  const calculateActualStepDepth = (minStepDepth: number, stairsConfig: StairsConfig, poolLength: number, poolWidth: number) => {
-    if (!stairsConfig.enabled) return minStepDepth;
-    
+  // Calculate total stairs depth (how far they extend into the pool)
+  const calculateTotalStairsDepth = (stairsConfig: StairsConfig) => {
+    if (!stairsConfig.enabled) return 0;
     const stepCount = stairsConfig.stepCount || 4;
-    const placement = stairsConfig.placement || 'wall';
-    const wall = stairsConfig.wall || 'back';
-    const corner = stairsConfig.corner || 'back-left';
-    const direction = stairsConfig.direction || 'along-width';
-    
-    // Calculate available depth based on placement
-    let availableDepth = 0;
-    
-    if (placement === 'wall') {
-      // For wall placement, stairs go into the pool perpendicular to the wall
-      if (wall === 'back' || wall === 'front') {
-        availableDepth = poolWidth;
-      } else {
-        availableDepth = poolLength;
-      }
-    } else if (placement === 'corner') {
-      // For corner placement, depth depends on direction
-      if (direction === 'along-length') {
-        availableDepth = poolLength;
-      } else {
-        availableDepth = poolWidth;
-      }
-    } else if (placement === 'diagonal') {
-      // For diagonal, use the smaller of length/width
-      availableDepth = Math.min(poolLength, poolWidth);
-    }
-    
-    // Calculate step depth to fill available space
-    const calculatedDepth = availableDepth / stepCount;
-    
-    // Return at least the minimum configured depth
-    return Math.max(minStepDepth, calculatedDepth);
+    const stepDepth = stairsConfig.stepDepth || 0.30;
+    return stepCount * stepDepth;
   };
 
   // Get available corner labels based on pool vertices
@@ -813,7 +781,7 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
                         type="number"
                         step="1"
                         min="20"
-                        max="50"
+                        max="60"
                         value={Math.round((dimensions.stairs.stepDepth || 0.30) * 100)}
                         onChange={(e) => {
                           const cm = parseFloat(e.target.value) || 30;
@@ -821,7 +789,7 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
                         }}
                         className="input-field"
                       />
-                      <p className="text-xs text-muted-foreground mt-1">zalecane 30 cm</p>
+                      <p className="text-xs text-muted-foreground mt-1">część pozioma stopnia (30-50 cm)</p>
                     </div>
                   </div>
                   
@@ -830,16 +798,16 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
                     <div className="flex items-center gap-2">
                       <Calculator className="w-3 h-3" />
                       <span>
-                        Wysokość stopnia: {Math.round((dimensions.depth / ((dimensions.stairs.stepCount || 4) + 1)) * 100)} cm
+                        Wysokość podstopnia: {Math.round((dimensions.depth / ((dimensions.stairs.stepCount || 4) + 1)) * 100)} cm
                       </span>
                     </div>
                     <div className="text-muted-foreground/70">
                       Pierwszy stopień zaczyna się {Math.round((dimensions.depth / ((dimensions.stairs.stepCount || 4) + 1)) * 100)} cm poniżej krawędzi basenu
                     </div>
                     <div className="text-muted-foreground/70">
-                      Głębokość stopnia (min): {Math.round((dimensions.stairs.stepDepth || 0.30) * 100)} cm
-                      {' '}→{' '}
-                      Faktyczna: {Math.round(calculateActualStepDepth(dimensions.stairs.stepDepth || 0.30, dimensions.stairs, dimensions.length, dimensions.width) * 100)} cm
+                      Głębokość stopnia: {Math.round((dimensions.stairs.stepDepth || 0.30) * 100)} cm
+                      {' '}•{' '}
+                      Całkowita długość schodów: {Math.round(calculateTotalStairsDepth(dimensions.stairs) * 100)} cm
                     </div>
                   </div>
                   
