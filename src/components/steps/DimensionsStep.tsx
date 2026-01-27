@@ -123,17 +123,41 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
     });
   };
 
-  // Calculate step count from depth
-  const calculateStepCount = (poolDepth: number, stepHeight: number = 0.29) => {
-    return Math.ceil(poolDepth / stepHeight);
+  // Calculate step height from step count and depth
+  // First step starts lower (remainder of depth / stepCount)
+  const calculateStepHeight = (poolDepth: number, stepCount: number) => {
+    if (stepCount <= 0) return 0.20;
+    return poolDepth / stepCount;
+  };
+
+  // Get available corner labels based on pool vertices
+  const getCornerLabels = () => {
+    if (dimensions.customVertices && dimensions.customVertices.length >= 3) {
+      return dimensions.customVertices.map((_, index) => ({
+        value: String.fromCharCode(65 + index), // A, B, C, D...
+        label: `Narożnik ${String.fromCharCode(65 + index)}`
+      }));
+    }
+    // For rectangular pools, default to A, B, C, D
+    return [
+      { value: 'A', label: 'Narożnik A (tylny lewy)' },
+      { value: 'B', label: 'Narożnik B (tylny prawy)' },
+      { value: 'C', label: 'Narożnik C (przedni prawy)' },
+      { value: 'D', label: 'Narożnik D (przedni lewy)' }
+    ];
   };
 
   // Update stairs config
   const updateStairs = (updates: Partial<StairsConfig>) => {
     const newStairs = { ...dimensions.stairs, ...updates };
-    // Auto-calculate stepCount when enabling or when depth changes
-    if (updates.enabled || !newStairs.stepCount) {
-      newStairs.stepCount = calculateStepCount(dimensions.depth, newStairs.stepHeight);
+    // Auto-calculate stepHeight when stepCount changes
+    if (updates.stepCount !== undefined) {
+      newStairs.stepHeight = calculateStepHeight(dimensions.depth, updates.stepCount);
+    }
+    // Set default stepCount when enabling if not set
+    if (updates.enabled && !newStairs.stepCount) {
+      newStairs.stepCount = 4; // Default to 4 steps
+      newStairs.stepHeight = calculateStepHeight(dimensions.depth, 4);
     }
     dispatch({
       type: 'SET_DIMENSIONS',
@@ -149,15 +173,15 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
     });
   };
 
-  // Recalculate step count when depth changes
+  // Recalculate step height when depth changes (keeping step count)
   useEffect(() => {
-    if (dimensions.stairs?.enabled) {
-      const newStepCount = calculateStepCount(dimensions.depth, dimensions.stairs.stepHeight);
-      if (newStepCount !== dimensions.stairs.stepCount) {
-        updateStairs({ stepCount: newStepCount });
+    if (dimensions.stairs?.enabled && dimensions.stairs.stepCount) {
+      const newStepHeight = calculateStepHeight(dimensions.depth, dimensions.stairs.stepCount);
+      if (Math.abs(newStepHeight - (dimensions.stairs.stepHeight || 0)) > 0.001) {
+        updateStairs({ stepHeight: newStepHeight });
       }
     }
-  }, [dimensions.depth, dimensions.stairs?.stepHeight]);
+  }, [dimensions.depth]);
 
   const isCustomShape = dimensions.shape === 'nieregularny';
 
@@ -639,45 +663,59 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
                     </div>
                   )}
                   
-                  {/* Corner selection - visible when placement === 'corner' */}
-                  {dimensions.stairs.placement === 'corner' && (
+                  {/* Corner selection with labels (A, B, C...) - visible when placement === 'corner' or 'diagonal' */}
+                  {(dimensions.stairs.placement === 'corner' || dimensions.stairs.placement === 'diagonal') && (
                     <>
                       <div>
-                        <Label className="text-sm font-medium mb-2 block">Narożnik</Label>
+                        <Label className="text-sm font-medium mb-2 block">Narożnik (A, B, C...)</Label>
                         <Select
-                          value={dimensions.stairs.corner || 'back-left'}
-                          onValueChange={(value) => updateStairs({ corner: value as PoolCorner })}
+                          value={dimensions.stairs.cornerLabel || 'A'}
+                          onValueChange={(value) => {
+                            // Map letter to PoolCorner for backward compatibility
+                            const cornerMap: Record<string, PoolCorner> = {
+                              'A': 'back-left',
+                              'B': 'back-right',
+                              'C': 'front-right',
+                              'D': 'front-left'
+                            };
+                            updateStairs({ 
+                              cornerLabel: value,
+                              corner: cornerMap[value] || 'back-left'
+                            });
+                          }}
                         >
                           <SelectTrigger className="w-full">
-                            <SelectValue />
+                            <SelectValue placeholder="Wybierz narożnik" />
                           </SelectTrigger>
                           <SelectContent>
-                            {(Object.keys(poolCornerLabels) as PoolCorner[]).map((c) => (
-                              <SelectItem key={c} value={c}>
-                                {poolCornerLabels[c]}
+                            {getCornerLabels().map((corner) => (
+                              <SelectItem key={corner.value} value={corner.value}>
+                                {corner.label}
                               </SelectItem>
                             ))}
                           </SelectContent>
                         </Select>
                       </div>
-                      <div>
-                        <Label className="text-sm font-medium mb-2 block">Kierunek</Label>
-                        <Select
-                          value={dimensions.stairs.direction || 'along-width'}
-                          onValueChange={(value) => updateStairs({ direction: value as WallDirection })}
-                        >
-                          <SelectTrigger className="w-full">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {(Object.keys(wallDirectionLabels) as WallDirection[]).map((d) => (
-                              <SelectItem key={d} value={d}>
-                                {wallDirectionLabels[d]}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
+                      {dimensions.stairs.placement === 'corner' && (
+                        <div>
+                          <Label className="text-sm font-medium mb-2 block">Kierunek</Label>
+                          <Select
+                            value={dimensions.stairs.direction || 'along-width'}
+                            onValueChange={(value) => updateStairs({ direction: value as WallDirection })}
+                          >
+                            <SelectTrigger className="w-full">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {(Object.keys(wallDirectionLabels) as WallDirection[]).map((d) => (
+                                <SelectItem key={d} value={d}>
+                                  {wallDirectionLabels[d]}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      )}
                     </>
                   )}
                   
@@ -700,26 +738,26 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
                     />
                   </div>
                   
-                  {/* Step dimensions */}
+                  {/* Step count and depth */}
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <Label htmlFor="stepHeight" className="text-sm font-medium mb-2 block">
-                        Wys. stopnia (cm)
+                      <Label htmlFor="stepCount" className="text-sm font-medium mb-2 block">
+                        Liczba stopni
                       </Label>
                       <Input
-                        id="stepHeight"
+                        id="stepCount"
                         type="number"
                         step="1"
-                        min="10"
-                        max="25"
-                        value={Math.round((dimensions.stairs.stepHeight || 0.20) * 100)}
+                        min="2"
+                        max="15"
+                        value={dimensions.stairs.stepCount || 4}
                         onChange={(e) => {
-                          const cm = parseFloat(e.target.value) || 20;
-                          updateStairs({ stepHeight: cm / 100 });
+                          const count = parseInt(e.target.value) || 4;
+                          updateStairs({ stepCount: Math.max(2, Math.min(15, count)) });
                         }}
                         className="input-field"
                       />
-                      <p className="text-xs text-muted-foreground mt-1">maks. 20 cm</p>
+                      <p className="text-xs text-muted-foreground mt-1">2-15 stopni</p>
                     </div>
                     <div>
                       <Label htmlFor="stepDepth" className="text-sm font-medium mb-2 block">
@@ -742,13 +780,17 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
                     </div>
                   </div>
                   
-                  {/* Calculated step count info */}
-                  <div className="p-2 rounded bg-muted/50 text-xs text-muted-foreground flex items-center gap-2">
-                    <Calculator className="w-3 h-3" />
-                    <span>
-                      Liczba stopni: {dimensions.stairs.stepCount || calculateStepCount(dimensions.depth, dimensions.stairs.stepHeight)}
-                      {' '}(przy głębokości {dimensions.depth} m)
-                    </span>
+                  {/* Calculated step height info */}
+                  <div className="p-2 rounded bg-muted/50 text-xs text-muted-foreground space-y-1">
+                    <div className="flex items-center gap-2">
+                      <Calculator className="w-3 h-3" />
+                      <span>
+                        Wysokość stopnia: {Math.round((dimensions.stairs.stepHeight || calculateStepHeight(dimensions.depth, dimensions.stairs.stepCount || 4)) * 100)} cm
+                      </span>
+                    </div>
+                    <div className="text-muted-foreground/70">
+                      Pierwszy stopień zaczyna się {Math.round((dimensions.stairs.stepHeight || 0.2) * 100)} cm poniżej krawędzi basenu
+                    </div>
                   </div>
                   
                   {/* Position (inside/outside) */}
