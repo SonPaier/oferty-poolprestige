@@ -681,6 +681,115 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
             </div>
           )}
 
+          {/* Wading pool configuration for non-custom shapes */}
+          {!isCustomShape && (
+            <div className="space-y-4 p-4 rounded-lg bg-muted/30 border border-border">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <Baby className="w-5 h-5 text-primary" />
+                  <div>
+                    <Label htmlFor="wadingPoolEnabled" className="font-medium">Brodzik</Label>
+                    <p className="text-xs text-muted-foreground">
+                      Dodaj brodzik dla dzieci
+                    </p>
+                  </div>
+                </div>
+                <Switch
+                  id="wadingPoolEnabled"
+                  checked={dimensions.wadingPool?.enabled || false}
+                  onCheckedChange={(checked) => updateWadingPool({ enabled: checked })}
+                />
+              </div>
+              
+              {dimensions.wadingPool?.enabled && (
+                <div className="space-y-4 pt-3 border-t border-border">
+                  {/* Corner selection */}
+                  <div>
+                    <Label className="text-sm font-medium mb-2 block">Narożnik</Label>
+                    <Select
+                      value={dimensions.wadingPool.corner || 'back-left'}
+                      onValueChange={(value) => updateWadingPool({ corner: value as PoolCorner })}
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {(Object.keys(poolCornerLabels) as PoolCorner[]).map((c) => (
+                          <SelectItem key={c} value={c}>
+                            {poolCornerLabels[c]}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  
+                  {/* Direction */}
+                  <div>
+                    <Label className="text-sm font-medium mb-2 block">Kierunek</Label>
+                    <Select
+                      value={dimensions.wadingPool.direction || 'along-width'}
+                      onValueChange={(value) => updateWadingPool({ direction: value as WallDirection })}
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {(Object.keys(wallDirectionLabels) as WallDirection[]).map((d) => (
+                          <SelectItem key={d} value={d}>
+                            {wallDirectionLabels[d]}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  
+                  {/* Size inputs */}
+                  <div className="grid grid-cols-3 gap-3">
+                    <div>
+                      <Label htmlFor="wadingWidth" className="text-xs">Szerokość (m)</Label>
+                      <Input
+                        id="wadingWidth"
+                        type="number"
+                        step="0.1"
+                        min="0.5"
+                        max="10"
+                        value={dimensions.wadingPool.width || 2}
+                        onChange={(e) => updateWadingPool({ width: parseFloat(e.target.value) || 2 })}
+                        className="input-field"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="wadingLength" className="text-xs">Długość (m)</Label>
+                      <Input
+                        id="wadingLength"
+                        type="number"
+                        step="0.1"
+                        min="0.5"
+                        max="10"
+                        value={dimensions.wadingPool.length || 1.5}
+                        onChange={(e) => updateWadingPool({ length: parseFloat(e.target.value) || 1.5 })}
+                        className="input-field"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="wadingDepth" className="text-xs">Głębokość (m)</Label>
+                      <Input
+                        id="wadingDepth"
+                        type="number"
+                        step="0.1"
+                        min="0.2"
+                        max="1"
+                        value={dimensions.wadingPool.depth || 0.4}
+                        onChange={(e) => updateWadingPool({ depth: parseFloat(e.target.value) || 0.4 })}
+                        className="input-field"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="flex items-center justify-between p-4 rounded-lg bg-muted/30 border border-border">
             <div className="flex items-center gap-3">
               <Waves className="w-5 h-5 text-primary" />

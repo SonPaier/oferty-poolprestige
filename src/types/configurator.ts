@@ -15,15 +15,15 @@ export type StairsPosition = 'inside' | 'outside';
 export type PoolCorner = 'back-left' | 'back-right' | 'front-left' | 'front-right';
 export type WallDirection = 'along-length' | 'along-width'; // wzdłuż długości (X) lub szerokości (Y)
 export type PoolWall = 'back' | 'front' | 'left' | 'right'; // od której ściany
-export type StairsPlacement = 'wall' | 'corner'; // od ściany lub z narożnika
+export type StairsPlacement = 'wall' | 'corner' | 'diagonal'; // od ściany, z narożnika lub pod kątem 45°
 
 export interface StairsConfig {
   enabled: boolean;
   position: StairsPosition; // wewnątrz/zewnątrz basenu
-  placement: StairsPlacement; // od ściany lub z narożnika
+  placement: StairsPlacement; // od ściany, z narożnika lub pod kątem 45°
   wall: PoolWall; // od której ściany (gdy placement === 'wall')
-  corner: PoolCorner; // który narożnik (gdy placement === 'corner')
-  direction: WallDirection; // wzdłuż której ściany
+  corner: PoolCorner; // który narożnik (gdy placement === 'corner' lub 'diagonal')
+  direction: WallDirection; // wzdłuż której ściany (dla placement === 'corner')
   width: number | 'full'; // szerokość schodków lub 'full' = pełna szerokość boku
   stepHeight: number; // wysokość stopnia (domyślnie 0.29m)
   stepCount: number; // wyliczane z głębokości / stepHeight
@@ -71,6 +71,7 @@ export const stairsPositionLabels: Record<StairsPosition, string> = {
 export const stairsPlacementLabels: Record<StairsPlacement, string> = {
   wall: 'Od ściany',
   corner: 'Z narożnika',
+  diagonal: 'Narożnik 45°',
 };
 
 export const poolWallLabels: Record<PoolWall, string> = {

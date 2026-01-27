@@ -86,7 +86,19 @@ function getRegularStairsPoints(dimensions: PoolDimensions): { x: number; y: num
   
   let points: { x: number; y: number }[] = [];
   
-  if (placement === 'wall') {
+  if (placement === 'diagonal') {
+    // Diagonal 45° corner stairs - triangle shape
+    const xDir = corner.includes('left') ? 1 : -1;
+    const yDir = corner.includes('back') ? 1 : -1;
+    const baseX = corner.includes('left') ? -halfL : halfL;
+    const baseY = corner.includes('back') ? -halfW : halfW;
+    
+    points = [
+      { x: baseX, y: baseY },
+      { x: baseX + xDir * stairsWidth, y: baseY },
+      { x: baseX, y: baseY + yDir * stairsWidth }
+    ];
+  } else if (placement === 'wall') {
     // Wall placement: centered on wall
     switch (wall) {
       case 'back':
@@ -150,6 +162,48 @@ function getRegularStairsPoints(dimensions: PoolDimensions): { x: number; y: num
   return points;
 }
 
+// Generate wading pool points for rectangular pools
+function getRegularWadingPoolPoints(dimensions: PoolDimensions): { x: number; y: number }[] | null {
+  const wadingPool = dimensions.wadingPool;
+  if (!wadingPool?.enabled || dimensions.shape === 'wlasny') return null;
+  
+  const { length, width } = dimensions;
+  const halfL = length / 2;
+  const halfW = width / 2;
+  const wpWidth = wadingPool.width || 2;
+  const wpLength = wadingPool.length || 1.5;
+  const corner = wadingPool.corner || 'back-left';
+  const direction = wadingPool.direction || 'along-width';
+  
+  const isAlongLength = direction === 'along-length';
+  const xDir = corner.includes('left') ? 1 : -1;
+  const yDir = corner.includes('back') ? 1 : -1;
+  const baseX = corner.includes('left') ? -halfL : halfL;
+  const baseY = corner.includes('back') ? -halfW : halfW;
+  
+  let points: { x: number; y: number }[];
+  
+  if (isAlongLength) {
+    // Wading pool extends along X axis
+    points = [
+      { x: baseX, y: baseY },
+      { x: baseX + xDir * wpWidth, y: baseY },
+      { x: baseX + xDir * wpWidth, y: baseY + yDir * wpLength },
+      { x: baseX, y: baseY + yDir * wpLength }
+    ];
+  } else {
+    // Wading pool extends along Y axis
+    points = [
+      { x: baseX, y: baseY },
+      { x: baseX + xDir * wpLength, y: baseY },
+      { x: baseX + xDir * wpLength, y: baseY + yDir * wpWidth },
+      { x: baseX, y: baseY + yDir * wpWidth }
+    ];
+  }
+  
+  return points;
+}
+
 // Transform custom element vertices to be centered relative to pool
 function transformCustomVertices(
   vertices: CustomPoolVertex[],
@@ -199,7 +253,8 @@ export default function Pool2DPreview({ dimensions, height = 300, dimensionDispl
         dimensions.customVertices
       );
     }
-    return null;
+    // For regular shapes, generate wading pool points from config
+    return getRegularWadingPoolPoints(dimensions);
   }, [dimensions]);
   
   // Calculate bounding box for all elements
