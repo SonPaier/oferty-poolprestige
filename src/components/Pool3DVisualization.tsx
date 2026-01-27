@@ -1307,11 +1307,12 @@ function DimensionLines({ dimensions, display }: { dimensions: PoolDimensions; d
 }
 
 // Custom stairs mesh (from drawn vertices) - uses actual polygon shape
+// Supports 8 rotation angles: 0, 45, 90, 135, 180, 225, 270, 315 degrees
 function CustomStairsMesh({ vertices, depth, poolVertices, rotation = 0, showDimensions = true }: { 
   vertices: CustomPoolVertex[]; 
   depth: number;
   poolVertices: CustomPoolVertex[];
-  rotation?: number; // 0, 90, 180, 270 degrees
+  rotation?: number; // 0, 45, 90, 135, 180, 225, 270, 315 degrees
   showDimensions?: boolean;
 }) {
   const stepHeight = 0.29;
@@ -1360,13 +1361,99 @@ function CustomStairsMesh({ vertices, depth, poolVertices, rotation = 0, showDim
 
   const sizeX = bounds.maxX - bounds.minX;
   const sizeY = bounds.maxY - bounds.minY;
+  
+  // Check if rotation is diagonal (45, 135, 225, 315)
+  const isDiagonal = rotation === 45 || rotation === 135 || rotation === 225 || rotation === 315;
 
   // Create stairs using actual polygon shape with ExtrudeGeometry
   const steps = useMemo(() => {
     const stepsArr: JSX.Element[] = [];
     if (transformedVertices.length < 3) return stepsArr;
     
-    // Determine step depth based on rotation direction
+    // For diagonal angles, use diagonal slicing approach
+    if (isDiagonal) {
+      // Calculate the diagonal extent - the polygon will be sliced diagonally
+      const diagonalExtent = Math.sqrt(sizeX * sizeX + sizeY * sizeY);
+      const stepDepth = diagonalExtent / stepCount;
+      
+      // Determine direction vector based on rotation angle
+      // 45°: from top-right corner to bottom-left (-X, +Y direction for steps)
+      // 135°: from bottom-right to top-left (-X, -Y direction for steps)
+      // 225°: from bottom-left to top-right (+X, -Y direction for steps)
+      // 315°: from top-left to bottom-right (+X, +Y direction for steps)
+      let dirX: number, dirY: number;
+      let startCornerX: number, startCornerY: number;
+      
+      switch (rotation) {
+        case 45: // Entry from top-right, steps go toward bottom-left
+          dirX = -1 / Math.SQRT2;
+          dirY = 1 / Math.SQRT2;
+          startCornerX = bounds.maxX;
+          startCornerY = bounds.minY;
+          break;
+        case 135: // Entry from bottom-right, steps go toward top-left
+          dirX = -1 / Math.SQRT2;
+          dirY = -1 / Math.SQRT2;
+          startCornerX = bounds.maxX;
+          startCornerY = bounds.maxY;
+          break;
+        case 225: // Entry from bottom-left, steps go toward top-right
+          dirX = 1 / Math.SQRT2;
+          dirY = -1 / Math.SQRT2;
+          startCornerX = bounds.minX;
+          startCornerY = bounds.maxY;
+          break;
+        case 315: // Entry from top-left, steps go toward bottom-right
+        default:
+          dirX = 1 / Math.SQRT2;
+          dirY = 1 / Math.SQRT2;
+          startCornerX = bounds.minX;
+          startCornerY = bounds.minY;
+          break;
+      }
+      
+      for (let i = 0; i < stepCount; i++) {
+        const stepTopZ = -i * stepHeight;
+        const stepBodyHeight = depth - (i * stepHeight);
+        
+        // Calculate slice positions along the diagonal
+        const startDist = i * stepDepth;
+        const endDist = (i + 1) * stepDepth;
+        
+        // Slice the polygon diagonally
+        const slicedVertices = slicePolygonDiagonal(
+          transformedVertices,
+          startCornerX, startCornerY,
+          dirX, dirY,
+          startDist, endDist
+        );
+        
+        if (slicedVertices.length < 3) continue;
+        
+        // Create shape from sliced vertices
+        const shape2D = slicedVertices.map(v => new THREE.Vector2(v.x, v.y));
+        const stepShape = new THREE.Shape(shape2D);
+        
+        const stepBodyGeo = new THREE.ExtrudeGeometry(stepShape, {
+          depth: stepBodyHeight,
+          bevelEnabled: false,
+        });
+        stepBodyGeo.translate(0, 0, stepTopZ - stepBodyHeight);
+        
+        const stepTopGeo = new THREE.ShapeGeometry(stepShape);
+        
+        stepsArr.push(
+          <group key={i}>
+            <mesh geometry={stepBodyGeo} material={stepFrontMaterial} />
+            <mesh position={[0, 0, stepTopZ - 0.01]} geometry={stepTopGeo} material={stepTopMaterial} />
+          </group>
+        );
+      }
+      
+      return stepsArr;
+    }
+    
+    // For orthogonal angles (0, 90, 180, 270), use existing axis-aligned slicing
     const isHorizontal = rotation === 90 || rotation === 270;
     const stairsExtent = isHorizontal ? sizeX : sizeY;
     const stepDepth = stairsExtent / stepCount;
@@ -1524,6 +1611,62 @@ function slicePolygonX(vertices: { x: number; y: number }[], xMin: number, xMax:
   }
   
   // Sort points to form a proper polygon (clockwise order)
+  if (result.length < 3) return result;
+  
+  const cx = result.reduce((s, v) => s + v.x, 0) / result.length;
+  const cy = result.reduce((s, v) => s + v.y, 0) / result.length;
+  result.sort((a, b) => Math.atan2(a.y - cy, a.x - cx) - Math.atan2(b.y - cy, b.x - cx));
+  
+  return result;
+}
+
+// Helper: Slice polygon diagonally using two parallel lines perpendicular to direction
+function slicePolygonDiagonal(
+  vertices: { x: number; y: number }[],
+  startX: number, startY: number,
+  dirX: number, dirY: number,
+  distStart: number, distEnd: number
+): { x: number; y: number }[] {
+  const result: { x: number; y: number }[] = [];
+  const n = vertices.length;
+  
+  // For each vertex, calculate its distance along the slice direction from start point
+  const getDistance = (v: { x: number; y: number }) => {
+    return (v.x - startX) * dirX + (v.y - startY) * dirY;
+  };
+  
+  for (let i = 0; i < n; i++) {
+    const curr = vertices[i];
+    const next = vertices[(i + 1) % n];
+    
+    const currDist = getDistance(curr);
+    const nextDist = getDistance(next);
+    
+    // Check if current point is in range
+    if (currDist >= distStart && currDist <= distEnd) {
+      result.push(curr);
+    }
+    
+    // Check for intersections with start line
+    if ((currDist < distStart && nextDist > distStart) || (currDist > distStart && nextDist < distStart)) {
+      const t = (distStart - currDist) / (nextDist - currDist);
+      result.push({ 
+        x: curr.x + t * (next.x - curr.x), 
+        y: curr.y + t * (next.y - curr.y) 
+      });
+    }
+    
+    // Check for intersections with end line
+    if ((currDist < distEnd && nextDist > distEnd) || (currDist > distEnd && nextDist < distEnd)) {
+      const t = (distEnd - currDist) / (nextDist - currDist);
+      result.push({ 
+        x: curr.x + t * (next.x - curr.x), 
+        y: curr.y + t * (next.y - curr.y) 
+      });
+    }
+  }
+  
+  // Sort points to form a proper polygon (clockwise order around centroid)
   if (result.length < 3) return result;
   
   const cx = result.reduce((s, v) => s + v.x, 0) / result.length;
