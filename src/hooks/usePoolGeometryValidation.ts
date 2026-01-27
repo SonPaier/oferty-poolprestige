@@ -66,6 +66,23 @@ function getStairsBoundingBox(
     }
   }
 
+  // For diagonal placement (45° corner stairs) - triangular shape approximated as square bounding box
+  if (stairs.placement === 'diagonal') {
+    const corner = stairs.corner || 'back-left';
+    const diagonalSize = stairsWidth; // The triangle extends this far in both X and Y
+    
+    switch (corner) {
+      case 'back-left':
+        return { minX: 0, maxX: diagonalSize, minY: 0, maxY: diagonalSize };
+      case 'back-right':
+        return { minX: poolLength - diagonalSize, maxX: poolLength, minY: 0, maxY: diagonalSize };
+      case 'front-left':
+        return { minX: 0, maxX: diagonalSize, minY: poolWidth - diagonalSize, maxY: poolWidth };
+      case 'front-right':
+        return { minX: poolLength - diagonalSize, maxX: poolLength, minY: poolWidth - diagonalSize, maxY: poolWidth };
+    }
+  }
+
   // For corner placement
   const corner = stairs.corner || 'back-left';
   const direction = stairs.direction || 'along-width';
