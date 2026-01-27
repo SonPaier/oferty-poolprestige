@@ -31,7 +31,7 @@ export function calculatePoolMetrics(
   let bottomArea: number;
 
   switch (shape) {
-    case 'wlasny':
+    case 'nieregularny':
       // Custom shape - use pre-calculated values
       surfaceArea = customArea || 0;
       bottomArea = surfaceArea;

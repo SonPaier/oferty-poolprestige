@@ -2,7 +2,7 @@ import { useRef, useMemo, Suspense, useState } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, Html, Line } from '@react-three/drei';
 import * as THREE from 'three';
-import { PoolDimensions, PoolCalculations, StairsConfig, WadingPoolConfig, CustomPoolVertex } from '@/types/configurator';
+import { PoolDimensions, PoolCalculations, StairsConfig, WadingPoolConfig, CustomPoolVertex, getCornerLabel } from '@/types/configurator';
 import { planFoilLayout, FoilStrip, ROLL_WIDTH_NARROW, ROLL_WIDTH_WIDE } from '@/lib/foilPlanner';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
@@ -63,7 +63,7 @@ function getPoolShape(dimensions: PoolDimensions): THREE.Vector2[] {
         );
       }
       break;
-    case 'wlasny':
+    case 'nieregularny':
       if (dimensions.customVertices && dimensions.customVertices.length >= 3) {
         const minX = Math.min(...dimensions.customVertices.map(v => v.x));
         const maxX = Math.max(...dimensions.customVertices.map(v => v.x));
@@ -998,6 +998,62 @@ function DimensionLine({ start, end, label, color = '#475569' }: {
   );
 }
 
+// Corner labels for pool vertices (A, B, C, D...)
+function CornerLabels({ dimensions }: { dimensions: PoolDimensions }) {
+  const { shape, length, width, customVertices } = dimensions;
+  
+  // Don't show labels for oval shapes
+  if (shape === 'owalny') return null;
+  
+  // Get corner points based on shape
+  const corners = useMemo(() => {
+    if (shape === 'nieregularny' && customVertices && customVertices.length >= 3) {
+      // For irregular shapes, use custom vertices centered
+      const minX = Math.min(...customVertices.map(v => v.x));
+      const maxX = Math.max(...customVertices.map(v => v.x));
+      const minY = Math.min(...customVertices.map(v => v.y));
+      const maxY = Math.max(...customVertices.map(v => v.y));
+      const centerX = (minX + maxX) / 2;
+      const centerY = (minY + maxY) / 2;
+      
+      return customVertices.map(v => ({
+        x: v.x - centerX,
+        y: v.y - centerY
+      }));
+    }
+    
+    // For rectangular shape, return 4 corners
+    const halfL = length / 2;
+    const halfW = width / 2;
+    return [
+      { x: -halfL, y: -halfW }, // A - back-left
+      { x: halfL, y: -halfW },  // B - back-right
+      { x: halfL, y: halfW },   // C - front-right
+      { x: -halfL, y: halfW }   // D - front-left
+    ];
+  }, [shape, length, width, customVertices]);
+  
+  return (
+    <group>
+      {corners.map((corner, index) => (
+        <group key={`corner-${index}`}>
+          {/* Corner marker sphere */}
+          <mesh position={[corner.x, corner.y, 0.05]}>
+            <sphereGeometry args={[0.08, 16, 16]} />
+            <meshStandardMaterial color="#0c4a6e" />
+          </mesh>
+          {/* Corner label */}
+          <Html position={[corner.x + 0.2, corner.y + 0.2, 0.15]} center>
+            <div className="bg-primary text-primary-foreground px-1.5 py-0.5 rounded text-xs font-bold shadow-md">
+              {getCornerLabel(index)}
+            </div>
+          </Html>
+        </group>
+      ))}
+    </group>
+  );
+}
+
 // Pool dimension lines (main pool only) - offset increased for better readability
 function PoolDimensionLines({ dimensions }: { dimensions: PoolDimensions }) {
   const { shape, length, width, depth, depthDeep, hasSlope, customVertices } = dimensions;
@@ -1008,7 +1064,7 @@ function PoolDimensionLines({ dimensions }: { dimensions: PoolDimensions }) {
   let poolLength = length;
   let poolWidth = width;
   
-  if (shape === 'wlasny' && customVertices && customVertices.length >= 3) {
+  if (shape === 'nieregularny' && customVertices && customVertices.length >= 3) {
     const minX = Math.min(...customVertices.map(v => v.x));
     const maxX = Math.max(...customVertices.map(v => v.x));
     const minY = Math.min(...customVertices.map(v => v.y));
@@ -1022,6 +1078,9 @@ function PoolDimensionLines({ dimensions }: { dimensions: PoolDimensions }) {
   
   return (
     <group>
+      {/* Corner labels */}
+      <CornerLabels dimensions={dimensions} />
+      
       {/* Length */}
       <DimensionLine
         start={[-halfL, -halfW - offset, 0]}
@@ -1079,7 +1138,7 @@ function PoolDimensionLines({ dimensions }: { dimensions: PoolDimensions }) {
 function StairsDimensionLines({ dimensions }: { dimensions: PoolDimensions }) {
   // For regular stairs (non-custom), show dimensions
   if (!dimensions.stairs?.enabled) return null;
-  if (dimensions.shape === 'wlasny') return null; // Custom stairs have their own dimension lines
+  if (dimensions.shape === 'nieregularny') return null; // Custom stairs have their own dimension lines
   
   const { length, width, depth } = dimensions;
   const stairs = dimensions.stairs;
@@ -1160,7 +1219,7 @@ function StairsDimensionLines({ dimensions }: { dimensions: PoolDimensions }) {
 function WadingDimensionLines({ dimensions }: { dimensions: PoolDimensions }) {
   // For regular wading pool (non-custom), show dimensions
   if (!dimensions.wadingPool?.enabled) return null;
-  if (dimensions.shape === 'wlasny') return null; // Custom wading pools have their own dimension lines
+  if (dimensions.shape === 'nieregularny') return null; // Custom wading pools have their own dimension lines
   
   const { length, width, depth } = dimensions;
   const wadingPool = dimensions.wadingPool;
@@ -1717,7 +1776,7 @@ function insetPolygon(vertices: { x: number; y: number }[], amount: number): { x
 
 // Main scene
 function Scene({ dimensions, calculations: _calculations, showFoilLayout, rollWidth, dimensionDisplay }: Pool3DVisualizationProps & { rollWidth: number; dimensionDisplay: DimensionDisplay }) {
-  const isCustomShape = dimensions.shape === 'wlasny';
+  const isCustomShape = dimensions.shape === 'nieregularny';
   // Check for multiple custom stairs (array of arrays)
   const customStairsArrays = dimensions.customStairsVertices || [];
   const customWadingArrays = dimensions.customWadingPoolVertices || [];
@@ -1820,9 +1879,9 @@ export function Pool3DVisualization({
 
   // Check if stairs or wading pool exist
   const hasStairs = dimensions.stairs?.enabled || 
-    (dimensions.shape === 'wlasny' && dimensions.customStairsVertices?.some(arr => arr.length >= 3));
+    (dimensions.shape === 'nieregularny' && dimensions.customStairsVertices?.some(arr => arr.length >= 3));
   const hasWadingPool = dimensions.wadingPool?.enabled || 
-    (dimensions.shape === 'wlasny' && dimensions.customWadingPoolVertices?.some(arr => arr.length >= 3));
+    (dimensions.shape === 'nieregularny' && dimensions.customWadingPoolVertices?.some(arr => arr.length >= 3));
 
   return (
     <div 

@@ -75,7 +75,7 @@ const PoolShapeIcon = ({ shape, isSelected }: { shape: PoolShape; isSelected: bo
           <ellipse cx="30" cy="20" rx="25" ry="15" fill={fillColor} stroke={strokeColor} strokeWidth="2"/>
         </svg>
       );
-    case 'wlasny':
+    case 'nieregularny':
       return (
         <svg viewBox="0 0 60 40" className="w-full h-12">
           <path d="M10 30 L15 10 L30 5 L45 10 L50 25 L40 35 L20 35 Z" fill={fillColor} stroke={strokeColor} strokeWidth="2"/>
@@ -153,15 +153,38 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
     }
   }, [dimensions.depth, dimensions.stairs?.stepHeight]);
 
-  const isCustomShape = dimensions.shape === 'wlasny';
+  const isCustomShape = dimensions.shape === 'nieregularny';
 
   const handleShapeSelect = (shape: PoolShape) => {
-    if (shape === 'wlasny') {
-      // When switching to custom shape, open drawer immediately
+    if (shape === 'nieregularny') {
+      // When switching to irregular shape, open drawer immediately
       // and clear rectangle dimensions so they don't show in visualization
       setShowCustomDrawer(true);
+    } else if (shape === 'prostokatny' && dimensions.shape !== 'prostokatny') {
+      // When switching to rectangular, generate vertices from length/width
+      generateRectangularVertices();
     }
     updateDimension('shape', shape);
+  };
+
+  // Generate rectangular vertices from current length/width
+  const generateRectangularVertices = () => {
+    const { length, width } = dimensions;
+    const vertices = [
+      { x: 0, y: 0 },
+      { x: length, y: 0 },
+      { x: length, y: width },
+      { x: 0, y: width }
+    ];
+    dispatch({
+      type: 'SET_DIMENSIONS',
+      payload: {
+        ...dimensions,
+        customVertices: vertices,
+        customArea: length * width,
+        customPerimeter: 2 * (length + width)
+      }
+    });
   };
 
   const handleCustomShapeComplete = (
@@ -181,7 +204,7 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
       type: 'SET_DIMENSIONS',
       payload: {
         ...dimensions,
-        shape: 'wlasny',
+        shape: 'nieregularny',
         customVertices: poolVertices,
         customArea: area,
         customPerimeter: perimeter,
@@ -209,7 +232,7 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Pencil className="w-5 h-5 text-primary" />
-              Rysuj własny kształt basenu
+              {dimensions.shape === 'nieregularny' ? 'Edytuj kształt nieregularny' : 'Edytuj kształt basenu'}
             </DialogTitle>
           </DialogHeader>
           <CustomPoolDrawer
@@ -219,6 +242,9 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
             initialStairsVertices={dimensions.customStairsVertices?.[0]}
             initialWadingPoolVertices={dimensions.customWadingPoolVertices?.[0]}
             initialStairsRotation={dimensions.customStairsRotations?.[0]}
+            initialLength={dimensions.length}
+            initialWidth={dimensions.width}
+            shape={dimensions.shape === 'nieregularny' ? 'nieregularny' : 'prostokatny'}
           />
         </DialogContent>
       </Dialog>
@@ -257,12 +283,24 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
             {isCustomShape && dimensions.customArea && (
               <div className="mt-3 p-3 rounded-lg bg-primary/10 border border-primary/20">
                 <div className="flex items-center justify-between">
-                  <span className="text-sm">Własny kształt: {dimensions.customArea.toFixed(1)} m², obwód: {dimensions.customPerimeter?.toFixed(1)} m</span>
+                  <span className="text-sm">Nieregularny kształt: {dimensions.customArea.toFixed(1)} m², obwód: {dimensions.customPerimeter?.toFixed(1)} m</span>
                   <Button variant="outline" size="sm" onClick={() => setShowCustomDrawer(true)}>
                     <Pencil className="w-3 h-3 mr-1" />
                     Edytuj
                   </Button>
                 </div>
+              </div>
+            )}
+            {/* Edit shape button for rectangular pools */}
+            {dimensions.shape === 'prostokatny' && (
+              <div className="mt-3">
+                <Button variant="outline" size="sm" onClick={() => setShowCustomDrawer(true)}>
+                  <Pencil className="w-3 h-3 mr-1" />
+                  Edytuj w edytorze kształtu
+                </Button>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Otwórz graficzny edytor z oznaczeniem narożników (A, B, C, D)
+                </p>
               </div>
             )}
           </div>
@@ -272,7 +310,7 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
             <div className="mt-4 p-4 rounded-lg bg-primary/10 border border-primary/20">
               <div className="flex items-center gap-2 text-sm">
                 <Info className="w-4 h-4 text-primary" />
-                <span>Schody i brodzik definiujesz w rysunku własnego kształtu.</span>
+                <span>Schody i brodzik definiujesz w edytorze kształtu nieregularnego.</span>
               </div>
               <div className="flex gap-4 mt-2 text-xs text-muted-foreground">
                 {dimensions.customStairsVertices && dimensions.customStairsVertices.length > 0 && (
@@ -836,13 +874,13 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
                     <RadioGroupItem value="pool" id="dim-pool-main" className="h-3 w-3" />
                     <Label htmlFor="dim-pool-main" className="text-xs cursor-pointer">Niecka</Label>
                   </div>
-                  {(dimensions.stairs?.enabled || (dimensions.shape === 'wlasny' && dimensions.customStairsVertices?.some(arr => arr.length >= 3))) && (
+                  {(dimensions.stairs?.enabled || (dimensions.shape === 'nieregularny' && dimensions.customStairsVertices?.some(arr => arr.length >= 3))) && (
                     <div className="flex items-center space-x-1">
                       <RadioGroupItem value="stairs" id="dim-stairs-main" className="h-3 w-3" />
                       <Label htmlFor="dim-stairs-main" className="text-xs cursor-pointer">Schody</Label>
                     </div>
                   )}
-                  {(dimensions.wadingPool?.enabled || (dimensions.shape === 'wlasny' && dimensions.customWadingPoolVertices?.some(arr => arr.length >= 3))) && (
+                  {(dimensions.wadingPool?.enabled || (dimensions.shape === 'nieregularny' && dimensions.customWadingPoolVertices?.some(arr => arr.length >= 3))) && (
                     <div className="flex items-center space-x-1">
                       <RadioGroupItem value="wading" id="dim-wading-main" className="h-3 w-3" />
                       <Label htmlFor="dim-wading-main" className="text-xs cursor-pointer">Brodzik</Label>

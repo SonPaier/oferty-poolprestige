@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { PoolDimensions, CustomPoolVertex, StairsConfig } from '@/types/configurator';
+import { PoolDimensions, CustomPoolVertex, StairsConfig, getCornerLabel } from '@/types/configurator';
 import { DimensionDisplay } from '@/components/Pool3DVisualization';
 
 interface Pool2DPreviewProps {
@@ -32,7 +32,7 @@ function getPoolPoints(dimensions: PoolDimensions): { x: number; y: number }[] {
         });
       }
       break;
-    case 'wlasny':
+    case 'nieregularny':
       if (customVertices && customVertices.length >= 3) {
         const minX = Math.min(...customVertices.map(v => v.x));
         const maxX = Math.max(...customVertices.map(v => v.x));
@@ -69,7 +69,7 @@ function getPoolPoints(dimensions: PoolDimensions): { x: number; y: number }[] {
 // Generate stairs points for rectangular/oval pools
 function getRegularStairsPoints(dimensions: PoolDimensions): { x: number; y: number }[] | null {
   const stairs = dimensions.stairs;
-  if (!stairs?.enabled || dimensions.shape === 'wlasny') return null;
+  if (!stairs?.enabled || dimensions.shape === 'nieregularny') return null;
   
   const { length, width, depth } = dimensions;
   const halfL = length / 2;
@@ -165,7 +165,7 @@ function getRegularStairsPoints(dimensions: PoolDimensions): { x: number; y: num
 // Generate wading pool points for rectangular pools
 function getRegularWadingPoolPoints(dimensions: PoolDimensions): { x: number; y: number }[] | null {
   const wadingPool = dimensions.wadingPool;
-  if (!wadingPool?.enabled || dimensions.shape === 'wlasny') return null;
+  if (!wadingPool?.enabled || dimensions.shape === 'nieregularny') return null;
   
   const { length, width } = dimensions;
   const halfL = length / 2;
@@ -235,7 +235,7 @@ export default function Pool2DPreview({ dimensions, height = 300, dimensionDispl
   
   const stairsPoints = useMemo(() => {
     // Check for custom stairs vertices array
-    if (dimensions.shape === 'wlasny' && dimensions.customStairsVertices?.[0]) {
+    if (dimensions.shape === 'nieregularny' && dimensions.customStairsVertices?.[0]) {
       return transformCustomVertices(
         dimensions.customStairsVertices[0],
         dimensions.customVertices
@@ -247,7 +247,7 @@ export default function Pool2DPreview({ dimensions, height = 300, dimensionDispl
   
   const wadingPoolPoints = useMemo(() => {
     // Check for custom wading pool vertices array
-    if (dimensions.shape === 'wlasny' && dimensions.customWadingPoolVertices?.[0]) {
+    if (dimensions.shape === 'nieregularny' && dimensions.customWadingPoolVertices?.[0]) {
       return transformCustomVertices(
         dimensions.customWadingPoolVertices[0],
         dimensions.customVertices
@@ -356,6 +356,31 @@ export default function Pool2DPreview({ dimensions, height = 300, dimensionDispl
           stroke="#0c4a6e"
           strokeWidth="0.05"
         />
+        
+        {/* Corner labels (A, B, C, D...) for non-oval shapes */}
+        {dimensions.shape !== 'owalny' && poolPoints.map((point, index) => (
+          <g key={`corner-${index}`}>
+            {/* Corner vertex marker */}
+            <circle
+              cx={point.x}
+              cy={-point.y}
+              r={0.15}
+              fill="#0c4a6e"
+              stroke="white"
+              strokeWidth="0.03"
+            />
+            {/* Corner label */}
+            <text
+              x={point.x + 0.25}
+              y={-point.y - 0.15}
+              fontSize="0.3"
+              fill="#0c4a6e"
+              fontWeight="bold"
+            >
+              {getCornerLabel(index)}
+            </text>
+          </g>
+        ))}
         
         {/* Stairs */}
         {stairsPath && (

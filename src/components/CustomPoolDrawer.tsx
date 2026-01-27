@@ -3,9 +3,10 @@ import { Canvas as FabricCanvas, Circle, Line, Polygon, Text, FabricObject } fro
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Trash2, RotateCcw, Check, MousePointer, Plus, Grid3X3, Footprints, Baby, Waves, ArrowDown, RotateCw } from 'lucide-react';
+import { Trash2, RotateCcw, Check, MousePointer, Plus, Grid3X3, Footprints, Baby, Waves, RotateCw } from 'lucide-react';
 import { toast } from 'sonner';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { getCornerLabel, stairsAngleLabels } from '@/types/configurator';
 
 // Store custom data on fabric objects using a WeakMap
 const objectDataMap = new WeakMap<FabricObject, { type: string; index?: number; layer?: DrawingMode }>();
@@ -31,6 +32,9 @@ interface CustomPoolDrawerProps {
   initialStairsVertices?: Point[];
   initialWadingPoolVertices?: Point[];
   initialStairsRotation?: number;
+  initialLength?: number;
+  initialWidth?: number;
+  shape?: 'prostokatny' | 'nieregularny';
 }
 
 const GRID_SIZE = 30; // pixels per meter (smaller to fit 25m)
@@ -51,27 +55,50 @@ const MODE_LABELS: Record<DrawingMode, string> = {
   wadingPool: 'Brodzik',
 };
 
+// 8 rotation angles for stairs (45° increments)
+const STAIRS_ANGLES = [0, 45, 90, 135, 180, 225, 270, 315];
+
 export function CustomPoolDrawer({ 
   onComplete, 
   onCancel, 
   initialPoolVertices,
   initialStairsVertices,
   initialWadingPoolVertices,
-  initialStairsRotation 
+  initialStairsRotation,
+  initialLength,
+  initialWidth,
+  shape = 'nieregularny'
 }: CustomPoolDrawerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fabricRef = useRef<FabricCanvas | null>(null);
   
+  // Generate initial vertices from length/width if provided and no custom vertices
+  const generateInitialRectangle = useCallback((): Point[] => {
+    if (initialPoolVertices && initialPoolVertices.length >= 3) {
+      return initialPoolVertices;
+    }
+    if (initialLength && initialWidth && shape === 'prostokatny') {
+      // Generate rectangle at origin (0,0 to length, width)
+      return [
+        { x: 0, y: 0 },
+        { x: initialLength, y: 0 },
+        { x: initialLength, y: initialWidth },
+        { x: 0, y: initialWidth }
+      ];
+    }
+    return [];
+  }, [initialPoolVertices, initialLength, initialWidth, shape]);
+  
   // Separate vertices for each layer
-  const [poolVertices, setPoolVertices] = useState<Point[]>(initialPoolVertices || []);
+  const [poolVertices, setPoolVertices] = useState<Point[]>(() => generateInitialRectangle());
   const [stairsVertices, setStairsVertices] = useState<Point[]>(initialStairsVertices || []);
   const [wadingPoolVertices, setWadingPoolVertices] = useState<Point[]>(initialWadingPoolVertices || []);
   
-  // Stairs rotation (0, 90, 180, 270 degrees) - indicates entry direction
+  // Stairs rotation (0, 45, 90, 135, 180, 225, 270, 315 degrees) - indicates entry direction
   const [stairsRotation, setStairsRotation] = useState<number>(initialStairsRotation || 0);
   
   const [currentMode, setCurrentMode] = useState<DrawingMode>('pool');
-  const [isDrawing, setIsDrawing] = useState(!initialPoolVertices || initialPoolVertices.length < 3);
+  const [isDrawing, setIsDrawing] = useState(() => generateInitialRectangle().length < 3);
   const [selectedVertexIndex, setSelectedVertexIndex] = useState<number | null>(null);
   const [isDragging, setIsDragging] = useState(false);
 
@@ -207,7 +234,7 @@ export function CustomPoolDrawer({
     }
   }, []);
 
-  // Draw a single polygon layer (no longer depends on selectedVertexIndex)
+  // Draw a single polygon layer with corner labels
   const drawPolygonLayer = useCallback((
     canvas: FabricCanvas, 
     points: Point[], 
@@ -217,7 +244,7 @@ export function CustomPoolDrawer({
     const colors = MODE_COLORS[mode];
     
     if (points.length < 2) {
-      // Just draw vertices
+      // Just draw vertices with labels
       points.forEach((point, index) => {
         const canvasPoint = metersToCanvas(point);
         const vertex = new Circle({
@@ -233,6 +260,21 @@ export function CustomPoolDrawer({
         });
         objectDataMap.set(vertex, { type: 'vertex', index, layer: mode });
         canvas.add(vertex);
+        
+        // Add corner label for pool (A, B, C, D...)
+        if (mode === 'pool') {
+          const label = new Text(getCornerLabel(index), {
+            left: canvasPoint.x + 10,
+            top: canvasPoint.y - 15,
+            fontSize: 14,
+            fill: colors.stroke,
+            fontWeight: 'bold',
+            selectable: false,
+            evented: false,
+          });
+          objectDataMap.set(label, { type: 'corner-label', layer: mode });
+          canvas.add(label);
+        }
       });
       return;
     }
@@ -250,7 +292,7 @@ export function CustomPoolDrawer({
     objectDataMap.set(polygon, { type: 'polygon', layer: mode });
     canvas.add(polygon);
 
-    // Draw vertices and edge lengths (all vertices with default color, selection handled separately)
+    // Draw vertices, corner labels, and edge lengths
     points.forEach((point, index) => {
       const canvasPoint = metersToCanvas(point);
       const vertex = new Circle({
@@ -267,7 +309,22 @@ export function CustomPoolDrawer({
       objectDataMap.set(vertex, { type: 'vertex', index, layer: mode });
       canvas.add(vertex);
 
-      // Draw edge length label only for active layer
+      // Add corner label for pool (A, B, C, D...)
+      if (mode === 'pool') {
+        const label = new Text(getCornerLabel(index), {
+          left: canvasPoint.x + 10,
+          top: canvasPoint.y - 15,
+          fontSize: 14,
+          fill: colors.stroke,
+          fontWeight: 'bold',
+          selectable: false,
+          evented: false,
+        });
+        objectDataMap.set(label, { type: 'corner-label', layer: mode });
+        canvas.add(label);
+      }
+
+      // Draw edge length label with wall name only for active layer
       if (isActiveLayer && points.length >= 2) {
         const nextIndex = (index + 1) % points.length;
         const nextPoint = points[nextIndex];
@@ -278,10 +335,15 @@ export function CustomPoolDrawer({
         const midX = (canvasPoint.x + metersToCanvas(nextPoint).x) / 2;
         const midY = (canvasPoint.y + metersToCanvas(nextPoint).y) / 2;
         
-        const label = new Text(`${length.toFixed(1)}m`, {
-          left: midX - 15,
+        // For pool, show wall label (A-B, B-C, etc.)
+        const wallLabel = mode === 'pool' 
+          ? `${getCornerLabel(index)}-${getCornerLabel(nextIndex)}: ${length.toFixed(1)}m`
+          : `${length.toFixed(1)}m`;
+        
+        const label = new Text(wallLabel, {
+          left: midX - (mode === 'pool' ? 25 : 15),
           top: midY - 8,
-          fontSize: 12,
+          fontSize: 11,
           fill: colors.stroke,
           fontWeight: 'bold',
           backgroundColor: 'white',
@@ -294,7 +356,7 @@ export function CustomPoolDrawer({
     });
   }, [metersToCanvas]);
 
-  // Draw direction arrow for stairs
+  // Draw direction arrow for stairs with 8 directions
   const drawStairsArrow = useCallback((canvas: FabricCanvas, points: Point[], rotation: number) => {
     if (points.length < 3) return;
     
@@ -307,14 +369,10 @@ export function CustomPoolDrawer({
     const arrowLen = 40;
     const arrowHead = 12;
     
-    // Calculate arrow direction based on rotation (direction person walks INTO pool)
-    let dx = 0, dy = 0;
-    switch (rotation) {
-      case 0: dy = 1; break;   // Entry from top, arrow points down
-      case 90: dx = -1; break;  // Entry from right, arrow points left  
-      case 180: dy = -1; break; // Entry from bottom, arrow points up
-      case 270: dx = 1; break;  // Entry from left, arrow points right
-    }
+    // Calculate arrow direction based on rotation (8 directions)
+    const radians = (rotation * Math.PI) / 180;
+    const dx = Math.sin(radians);
+    const dy = Math.cos(radians);
     
     const endX = cx + dx * arrowLen;
     const endY = cy + dy * arrowLen;
@@ -366,7 +424,7 @@ export function CustomPoolDrawer({
     const objects = canvas.getObjects();
     objects.forEach(obj => {
       const data = objectDataMap.get(obj);
-      if (data?.type === 'polygon' || data?.type === 'vertex' || data?.type === 'edge-label' || data?.type === 'arrow') {
+      if (data?.type === 'polygon' || data?.type === 'vertex' || data?.type === 'edge-label' || data?.type === 'arrow' || data?.type === 'corner-label') {
         canvas.remove(obj);
       }
     });
@@ -644,17 +702,14 @@ export function CustomPoolDrawer({
   };
 
   const handleRotateStairs = () => {
-    setStairsRotation((prev) => (prev + 90) % 360);
+    // Cycle through 8 directions (45° increments)
+    const currentIndex = STAIRS_ANGLES.indexOf(stairsRotation);
+    const nextIndex = (currentIndex + 1) % STAIRS_ANGLES.length;
+    setStairsRotation(STAIRS_ANGLES[nextIndex]);
   };
 
   const getRotationLabel = (rotation: number): string => {
-    switch (rotation) {
-      case 0: return 'Wejście z góry ↓';
-      case 90: return 'Wejście z prawej ←';
-      case 180: return 'Wejście z dołu ↑';
-      case 270: return 'Wejście z lewej →';
-      default: return '';
-    }
+    return stairsAngleLabels[rotation] || `${rotation}°`;
   };
 
   const updateVertexCoordinate = (index: number, axis: 'x' | 'y', value: number) => {
@@ -737,7 +792,7 @@ export function CustomPoolDrawer({
       <div className="flex gap-4 text-xs">
         <div className="flex items-center gap-1">
           <div className="w-3 h-3 rounded" style={{ backgroundColor: MODE_COLORS.pool.stroke }} />
-          <span>Basen</span>
+          <span>Basen (A, B, C...)</span>
         </div>
         <div className="flex items-center gap-1">
           <div className="w-3 h-3 rounded" style={{ backgroundColor: MODE_COLORS.stairs.stroke }} />
@@ -753,7 +808,7 @@ export function CustomPoolDrawer({
         <canvas ref={canvasRef} />
       </div>
 
-      {/* Vertex coordinates editor */}
+      {/* Vertex coordinates editor with corner labels */}
       {currentVerts.length > 0 && !isDrawing && (
         <div className="p-4 rounded-lg bg-muted/30 border border-border">
           <Label className="text-sm font-medium mb-2 block">
@@ -765,7 +820,9 @@ export function CustomPoolDrawer({
                 key={index} 
                 className={`p-2 rounded border ${selectedVertexIndex === index ? 'border-primary bg-primary/10' : 'border-border'}`}
               >
-                <span className="text-xs text-muted-foreground block mb-1">Punkt {index + 1}</span>
+                <span className="text-xs text-muted-foreground block mb-1">
+                  {currentMode === 'pool' ? `Narożnik ${getCornerLabel(index)}` : `Punkt ${index + 1}`}
+                </span>
                 <div className="flex gap-1">
                   <Input
                     type="number"
