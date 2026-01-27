@@ -543,13 +543,14 @@ function StairsMesh({ dimensions, stairs }: { dimensions: PoolDimensions; stairs
       const stepsArr: JSX.Element[] = [];
       
       // Determine corner position and direction
+      // 3D uses X/Y for horizontal plane, Z for vertical
       const xDir = corner.includes('left') ? 1 : -1;
       const yDir = corner.includes('back') ? 1 : -1;
       const baseX = corner.includes('left') ? -halfL : halfL;
       const baseY = corner.includes('back') ? -halfW : halfW;
       
-      // Diagonal extent per step (45° angle)
-      const diagonalStep = stepDepth / Math.SQRT2;
+      // Total diagonal extent for all steps
+      const totalDiagonalExtent = actualStepCount * stepDepth;
       
       for (let i = 0; i < actualStepCount; i++) {
         const stepTop = -i * stepHeight;
@@ -557,24 +558,20 @@ function StairsMesh({ dimensions, stairs }: { dimensions: PoolDimensions; stairs
         const thisStepHeight = Math.abs(stepTop - stepBottom);
         const posZ = (stepTop + stepBottom) / 2;
         
-        // Step offset from corner
-        const offset = i * diagonalStep;
+        // Calculate how much of the triangle remains at this step level
+        // First step (i=0) is full size, last step is smallest
+        const stepProgress = i / actualStepCount;
+        const remainingSize = actualStairsWidth * (1 - stepProgress);
         
-        // Create triangular shape for this step
-        const shape = new THREE.Shape();
-        
-        // Triangle vertices for 45° corner stairs
-        const p1x = baseX;
-        const p1y = baseY;
-        const p2x = baseX + xDir * (actualStairsWidth - offset);
-        const p2y = baseY;
-        const p3x = baseX;
-        const p3y = baseY + yDir * (actualStairsWidth - offset);
-        
-        if (actualStairsWidth - offset > 0.1) {
-          shape.moveTo(p1x, p1y);
-          shape.lineTo(p2x, p2y);
-          shape.lineTo(p3x, p3y);
+        if (remainingSize > 0.05) {
+          // Create triangular shape for this step
+          // Shape is created in local X/Y, then positioned in 3D
+          const shape = new THREE.Shape();
+          
+          // Triangle: starts at corner, extends along both walls
+          shape.moveTo(0, 0);
+          shape.lineTo(remainingSize * xDir, 0);
+          shape.lineTo(0, remainingSize * yDir);
           shape.closePath();
           
           const extrudeSettings = {
@@ -583,13 +580,21 @@ function StairsMesh({ dimensions, stairs }: { dimensions: PoolDimensions; stairs
           };
           
           stepsArr.push(
-            <group key={i}>
-              {/* Main step body */}
-              <mesh position={[0, 0, posZ - thisStepHeight / 2]} material={stepFrontMaterial}>
-                <extrudeGeometry args={[shape, extrudeSettings]} />
+            <group key={i} position={[baseX, baseY, stepTop]}>
+              {/* Main step body - extrude downward */}
+              <mesh 
+                rotation={[-Math.PI / 2, 0, 0]}
+                position={[0, 0, 0]}
+                material={stepFrontMaterial}
+              >
+                <extrudeGeometry args={[shape, { depth: thisStepHeight, bevelEnabled: false }]} />
               </mesh>
               {/* White top surface */}
-              <mesh position={[0, 0, stepTop - 0.01]} material={stepTopMaterial}>
+              <mesh 
+                rotation={[0, 0, 0]}
+                position={[0, 0, 0.01]}
+                material={stepTopMaterial}
+              >
                 <shapeGeometry args={[shape]} />
               </mesh>
             </group>

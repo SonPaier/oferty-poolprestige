@@ -311,12 +311,18 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
             )}
           </div>
 
-          {/* Stairs and Wading Pool info for custom shapes only */}
+          {/* Info and edit button for custom shapes */}
           {isCustomShape && (
             <div className="mt-4 p-4 rounded-lg bg-primary/10 border border-primary/20">
-              <div className="flex items-center gap-2 text-sm">
-                <Info className="w-4 h-4 text-primary" />
-                <span>Schody i brodzik definiujesz w edytorze kształtu nieregularnego.</span>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-sm">
+                  <Info className="w-4 h-4 text-primary" />
+                  <span>Kształt nieregularny - edytuj w graficznym edytorze.</span>
+                </div>
+                <Button variant="outline" size="sm" onClick={() => setShowCustomDrawer(true)}>
+                  <Pencil className="w-3 h-3 mr-1" />
+                  Edytuj kształt
+                </Button>
               </div>
               <div className="flex gap-4 mt-2 text-xs text-muted-foreground">
                 {dimensions.customStairsVertices && dimensions.customStairsVertices.length > 0 && (
@@ -564,9 +570,8 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
             </div>
           </div>
 
-          {/* Stairs configuration for non-custom shapes */}
-          {!isCustomShape && (
-            <div className="space-y-4 p-4 rounded-lg bg-muted/30 border border-border">
+          {/* Stairs configuration - available for all shapes */}
+          <div className="space-y-4 p-4 rounded-lg bg-muted/30 border border-border">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <Footprints className="w-5 h-5 text-primary" />
@@ -774,7 +779,6 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
                 </div>
               )}
             </div>
-          )}
 
           {/* Wading pool configuration for non-custom shapes */}
           {!isCustomShape && (
