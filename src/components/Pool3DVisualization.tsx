@@ -545,17 +545,16 @@ function StairsMesh({ dimensions, stairs }: { dimensions: PoolDimensions; stairs
   // Stairs should NOT stretch across the entire pool
   const actualStepDepth = stepDepth;
 
-  // For diagonal stairs, create triangular steps
-  // Size is based on stepCount × stepDepth (same as other stair types)
+  // For diagonal stairs, create triangular *terrace* steps (treads)
+  // Each step is its own slab between two successive elevations; size grows with step index.
   if (placement === 'diagonal') {
     const diagonalSteps = useMemo(() => {
       const stepsArr: JSX.Element[] = [];
-      
+
       const baseX = corner.includes('left') ? -halfL : halfL;
       const baseY = corner.includes('back') ? -halfW : halfW;
-      
-      // For 45° diagonal stairs, the triangle size is based on stepCount × stepDepth
-      // This ensures changing stepCount properly updates the stair size
+
+      // Total "run" along each leg for 45° stairs
       const diagonalSize = actualStepCount * actualStepDepth;
 
       const makeTriangleShape = (size: number) => {
@@ -589,22 +588,23 @@ function StairsMesh({ dimensions, stairs }: { dimensions: PoolDimensions; stairs
         }
         return shape;
       };
-      
+
       for (let i = 0; i < actualStepCount; i++) {
-        // First step starts at -actualStepHeight (below pool edge), not at 0
+        // Step slab occupies one "riser" height segment
         const stepTop = -(i + 1) * actualStepHeight;
-        const stepBottom = -poolDepth;
-        const thisStepHeight = Math.abs(stepTop - stepBottom);
-        
-        // Calculate how much of the triangle remains at this step level
-        // Each step is progressively smaller - from full size to smallest
-        const progress = (i + 1) / actualStepCount;
-        const remainingSize = diagonalSize * (1 - progress);
-        
-        if (remainingSize > 0.05) {
-          const shape = makeTriangleShape(remainingSize);
-          const geometry = new THREE.ExtrudeGeometry(shape, { depth: thisStepHeight, bevelEnabled: false });
-          // Move extrusion so top face is at z=0 (then position group at stepTop)
+        const thisStepHeight = actualStepHeight;
+
+        // Top step is the smallest, deeper steps are bigger
+        const treadSize = Math.min(diagonalSize, (i + 1) * actualStepDepth);
+
+        if (treadSize > 0.05) {
+          const shape = makeTriangleShape(treadSize);
+          const geometry = new THREE.ExtrudeGeometry(shape, {
+            depth: thisStepHeight,
+            bevelEnabled: false,
+          });
+
+          // Make the top face lie at z=0 in local space, so group.position.z === stepTop
           geometry.translate(0, 0, -thisStepHeight);
 
           stepsArr.push(
@@ -617,10 +617,10 @@ function StairsMesh({ dimensions, stairs }: { dimensions: PoolDimensions; stairs
           );
         }
       }
-      
+
       return stepsArr;
-    }, [actualStepCount, actualStepHeight, actualStepDepth, corner, halfL, halfW, poolDepth, stepFrontMaterial, stepTopMaterial]);
-    
+    }, [actualStepCount, actualStepDepth, actualStepHeight, corner, halfL, halfW, stepFrontMaterial, stepTopMaterial]);
+
     return <group>{diagonalSteps}</group>;
   }
 
