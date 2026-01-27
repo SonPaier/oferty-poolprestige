@@ -1,6 +1,7 @@
 import { Product } from '@/data/products';
 
 export type PoolType = 'prywatny' | 'polprywatny' | 'hotelowy';
+export type PoolLocation = 'wewnetrzny' | 'zewnetrzny';
 export type PoolShape = 'prostokatny' | 'owalny' | 'wlasny';
 export type PoolOverflowType = 'skimmerowy' | 'rynnowy';
 export type PoolLiningType = 'foliowany' | 'ceramiczny';
@@ -82,7 +83,8 @@ export const nominalLoadByType: Record<PoolType, number> = {
 
 export interface PoolDimensions {
   shape: PoolShape;
-  liningType: PoolLiningType; // New: ceramiczny or foliowany
+  location: PoolLocation; // wewnętrzny/zewnętrzny
+  liningType: PoolLiningType; // ceramiczny or foliowany
   length: number;
   width: number;
   depth: number;
@@ -295,4 +297,10 @@ export const liningTypeLabels: Record<PoolLiningType, string> = {
 export const overflowTypeLabels: Record<PoolOverflowType, string> = {
   skimmerowy: 'Skimmerowy',
   rynnowy: 'Rynnowy (przelewowy)',
+};
+
+// Pool location labels
+export const poolLocationLabels: Record<PoolLocation, string> = {
+  wewnetrzny: 'Wewnętrzny',
+  zewnetrzny: 'Zewnętrzny',
 };
