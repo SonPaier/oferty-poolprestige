@@ -9,6 +9,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { 
   Ruler, 
   Droplets, 
@@ -19,7 +20,8 @@ import {
   Box,
   Calculator,
   Footprints,
-  Baby
+  Baby,
+  AlertTriangle
 } from 'lucide-react';
 import { Pool3DVisualization, DimensionDisplay } from '@/components/Pool3DVisualization';
 import Pool2DPreview from '@/components/Pool2DPreview';
@@ -51,6 +53,7 @@ import {
 } from '@/types/configurator';
 import { calculatePoolMetrics, calculateFoilOptimization } from '@/lib/calculations';
 import { CustomPoolDrawer } from '@/components/CustomPoolDrawer';
+import { usePoolGeometryValidation } from '@/hooks/usePoolGeometryValidation';
 
 interface DimensionsStepProps {
   onNext: () => void;
@@ -96,6 +99,9 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
   const { dimensions, poolType, calculations } = state;
   const [showCustomDrawer, setShowCustomDrawer] = useState(false);
   const [dimensionDisplay, setDimensionDisplay] = useState<DimensionDisplay>('pool');
+  
+  // Geometry validation
+  const geometryWarnings = usePoolGeometryValidation(dimensions);
 
   useEffect(() => {
     // Recalculate when dimensions or pool type change
@@ -876,6 +882,24 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
                   </div>
                 </div>
               )}
+            </div>
+          )}
+
+          {/* Geometry validation warnings */}
+          {geometryWarnings.length > 0 && (
+            <div className="space-y-2">
+              {geometryWarnings.map((warning, index) => (
+                <Alert 
+                  key={index} 
+                  variant={warning.severity === 'error' ? 'destructive' : 'default'}
+                  className={warning.severity === 'warning' ? 'border-yellow-500 bg-yellow-500/10' : ''}
+                >
+                  <AlertTriangle className={`h-4 w-4 ${warning.severity === 'warning' ? 'text-yellow-600' : ''}`} />
+                  <AlertDescription className={warning.severity === 'warning' ? 'text-yellow-700' : ''}>
+                    {warning.message}
+                  </AlertDescription>
+                </Alert>
+              ))}
             </div>
           )}
 
