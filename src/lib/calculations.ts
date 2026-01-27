@@ -63,10 +63,9 @@ export function calculatePoolMetrics(
   
   // NEW DIN formula for filtration flow rate:
   // (0.37 × volume) / nominal_load + (6 × attractions)
-  // Attractions only apply to public pools (hotelowy)
+  // Attractions now apply to ALL pool types
   const nominalLoad = nominalLoadByType[poolType];
-  const effectiveAttractions = poolType === 'hotelowy' ? attractions : 0;
-  const requiredFlow = (0.37 * volume) / nominalLoad + (6 * effectiveAttractions);
+  const requiredFlow = (0.37 * volume) / nominalLoad + (6 * attractions);
   
   return {
     volume,

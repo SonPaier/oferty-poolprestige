@@ -28,10 +28,12 @@ import {
   PoolShape, 
   PoolOverflowType, 
   PoolLiningType,
+  PoolLocation,
   poolTypeLabels, 
   poolShapeLabels, 
   overflowTypeLabels, 
   liningTypeLabels,
+  poolLocationLabels,
   nominalLoadByType, 
   CustomPoolVertex,
   StairsConfig,
@@ -148,7 +150,6 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
   }, [dimensions.depth, dimensions.stairs?.stepHeight]);
 
   const isCustomShape = dimensions.shape === 'wlasny';
-  const isPublicPool = poolType === 'hotelowy';
 
   const handleShapeSelect = (shape: PoolShape) => {
     if (shape === 'wlasny') {
@@ -342,7 +343,35 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
             </RadioGroup>
           </div>
 
-          {/* Pool Overflow Type (Skimmer / Gutter) */}
+          {/* Pool Location (Indoor/Outdoor) */}
+          <div>
+            <Label className="text-base font-medium mb-4 block">Lokalizacja basenu</Label>
+            <RadioGroup
+              value={dimensions.location || 'zewnetrzny'}
+              onValueChange={(value) => updateDimension('location', value as PoolLocation)}
+              className="grid grid-cols-2 gap-3"
+            >
+              {(Object.keys(poolLocationLabels) as PoolLocation[]).map((loc) => (
+                <div key={loc} className="relative">
+                  <RadioGroupItem
+                    value={loc}
+                    id={`location-${loc}`}
+                    className="peer sr-only"
+                  />
+                  <Label
+                    htmlFor={`location-${loc}`}
+                    className="flex flex-col items-center justify-center p-4 rounded-lg border border-border bg-muted/30 cursor-pointer transition-all peer-data-[state=checked]:border-primary peer-data-[state=checked]:bg-primary/10 hover:bg-muted/50"
+                  >
+                    <span className="font-medium">{poolLocationLabels[loc]}</span>
+                    <span className="text-xs text-muted-foreground mt-1">
+                      {loc === 'wewnetrzny' ? 'W budynku / hala' : 'Na zewnątrz / ogród'}
+                    </span>
+                  </Label>
+                </div>
+              ))}
+            </RadioGroup>
+          </div>
+
           <div>
             <Label className="text-base font-medium mb-4 block">Typ przelewu</Label>
             <RadioGroup
@@ -465,25 +494,23 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
                 </div>
               )}
 
-              {/* Attractions - only for public pools */}
-              {isPublicPool && (
-                <div className="space-y-2">
-                  <Label htmlFor="attractions">Ilość atrakcji</Label>
-                  <Input
-                    id="attractions"
-                    type="number"
-                    step="1"
-                    min="0"
-                    max="20"
-                    value={dimensions.attractions}
-                    onChange={(e) => updateDimension('attractions', parseInt(e.target.value) || 0)}
-                    className="input-field"
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    +{6 * dimensions.attractions} m³/h do filtracji
-                  </p>
-                </div>
-              )}
+              {/* Attractions - now available for ALL pool types */}
+              <div className="space-y-2">
+                <Label htmlFor="attractions">Ilość atrakcji</Label>
+                <Input
+                  id="attractions"
+                  type="number"
+                  step="1"
+                  min="0"
+                  max="20"
+                  value={dimensions.attractions}
+                  onChange={(e) => updateDimension('attractions', parseInt(e.target.value) || 0)}
+                  className="input-field"
+                />
+                <p className="text-xs text-muted-foreground">
+                  +{6 * dimensions.attractions} m³/h do filtracji
+                </p>
+              </div>
             </div>
           </div>
 
@@ -636,7 +663,7 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
                         </p>
                         <p className="text-xs text-muted-foreground mt-1">
                           Formuła: (0.37 × {calculations.volume.toFixed(1)}) / {nominalLoadByType[poolType]}
-                          {isPublicPool && dimensions.attractions > 0 && ` + (6 × ${dimensions.attractions})`}
+                          {dimensions.attractions > 0 && ` + (6 × ${dimensions.attractions})`}
                         </p>
                       </div>
                     </div>
