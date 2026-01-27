@@ -632,12 +632,6 @@ function WadingPoolMesh({ dimensions, wadingPool }: { dimensions: PoolDimensions
   const poolDepth = depth || 1.5;
   const internalWallHeight = poolDepth - wpDepth;
   
-  const waterMaterial = useMemo(() => 
-    new THREE.MeshStandardMaterial({
-      color: '#5b9bd5',
-      transparent: true,
-      opacity: 0.7,
-    }), []);
 
   const wallMaterial = useMemo(() => 
     new THREE.MeshStandardMaterial({
@@ -700,10 +694,7 @@ function WadingPoolMesh({ dimensions, wadingPool }: { dimensions: PoolDimensions
         <meshStandardMaterial color="#0369a1" />
       </mesh>
       
-      {/* Water in wading pool */}
-      <mesh position={[0, 0, -wpDepth / 2]} material={waterMaterial}>
-        <boxGeometry args={[sizeX - 0.02, sizeY - 0.02, wpDepth - 0.02]} />
-      </mesh>
+      {/* Water in wading pool removed */}
       
       {/* Internal wall along X axis - extends from wading pool floor to main pool floor */}
       <mesh 
@@ -1129,179 +1120,6 @@ function DimensionLines({ dimensions, display }: { dimensions: PoolDimensions; d
   );
 }
 
-// Water surface - with holes cut out for stairs and wading pools
-function WaterSurface({ dimensions, waterDepth }: { dimensions: PoolDimensions; waterDepth: number }) {
-  const shape2D = useMemo(() => getPoolShape(dimensions), [dimensions]);
-  
-  // Calculate pool center for custom shapes (same as in getPoolShape)
-  const poolCenter = useMemo(() => {
-    if (dimensions.shape !== 'wlasny' || !dimensions.customVertices || dimensions.customVertices.length < 3) {
-      return { x: 0, y: 0 };
-    }
-    const minX = Math.min(...dimensions.customVertices.map(v => v.x));
-    const maxX = Math.max(...dimensions.customVertices.map(v => v.x));
-    const minY = Math.min(...dimensions.customVertices.map(v => v.y));
-    const maxY = Math.max(...dimensions.customVertices.map(v => v.y));
-    return { x: (minX + maxX) / 2, y: (minY + maxY) / 2 };
-  }, [dimensions.customVertices, dimensions.shape]);
-  
-  const shapeObj = useMemo(() => {
-    // Get main pool shape and ensure it's counter-clockwise
-    const mainVerts = ensureCounterClockwise(shape2D);
-    const shape = new THREE.Shape(mainVerts);
-    
-    // Cut out custom stairs areas (holes must be clockwise = opposite of main shape)
-    if (dimensions.customStairsVertices && dimensions.customStairsVertices.length > 0) {
-      dimensions.customStairsVertices.forEach(stairsVerts => {
-        if (stairsVerts && stairsVerts.length >= 3) {
-          // Transform stairs vertices relative to pool center
-          const transformedVerts = stairsVerts.map(v => 
-            new THREE.Vector2(v.x - poolCenter.x, v.y - poolCenter.y)
-          );
-          // Ensure CCW first, then reverse for clockwise holes
-          const ccwVerts = ensureCounterClockwise(transformedVerts);
-          const holeVerts = [...ccwVerts].reverse();
-          const holePath = new THREE.Path();
-          holePath.moveTo(holeVerts[0].x, holeVerts[0].y);
-          for (let i = 1; i < holeVerts.length; i++) {
-            holePath.lineTo(holeVerts[i].x, holeVerts[i].y);
-          }
-          holePath.closePath();
-          shape.holes.push(holePath);
-        }
-      });
-    }
-    
-    // Cut out custom wading pool areas (holes must be clockwise)
-    if (dimensions.customWadingPoolVertices && dimensions.customWadingPoolVertices.length > 0) {
-      dimensions.customWadingPoolVertices.forEach(wadingVerts => {
-        if (wadingVerts && wadingVerts.length >= 3) {
-          // Transform wading pool vertices relative to pool center
-          const transformedVerts = wadingVerts.map(v => 
-            new THREE.Vector2(v.x - poolCenter.x, v.y - poolCenter.y)
-          );
-          // Ensure CCW first, then reverse for clockwise holes
-          const ccwVerts = ensureCounterClockwise(transformedVerts);
-          const holeVerts = [...ccwVerts].reverse();
-          const holePath = new THREE.Path();
-          holePath.moveTo(holeVerts[0].x, holeVerts[0].y);
-          for (let i = 1; i < holeVerts.length; i++) {
-            holePath.lineTo(holeVerts[i].x, holeVerts[i].y);
-          }
-          holePath.closePath();
-          shape.holes.push(holePath);
-        }
-      });
-    }
-    
-    // Cut out regular stairs for non-custom shapes
-    if (dimensions.shape !== 'wlasny' && dimensions.stairs?.enabled) {
-      const stairs = dimensions.stairs;
-      const halfL = dimensions.length / 2;
-      const halfW = dimensions.width / 2;
-      // Handle "full" width - use pool width if full
-      const stairsWidth = stairs.width === 'full' ? dimensions.width : (typeof stairs.width === 'number' ? stairs.width : 1.5);
-      const stepCount = Math.ceil(dimensions.depth / (stairs.stepHeight || 0.29));
-      const stairsLength = stepCount * (stairs.stepDepth || 0.29);
-      
-      const corner = stairs.corner || 'back-left';
-      const direction = stairs.direction || 'along-width';
-      const isAlongLength = direction === 'along-length';
-      const position = stairs.position || 'inside';
-      
-      // Calculate stairs rectangle corners
-      let x1, y1, x2, y2;
-      const dirX = corner.includes('left') ? 1 : -1;
-      const dirY = corner.includes('back') ? 1 : -1;
-      const baseX = corner.includes('left') ? -halfL : halfL;
-      const baseY = corner.includes('back') ? -halfW : halfW;
-      
-      if (isAlongLength) {
-        x1 = baseX;
-        x2 = baseX + dirX * (position === 'inside' ? stairsLength : 0);
-        y1 = baseY;
-        y2 = baseY + dirY * stairsWidth;
-      } else {
-        x1 = baseX;
-        x2 = baseX + dirX * stairsWidth;
-        y1 = baseY;
-        y2 = baseY + dirY * (position === 'inside' ? stairsLength : 0);
-      }
-      
-      // Only cut if stairs are inside
-      if (position === 'inside') {
-        const stairsHole = new THREE.Path();
-        // Holes must be CLOCKWISE (opposite of main CCW shape)
-        // CCW order: min,min -> max,min -> max,max -> min,max
-        // CW order:  min,min -> min,max -> max,max -> max,min
-        stairsHole.moveTo(Math.min(x1, x2), Math.min(y1, y2));
-        stairsHole.lineTo(Math.min(x1, x2), Math.max(y1, y2));
-        stairsHole.lineTo(Math.max(x1, x2), Math.max(y1, y2));
-        stairsHole.lineTo(Math.max(x1, x2), Math.min(y1, y2));
-        stairsHole.closePath();
-        shape.holes.push(stairsHole);
-      }
-    }
-    
-    // Cut out regular wading pool for non-custom shapes
-    if (dimensions.shape !== 'wlasny' && dimensions.wadingPool?.enabled) {
-      const wadingPool = dimensions.wadingPool;
-      const halfL = dimensions.length / 2;
-      const halfW = dimensions.width / 2;
-      
-      const corner = wadingPool.corner || 'back-left';
-      const direction = wadingPool.direction || 'along-width';
-      const isAlongLength = direction === 'along-length';
-      const wpWidth = wadingPool.width || 2;
-      const wpLength = wadingPool.length || 1.5;
-      
-      const sizeX = isAlongLength ? wpWidth : wpLength;
-      const sizeY = isAlongLength ? wpLength : wpWidth;
-      
-      let posX = 0, posY = 0;
-      switch (corner) {
-        case 'back-left':
-          posX = -halfL + sizeX / 2;
-          posY = -halfW + sizeY / 2;
-          break;
-        case 'back-right':
-          posX = halfL - sizeX / 2;
-          posY = -halfW + sizeY / 2;
-          break;
-        case 'front-left':
-          posX = -halfL + sizeX / 2;
-          posY = halfW - sizeY / 2;
-          break;
-        case 'front-right':
-          posX = halfL - sizeX / 2;
-          posY = halfW - sizeY / 2;
-          break;
-      }
-      
-      const wadingHole = new THREE.Path();
-      // Holes must be CLOCKWISE (opposite of main CCW shape)
-      // CCW order: left,bottom -> right,bottom -> right,top -> left,top
-      // CW order:  left,bottom -> left,top -> right,top -> right,bottom
-      wadingHole.moveTo(posX - sizeX / 2, posY - sizeY / 2);
-      wadingHole.lineTo(posX - sizeX / 2, posY + sizeY / 2);
-      wadingHole.lineTo(posX + sizeX / 2, posY + sizeY / 2);
-      wadingHole.lineTo(posX + sizeX / 2, posY - sizeY / 2);
-      wadingHole.closePath();
-      shape.holes.push(wadingHole);
-    }
-    
-    return shape;
-  }, [shape2D, dimensions, poolCenter]);
-  
-  const geometry = useMemo(() => new THREE.ShapeGeometry(shapeObj), [shapeObj]);
-  
-  return (
-    <mesh position={[0, 0, -waterDepth]} geometry={geometry}>
-      <meshStandardMaterial color="#38bdf8" transparent opacity={0.4} side={THREE.DoubleSide} />
-    </mesh>
-  );
-}
-
 // Custom stairs mesh (from drawn vertices) - uses actual polygon shape
 function CustomStairsMesh({ vertices, depth, poolVertices, rotation = 0, showDimensions = true }: { 
   vertices: CustomPoolVertex[]; 
@@ -1534,8 +1352,6 @@ function CustomWadingPoolMesh({ vertices, wadingDepth, poolDepth, poolVertices, 
   poolVertices: CustomPoolVertex[];
   showDimensions?: boolean;
 }) {
-  const waterMaterial = useMemo(() => 
-    new THREE.MeshStandardMaterial({ color: '#38bdf8', transparent: true, opacity: 0.5 }), []);
   const floorMaterial = useMemo(() => 
     new THREE.MeshStandardMaterial({ color: '#5b9bd5' }), []);
   const wallMaterial = useMemo(() => 
@@ -1678,22 +1494,6 @@ function CustomWadingPoolMesh({ vertices, wadingDepth, poolDepth, poolVertices, 
   }, [transformedVertices, transformedPoolVertices, poolBounds, floorZ, wadingDepth, wallMaterial, rimMaterial]);
 
   // Water shape (slightly inset from wading pool shape)
-  const waterShape = useMemo(() => {
-    const insetVertices = insetPolygon(transformedVertices, 0.05);
-    if (insetVertices.length < 3) return null;
-    return new THREE.Shape(insetVertices.map(v => new THREE.Vector2(v.x, v.y)));
-  }, [transformedVertices]);
-
-  const waterGeo = useMemo(() => {
-    if (!waterShape) return null;
-    const geo = new THREE.ExtrudeGeometry(waterShape, {
-      depth: wadingDepth * 0.8,
-      bevelEnabled: false,
-    });
-    geo.rotateX(Math.PI / 2);
-    geo.translate(0, 0, floorZ);
-    return geo;
-  }, [waterShape, wadingDepth, floorZ]);
 
   const { minX, maxX, minY, maxY, sizeX, sizeY } = bounds;
 
@@ -1709,8 +1509,7 @@ function CustomWadingPoolMesh({ vertices, wadingDepth, poolDepth, poolVertices, 
       {walls}
       {rims}
       
-      {/* Water */}
-      {waterGeo && <mesh geometry={waterGeo} material={waterMaterial} />}
+      {/* Water removed */}
       
       {/* Dimension lines - only show if showDimensions is true, with larger offset */}
       {showDimensions && (
@@ -1850,10 +1649,7 @@ function Scene({ dimensions, calculations, showFoilLayout, rollWidth, dimensionD
           <WadingPoolMesh dimensions={dimensions} wadingPool={dimensions.wadingPool} />
         )}
         
-        {/* Water only when not showing foil layout */}
-        {calculations && !showFoilLayout && (
-          <WaterSurface dimensions={dimensions} waterDepth={calculations.waterDepth} />
-        )}
+        {/* Water surface removed - no water generation */}
         
         {/* Foil lines instead of filled strips */}
         {showFoilLayout && <FoilLines dimensions={dimensions} rollWidth={rollWidth} />}
@@ -1945,12 +1741,6 @@ export function Pool3DVisualization({
           <div className={`w-3 h-3 rounded ${showFoilLayout ? 'bg-sky-700' : 'bg-sky-600/60'} border border-sky-700`} />
           <span>Dno</span>
         </div>
-        {!showFoilLayout && (
-          <div className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded bg-sky-300/40 border border-sky-400" />
-            <span>Woda</span>
-          </div>
-        )}
         {hasStairs && (
           <div className="flex items-center gap-2">
             <div className="w-3 h-3 rounded bg-gray-200 border border-gray-300" />
