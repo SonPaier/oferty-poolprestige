@@ -689,6 +689,57 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
                     />
                   </div>
                   
+                  {/* Step dimensions */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label htmlFor="stepHeight" className="text-sm font-medium mb-2 block">
+                        Wys. stopnia (cm)
+                      </Label>
+                      <Input
+                        id="stepHeight"
+                        type="number"
+                        step="1"
+                        min="10"
+                        max="25"
+                        value={Math.round((dimensions.stairs.stepHeight || 0.20) * 100)}
+                        onChange={(e) => {
+                          const cm = parseFloat(e.target.value) || 20;
+                          updateStairs({ stepHeight: cm / 100 });
+                        }}
+                        className="input-field"
+                      />
+                      <p className="text-xs text-muted-foreground mt-1">maks. 20 cm</p>
+                    </div>
+                    <div>
+                      <Label htmlFor="stepDepth" className="text-sm font-medium mb-2 block">
+                        Głęb. stopnia (cm)
+                      </Label>
+                      <Input
+                        id="stepDepth"
+                        type="number"
+                        step="1"
+                        min="20"
+                        max="50"
+                        value={Math.round((dimensions.stairs.stepDepth || 0.30) * 100)}
+                        onChange={(e) => {
+                          const cm = parseFloat(e.target.value) || 30;
+                          updateStairs({ stepDepth: cm / 100 });
+                        }}
+                        className="input-field"
+                      />
+                      <p className="text-xs text-muted-foreground mt-1">zalecane 30 cm</p>
+                    </div>
+                  </div>
+                  
+                  {/* Calculated step count info */}
+                  <div className="p-2 rounded bg-muted/50 text-xs text-muted-foreground flex items-center gap-2">
+                    <Calculator className="w-3 h-3" />
+                    <span>
+                      Liczba stopni: {dimensions.stairs.stepCount || calculateStepCount(dimensions.depth, dimensions.stairs.stepHeight)}
+                      {' '}(przy głębokości {dimensions.depth} m)
+                    </span>
+                  </div>
+                  
                   {/* Position (inside/outside) */}
                   <div>
                     <Label className="text-sm font-medium mb-2 block">Pozycja</Label>
