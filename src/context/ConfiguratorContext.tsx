@@ -49,6 +49,8 @@ const initialDimensions: PoolDimensions = {
   stairs: {
     enabled: false,
     position: 'inside',
+    placement: 'wall',
+    wall: 'back',
     corner: 'back-left',
     direction: 'along-width',
     width: 1.5,
