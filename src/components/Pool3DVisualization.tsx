@@ -508,7 +508,8 @@ function StairsMesh({ dimensions, stairs }: { dimensions: PoolDimensions; stairs
   
   const { length, width, depth } = dimensions;
   // Provide defaults for all stairs properties to avoid NaN
-  const position = stairs.position || 'inside';
+  // Outside stairs are no longer supported
+  const position = 'inside';
   const placement = stairs.placement || 'wall';
   const wall = stairs.wall || 'back';
   const corner = stairs.corner || 'back-left';
@@ -537,30 +538,67 @@ function StairsMesh({ dimensions, stairs }: { dimensions: PoolDimensions; stairs
   const actualStairsWidth = stairsWidth;
   // Use step count from config, calculate equal step heights
   const actualStepCount = stairs.stepCount && stairs.stepCount >= 2 ? stairs.stepCount : Math.max(2, Math.ceil(poolDepth / stepHeight));
-  // Each step has equal height, first step starts below pool edge
-  const actualStepHeight = poolDepth / actualStepCount;
+  // Divide depth into (stepCount + 1) segments so the last tread is NOT flush with the pool floor
+  const actualStepHeight = poolDepth / (actualStepCount + 1);
+
+  // Step depth is a MIN value; actual can grow depending on pool dimensions and placement
+  const availableDepth = (() => {
+    if (placement === 'wall') {
+      return wall === 'back' || wall === 'front' ? (width || 4) : (length || 8);
+    }
+    if (placement === 'corner') {
+      return direction === 'along-length' ? (length || 8) : (width || 4);
+    }
+    // diagonal
+    return Math.min(length || 8, width || 4);
+  })();
+  const actualStepDepth = Math.max(stepDepth, availableDepth / actualStepCount);
 
   // For diagonal stairs, create triangular steps
   if (placement === 'diagonal') {
     const diagonalSteps = useMemo(() => {
       const stepsArr: JSX.Element[] = [];
       
-      // Determine corner position and direction
-      // 3D uses X/Y for horizontal plane, Z for vertical
-      const xDir = corner.includes('left') ? 1 : -1;
-      const yDir = corner.includes('back') ? 1 : -1;
       const baseX = corner.includes('left') ? -halfL : halfL;
       const baseY = corner.includes('back') ? -halfW : halfW;
-      
-      // Total diagonal extent for all steps
-      const totalDiagonalExtent = actualStepCount * stepDepth;
+
+      const makeTriangleShape = (size: number) => {
+        const shape = new THREE.Shape();
+        // IMPORTANT: keep a CCW winding order to avoid inverted normals
+        switch (corner) {
+          case 'back-left':
+            shape.moveTo(0, 0);
+            shape.lineTo(size, 0);
+            shape.lineTo(0, size);
+            shape.closePath();
+            break;
+          case 'back-right':
+            shape.moveTo(0, 0);
+            shape.lineTo(0, size);
+            shape.lineTo(-size, 0);
+            shape.closePath();
+            break;
+          case 'front-left':
+            shape.moveTo(0, 0);
+            shape.lineTo(0, -size);
+            shape.lineTo(size, 0);
+            shape.closePath();
+            break;
+          case 'front-right':
+            shape.moveTo(0, 0);
+            shape.lineTo(-size, 0);
+            shape.lineTo(0, -size);
+            shape.closePath();
+            break;
+        }
+        return shape;
+      };
       
       for (let i = 0; i < actualStepCount; i++) {
         // First step starts at -actualStepHeight (below pool edge), not at 0
         const stepTop = -(i + 1) * actualStepHeight;
         const stepBottom = -poolDepth;
         const thisStepHeight = Math.abs(stepTop - stepBottom);
-        const posZ = (stepTop + stepBottom) / 2;
         
         // Calculate how much of the triangle remains at this step level
         // First step (i=0) is full size, last step is smallest
@@ -568,37 +606,15 @@ function StairsMesh({ dimensions, stairs }: { dimensions: PoolDimensions; stairs
         const remainingSize = actualStairsWidth * (1 - stepProgress);
         
         if (remainingSize > 0.05) {
-          // Create triangular shape for this step
-          // Shape is created in local X/Y, then positioned in 3D
-          const shape = new THREE.Shape();
-          
-          // Triangle: starts at corner, extends along both walls
-          shape.moveTo(0, 0);
-          shape.lineTo(remainingSize * xDir, 0);
-          shape.lineTo(0, remainingSize * yDir);
-          shape.closePath();
-          
-          const extrudeSettings = {
-            depth: thisStepHeight,
-            bevelEnabled: false,
-          };
-          
+          const shape = makeTriangleShape(remainingSize);
+          const geometry = new THREE.ExtrudeGeometry(shape, { depth: thisStepHeight, bevelEnabled: false });
+          // Move extrusion so top face is at z=0 (then position group at stepTop)
+          geometry.translate(0, 0, -thisStepHeight);
+
           stepsArr.push(
             <group key={i} position={[baseX, baseY, stepTop]}>
-              {/* Main step body - extrude downward */}
-              <mesh 
-                rotation={[-Math.PI / 2, 0, 0]}
-                position={[0, 0, 0]}
-                material={stepFrontMaterial}
-              >
-                <extrudeGeometry args={[shape, { depth: thisStepHeight, bevelEnabled: false }]} />
-              </mesh>
-              {/* White top surface */}
-              <mesh 
-                rotation={[0, 0, 0]}
-                position={[0, 0, 0.01]}
-                material={stepTopMaterial}
-              >
+              <mesh geometry={geometry} material={stepFrontMaterial} />
+              <mesh position={[0, 0, 0.01]} material={stepTopMaterial}>
                 <shapeGeometry args={[shape]} />
               </mesh>
             </group>
@@ -607,7 +623,7 @@ function StairsMesh({ dimensions, stairs }: { dimensions: PoolDimensions; stairs
       }
       
       return stepsArr;
-    }, [actualStepCount, actualStepHeight, stepDepth, actualStairsWidth, corner, halfL, halfW, poolDepth, stepFrontMaterial, stepTopMaterial]);
+    }, [actualStepCount, actualStepHeight, actualStairsWidth, corner, halfL, halfW, poolDepth, stepFrontMaterial, stepTopMaterial]);
     
     return <group>{diagonalSteps}</group>;
   }
@@ -649,55 +665,39 @@ function StairsMesh({ dimensions, stairs }: { dimensions: PoolDimensions; stairs
     for (let i = 0; i < actualStepCount; i++) {
       // First step starts at -actualStepHeight (below pool edge), not at 0
       const stepTop = -(i + 1) * actualStepHeight;
-      const stepZ = i * stepDepth;
+      const stepZ = i * actualStepDepth;
       
       const stepBottom = -poolDepth;
       const thisStepHeight = Math.abs(stepTop - stepBottom);
       const posZ = (stepTop + stepBottom) / 2;
       
       let posX = 0, posY = 0;
-      let sizeX = actualStairsWidth, sizeY = stepDepth;
+      let sizeX = actualStairsWidth, sizeY = actualStepDepth;
       
       if (placement === 'wall') {
         if (isAlongLength) {
           posX = baseX;
-          posY = baseY + yDir * (stepZ + stepDepth / 2);
+          posY = baseY + yDir * (stepZ + actualStepDepth / 2);
           sizeX = actualStairsWidth;
-          sizeY = stepDepth;
+          sizeY = actualStepDepth;
         } else {
-          posX = baseX + xDir * (stepZ + stepDepth / 2);
+          posX = baseX + xDir * (stepZ + actualStepDepth / 2);
           posY = baseY;
-          sizeX = stepDepth;
+          sizeX = actualStepDepth;
           sizeY = actualStairsWidth;
-        }
-        
-        if (position === 'outside') {
-          if (isAlongLength) {
-            posY = baseY - yDir * (stepZ + stepDepth / 2);
-          } else {
-            posX = baseX - xDir * (stepZ + stepDepth / 2);
-          }
         }
       } else {
         // Corner placement
         if (isAlongLength) {
-          posX = baseX + xDir * (stepZ + stepDepth / 2);
+          posX = baseX + xDir * (stepZ + actualStepDepth / 2);
           posY = baseY + yDir * (actualStairsWidth / 2);
-          sizeX = stepDepth;
+          sizeX = actualStepDepth;
           sizeY = actualStairsWidth;
         } else {
           posX = baseX + xDir * (actualStairsWidth / 2);
-          posY = baseY + yDir * (stepZ + stepDepth / 2);
+          posY = baseY + yDir * (stepZ + actualStepDepth / 2);
           sizeX = actualStairsWidth;
-          sizeY = stepDepth;
-        }
-        
-        if (position === 'outside') {
-          if (isAlongLength) {
-            posX = baseX - xDir * (stepZ + stepDepth / 2);
-          } else {
-            posY = baseY - yDir * (stepZ + stepDepth / 2);
-          }
+          sizeY = actualStepDepth;
         }
       }
       
@@ -714,7 +714,7 @@ function StairsMesh({ dimensions, stairs }: { dimensions: PoolDimensions; stairs
     }
     
     return stepsArr;
-  }, [actualStepCount, actualStepHeight, stepDepth, actualStairsWidth, corner, direction, position, placement, wall, baseX, baseY, xDir, yDir, isAlongLength, poolDepth, stepTopMaterial, stepFrontMaterial]);
+  }, [actualStepCount, actualStepHeight, actualStepDepth, actualStairsWidth, corner, direction, position, placement, wall, baseX, baseY, xDir, yDir, isAlongLength, poolDepth, stepTopMaterial, stepFrontMaterial]);
 
   return <group>{steps}</group>;
 }
