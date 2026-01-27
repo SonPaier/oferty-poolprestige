@@ -2,9 +2,12 @@ import { Product } from '@/data/products';
 
 export type PoolType = 'prywatny' | 'polprywatny' | 'hotelowy';
 export type PoolLocation = 'wewnetrzny' | 'zewnetrzny';
-export type PoolShape = 'prostokatny' | 'owalny' | 'wlasny';
+export type PoolShape = 'prostokatny' | 'owalny' | 'nieregularny';
 export type PoolOverflowType = 'skimmerowy' | 'rynnowy';
 export type PoolLiningType = 'foliowany' | 'ceramiczny';
+
+// Stairs rotation angles (8 directions for 45° increments)
+export type StairsAngle = 0 | 45 | 90 | 135 | 180 | 225 | 270 | 315;
 
 export interface CustomPoolVertex {
   x: number;
@@ -23,11 +26,13 @@ export interface StairsConfig {
   placement: StairsPlacement; // od ściany, z narożnika lub pod kątem 45°
   wall: PoolWall; // od której ściany (gdy placement === 'wall')
   corner: PoolCorner; // który narożnik (gdy placement === 'corner' lub 'diagonal')
+  cornerLabel?: string; // etykieta narożnika (A, B, C, D...)
   direction: WallDirection; // wzdłuż której ściany (dla placement === 'corner')
   width: number | 'full'; // szerokość schodków lub 'full' = pełna szerokość boku
   stepHeight: number; // wysokość stopnia (domyślnie 0.29m)
   stepCount: number; // wyliczane z głębokości / stepHeight
   stepDepth: number; // głębokość stopnia (domyślnie 0.29m)
+  angle?: number; // kąt kierunku schodów (0, 45, 90, 135, 180, 225, 270, 315) - dla custom drawer
 }
 
 export interface WadingPoolConfig {
@@ -304,7 +309,31 @@ export const poolTypeLabels: Record<PoolType, string> = {
 export const poolShapeLabels: Record<PoolShape, string> = {
   prostokatny: 'Prostokątny',
   owalny: 'Owalny / Okrągły',
-  wlasny: 'Własny kształt',
+  nieregularny: 'Nieregularny',
+};
+
+// Helper to get corner label (A, B, C, D...)
+export function getCornerLabel(index: number): string {
+  return String.fromCharCode(65 + index); // A=65, B=66, etc.
+}
+
+// Helper to get wall label from corner labels (e.g., "A-B")
+export function getWallLabel(cornerIndex: number, totalCorners: number): string {
+  const startLabel = getCornerLabel(cornerIndex);
+  const endLabel = getCornerLabel((cornerIndex + 1) % totalCorners);
+  return `${startLabel}-${endLabel}`;
+}
+
+// Stairs angle labels (8 directions)
+export const stairsAngleLabels: Record<number, string> = {
+  0: 'Wejście z góry ↓',
+  45: 'Wejście z góry-prawej ↙',
+  90: 'Wejście z prawej ←',
+  135: 'Wejście z dołu-prawej ↖',
+  180: 'Wejście z dołu ↑',
+  225: 'Wejście z dołu-lewej ↗',
+  270: 'Wejście z lewej →',
+  315: 'Wejście z góry-lewej ↘',
 };
 
 export const liningTypeLabels: Record<PoolLiningType, string> = {
