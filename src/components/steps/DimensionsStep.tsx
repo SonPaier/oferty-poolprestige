@@ -997,7 +997,7 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
         </div>
 
         {/* Right: 3D Visualization & Calculations - sticky on scroll */}
-        <div className="glass-card p-6 lg:sticky lg:top-4 lg:self-start lg:max-h-[calc(100vh-6rem)] lg:overflow-auto">
+        <div className="glass-card p-6 lg:sticky lg:top-20 lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto">
           <Tabs defaultValue="3d" className="w-full">
             <TabsList className="grid w-full grid-cols-2 mb-4">
               <TabsTrigger value="3d" className="flex items-center gap-2">
