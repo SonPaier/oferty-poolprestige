@@ -1227,12 +1227,13 @@ function CustomStairsMesh({ vertices, depth, poolVertices, rotation = 0, showDim
       const stepShape = new THREE.Shape(shape2D);
       
       // Create extruded geometry for step body
+      // IMPORTANT: all pool geometry uses Z as depth (down). The whole scene is rotated later,
+      // so we must NOT rotate extrusions here (it caused skewed/empty spaces).
       const stepBodyGeo = new THREE.ExtrudeGeometry(stepShape, {
         depth: stepBodyHeight,
         bevelEnabled: false,
       });
-      // Rotate to align with Z axis (extrusion goes along Z)
-      stepBodyGeo.rotateX(Math.PI / 2);
+      // ExtrudeGeometry extrudes along +Z from 0..depth; move it so the top is at stepTopZ.
       stepBodyGeo.translate(0, 0, stepTopZ - stepBodyHeight);
       
       // Create thin surface for step top
@@ -1389,22 +1390,17 @@ function CustomWadingPoolMesh({ vertices, wadingDepth, poolDepth, poolVertices, 
   const floorGeo = useMemo(() => new THREE.ShapeGeometry(shapeObj), [shapeObj]);
 
   // Create extruded platform geometry using actual shape
+  // Keep Z as depth (down). No extra rotation here.
   const platformHeight = poolDepth - wadingDepth;
   const platformGeo = useMemo(() => {
     const geo = new THREE.ExtrudeGeometry(shapeObj, {
       depth: platformHeight,
       bevelEnabled: false,
     });
-    geo.rotateX(Math.PI / 2);
+    // Place platform from z=-poolDepth up to z=-wadingDepth
     geo.translate(0, 0, -poolDepth);
     return geo;
   }, [shapeObj, platformHeight, poolDepth]);
-
-  const centroid = useMemo(() => {
-    const cx = transformedVertices.reduce((sum, v) => sum + v.x, 0) / transformedVertices.length;
-    const cy = transformedVertices.reduce((sum, v) => sum + v.y, 0) / transformedVertices.length;
-    return { x: cx, y: cy };
-  }, [transformedVertices]);
 
   const bounds = useMemo(() => {
     const xs = transformedVertices.map(v => v.x);
@@ -1593,7 +1589,7 @@ function insetPolygon(vertices: { x: number; y: number }[], amount: number): { x
 }
 
 // Main scene
-function Scene({ dimensions, calculations, showFoilLayout, rollWidth, dimensionDisplay }: Pool3DVisualizationProps & { rollWidth: number; dimensionDisplay: DimensionDisplay }) {
+function Scene({ dimensions, calculations: _calculations, showFoilLayout, rollWidth, dimensionDisplay }: Pool3DVisualizationProps & { rollWidth: number; dimensionDisplay: DimensionDisplay }) {
   const isCustomShape = dimensions.shape === 'wlasny';
   // Check for multiple custom stairs (array of arrays)
   const customStairsArrays = dimensions.customStairsVertices || [];
