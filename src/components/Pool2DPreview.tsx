@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { PoolDimensions, CustomPoolVertex } from '@/types/configurator';
+import { PoolDimensions, CustomPoolVertex, StairsConfig } from '@/types/configurator';
 import { DimensionDisplay } from '@/components/Pool3DVisualization';
 
 interface Pool2DPreviewProps {
@@ -45,11 +45,12 @@ function getPoolPoints(dimensions: PoolDimensions): { x: number; y: number }[] {
           points.push({ x: v.x - centerX, y: v.y - centerY });
         });
       } else {
+        // Custom shape not yet drawn - return empty/small placeholder
         points.push(
-          { x: -length / 2, y: -width / 2 },
-          { x: length / 2, y: -width / 2 },
-          { x: length / 2, y: width / 2 },
-          { x: -length / 2, y: width / 2 }
+          { x: -1, y: -1 },
+          { x: 1, y: -1 },
+          { x: 1, y: 1 },
+          { x: -1, y: 1 }
         );
       }
       break;
@@ -62,6 +63,90 @@ function getPoolPoints(dimensions: PoolDimensions): { x: number; y: number }[] {
       );
   }
 
+  return points;
+}
+
+// Generate stairs points for rectangular/oval pools
+function getRegularStairsPoints(dimensions: PoolDimensions): { x: number; y: number }[] | null {
+  const stairs = dimensions.stairs;
+  if (!stairs?.enabled || dimensions.shape === 'wlasny') return null;
+  
+  const { length, width, depth } = dimensions;
+  const halfL = length / 2;
+  const halfW = width / 2;
+  const stairsWidth = typeof stairs.width === 'number' ? stairs.width : 1.5;
+  const stepDepth = stairs.stepDepth || 0.29;
+  const stepCount = Math.ceil(depth / (stairs.stepHeight || 0.29));
+  const stairsLength = stepCount * stepDepth;
+  
+  const placement = stairs.placement || 'wall';
+  const wall = stairs.wall || 'back';
+  const corner = stairs.corner || 'back-left';
+  const direction = stairs.direction || 'along-width';
+  
+  let points: { x: number; y: number }[] = [];
+  
+  if (placement === 'wall') {
+    // Wall placement: centered on wall
+    switch (wall) {
+      case 'back':
+        points = [
+          { x: -stairsWidth / 2, y: -halfW },
+          { x: stairsWidth / 2, y: -halfW },
+          { x: stairsWidth / 2, y: -halfW + stairsLength },
+          { x: -stairsWidth / 2, y: -halfW + stairsLength }
+        ];
+        break;
+      case 'front':
+        points = [
+          { x: -stairsWidth / 2, y: halfW },
+          { x: stairsWidth / 2, y: halfW },
+          { x: stairsWidth / 2, y: halfW - stairsLength },
+          { x: -stairsWidth / 2, y: halfW - stairsLength }
+        ];
+        break;
+      case 'left':
+        points = [
+          { x: -halfL, y: -stairsWidth / 2 },
+          { x: -halfL, y: stairsWidth / 2 },
+          { x: -halfL + stairsLength, y: stairsWidth / 2 },
+          { x: -halfL + stairsLength, y: -stairsWidth / 2 }
+        ];
+        break;
+      case 'right':
+        points = [
+          { x: halfL, y: -stairsWidth / 2 },
+          { x: halfL, y: stairsWidth / 2 },
+          { x: halfL - stairsLength, y: stairsWidth / 2 },
+          { x: halfL - stairsLength, y: -stairsWidth / 2 }
+        ];
+        break;
+    }
+  } else {
+    // Corner placement
+    const isAlongLength = direction === 'along-length';
+    const xDir = corner.includes('left') ? 1 : -1;
+    const yDir = corner.includes('back') ? 1 : -1;
+    const baseX = corner.includes('left') ? -halfL : halfL;
+    const baseY = corner.includes('back') ? -halfW : halfW;
+    
+    if (isAlongLength) {
+      points = [
+        { x: baseX, y: baseY },
+        { x: baseX + xDir * stairsLength, y: baseY },
+        { x: baseX + xDir * stairsLength, y: baseY + yDir * stairsWidth },
+        { x: baseX, y: baseY + yDir * stairsWidth }
+      ];
+    } else {
+      points = [
+        { x: baseX, y: baseY },
+        { x: baseX + xDir * stairsWidth, y: baseY },
+        { x: baseX + xDir * stairsWidth, y: baseY + yDir * stairsLength },
+        { x: baseX, y: baseY + yDir * stairsLength }
+      ];
+    }
+  }
+  
   return points;
 }
 
@@ -102,7 +187,8 @@ export default function Pool2DPreview({ dimensions, height = 300, dimensionDispl
         dimensions.customVertices
       );
     }
-    return null;
+    // For regular shapes, generate stairs points from config
+    return getRegularStairsPoints(dimensions);
   }, [dimensions]);
   
   const wadingPoolPoints = useMemo(() => {

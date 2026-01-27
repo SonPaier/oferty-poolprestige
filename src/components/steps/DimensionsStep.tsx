@@ -39,11 +39,15 @@ import {
   StairsConfig,
   WadingPoolConfig,
   PoolCorner,
+  PoolWall,
   WallDirection,
   StairsPosition,
+  StairsPlacement,
   poolCornerLabels,
+  poolWallLabels,
   wallDirectionLabels,
-  stairsPositionLabels
+  stairsPositionLabels,
+  stairsPlacementLabels
 } from '@/types/configurator';
 import { calculatePoolMetrics, calculateFoilOptimization } from '@/lib/calculations';
 import { CustomPoolDrawer } from '@/components/CustomPoolDrawer';
@@ -153,6 +157,8 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
 
   const handleShapeSelect = (shape: PoolShape) => {
     if (shape === 'wlasny') {
+      // When switching to custom shape, open drawer immediately
+      // and clear rectangle dimensions so they don't show in visualization
       setShowCustomDrawer(true);
     }
     updateDimension('shape', shape);
@@ -513,6 +519,167 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
               </div>
             </div>
           </div>
+
+          {/* Stairs configuration for non-custom shapes */}
+          {!isCustomShape && (
+            <div className="space-y-4 p-4 rounded-lg bg-muted/30 border border-border">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <Footprints className="w-5 h-5 text-primary" />
+                  <div>
+                    <Label htmlFor="stairsEnabled" className="font-medium">Schody</Label>
+                    <p className="text-xs text-muted-foreground">
+                      Dodaj schody do basenu
+                    </p>
+                  </div>
+                </div>
+                <Switch
+                  id="stairsEnabled"
+                  checked={dimensions.stairs?.enabled || false}
+                  onCheckedChange={(checked) => updateStairs({ enabled: checked })}
+                />
+              </div>
+              
+              {dimensions.stairs?.enabled && (
+                <div className="space-y-4 pt-3 border-t border-border">
+                  {/* Placement type */}
+                  <div>
+                    <Label className="text-sm font-medium mb-2 block">Typ umiejscowienia</Label>
+                    <RadioGroup
+                      value={dimensions.stairs.placement || 'wall'}
+                      onValueChange={(value) => updateStairs({ placement: value as StairsPlacement })}
+                      className="grid grid-cols-2 gap-2"
+                    >
+                      {(Object.keys(stairsPlacementLabels) as StairsPlacement[]).map((pl) => (
+                        <div key={pl} className="relative">
+                          <RadioGroupItem
+                            value={pl}
+                            id={`placement-${pl}`}
+                            className="peer sr-only"
+                          />
+                          <Label
+                            htmlFor={`placement-${pl}`}
+                            className="flex flex-col items-center justify-center p-3 rounded-lg border border-border bg-background cursor-pointer transition-all peer-data-[state=checked]:border-primary peer-data-[state=checked]:bg-primary/10 hover:bg-muted/50 text-sm"
+                          >
+                            {stairsPlacementLabels[pl]}
+                          </Label>
+                        </div>
+                      ))}
+                    </RadioGroup>
+                  </div>
+                  
+                  {/* Wall selection - visible when placement === 'wall' */}
+                  {dimensions.stairs.placement === 'wall' && (
+                    <div>
+                      <Label className="text-sm font-medium mb-2 block">Ściana</Label>
+                      <Select
+                        value={dimensions.stairs.wall || 'back'}
+                        onValueChange={(value) => updateStairs({ wall: value as PoolWall })}
+                      >
+                        <SelectTrigger className="w-full">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {(Object.keys(poolWallLabels) as PoolWall[]).map((w) => (
+                            <SelectItem key={w} value={w}>
+                              {poolWallLabels[w]}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+                  
+                  {/* Corner selection - visible when placement === 'corner' */}
+                  {dimensions.stairs.placement === 'corner' && (
+                    <>
+                      <div>
+                        <Label className="text-sm font-medium mb-2 block">Narożnik</Label>
+                        <Select
+                          value={dimensions.stairs.corner || 'back-left'}
+                          onValueChange={(value) => updateStairs({ corner: value as PoolCorner })}
+                        >
+                          <SelectTrigger className="w-full">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {(Object.keys(poolCornerLabels) as PoolCorner[]).map((c) => (
+                              <SelectItem key={c} value={c}>
+                                {poolCornerLabels[c]}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div>
+                        <Label className="text-sm font-medium mb-2 block">Kierunek</Label>
+                        <Select
+                          value={dimensions.stairs.direction || 'along-width'}
+                          onValueChange={(value) => updateStairs({ direction: value as WallDirection })}
+                        >
+                          <SelectTrigger className="w-full">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {(Object.keys(wallDirectionLabels) as WallDirection[]).map((d) => (
+                              <SelectItem key={d} value={d}>
+                                {wallDirectionLabels[d]}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </>
+                  )}
+                  
+                  {/* Stairs width */}
+                  <div>
+                    <Label htmlFor="stairsWidth" className="text-sm font-medium mb-2 block">
+                      Szerokość schodów (m)
+                    </Label>
+                    <Input
+                      id="stairsWidth"
+                      type="number"
+                      step="0.1"
+                      min="0.5"
+                      max={dimensions.stairs.placement === 'wall' 
+                        ? (dimensions.stairs.wall === 'left' || dimensions.stairs.wall === 'right' ? dimensions.width : dimensions.length)
+                        : 5}
+                      value={typeof dimensions.stairs.width === 'number' ? dimensions.stairs.width : 1.5}
+                      onChange={(e) => updateStairs({ width: parseFloat(e.target.value) || 1.5 })}
+                      className="input-field"
+                    />
+                  </div>
+                  
+                  {/* Position (inside/outside) */}
+                  <div>
+                    <Label className="text-sm font-medium mb-2 block">Pozycja</Label>
+                    <RadioGroup
+                      value={dimensions.stairs.position || 'inside'}
+                      onValueChange={(value) => updateStairs({ position: value as StairsPosition })}
+                      className="grid grid-cols-2 gap-2"
+                    >
+                      {(Object.keys(stairsPositionLabels) as StairsPosition[]).map((pos) => (
+                        <div key={pos} className="relative">
+                          <RadioGroupItem
+                            value={pos}
+                            id={`position-${pos}`}
+                            className="peer sr-only"
+                          />
+                          <Label
+                            htmlFor={`position-${pos}`}
+                            className="flex flex-col items-center justify-center p-2 rounded-lg border border-border bg-background cursor-pointer transition-all peer-data-[state=checked]:border-primary peer-data-[state=checked]:bg-primary/10 hover:bg-muted/50 text-xs"
+                          >
+                            {stairsPositionLabels[pos]}
+                          </Label>
+                        </div>
+                      ))}
+                    </RadioGroup>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="flex items-center justify-between p-4 rounded-lg bg-muted/30 border border-border">
             <div className="flex items-center gap-3">

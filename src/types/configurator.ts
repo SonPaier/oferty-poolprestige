@@ -14,11 +14,15 @@ export interface CustomPoolVertex {
 export type StairsPosition = 'inside' | 'outside';
 export type PoolCorner = 'back-left' | 'back-right' | 'front-left' | 'front-right';
 export type WallDirection = 'along-length' | 'along-width'; // wzdłuż długości (X) lub szerokości (Y)
+export type PoolWall = 'back' | 'front' | 'left' | 'right'; // od której ściany
+export type StairsPlacement = 'wall' | 'corner'; // od ściany lub z narożnika
 
 export interface StairsConfig {
   enabled: boolean;
   position: StairsPosition; // wewnątrz/zewnątrz basenu
-  corner: PoolCorner; // który narożnik
+  placement: StairsPlacement; // od ściany lub z narożnika
+  wall: PoolWall; // od której ściany (gdy placement === 'wall')
+  corner: PoolCorner; // który narożnik (gdy placement === 'corner')
   direction: WallDirection; // wzdłuż której ściany
   width: number | 'full'; // szerokość schodków lub 'full' = pełna szerokość boku
   stepHeight: number; // wysokość stopnia (domyślnie 0.29m)
@@ -39,6 +43,8 @@ export interface WadingPoolConfig {
 export const defaultStairsConfig: StairsConfig = {
   enabled: false,
   position: 'inside',
+  placement: 'wall',
+  wall: 'back',
   corner: 'back-left',
   direction: 'along-width',
   width: 1.5,
@@ -60,6 +66,18 @@ export const defaultWadingPoolConfig: WadingPoolConfig = {
 export const stairsPositionLabels: Record<StairsPosition, string> = {
   inside: 'Wewnątrz basenu',
   outside: 'Na zewnątrz basenu',
+};
+
+export const stairsPlacementLabels: Record<StairsPlacement, string> = {
+  wall: 'Od ściany',
+  corner: 'Z narożnika',
+};
+
+export const poolWallLabels: Record<PoolWall, string> = {
+  back: 'Tylna ściana',
+  front: 'Przednia ściana',
+  left: 'Lewa ściana',
+  right: 'Prawa ściana',
 };
 
 export const poolCornerLabels: Record<PoolCorner, string> = {
