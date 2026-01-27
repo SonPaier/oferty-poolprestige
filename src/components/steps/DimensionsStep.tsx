@@ -402,7 +402,7 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
 
           {/* Main Dimensions - hidden for custom shape */}
           {!isCustomShape && (
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-3 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="length">Długość (m)</Label>
                 <Input
@@ -430,10 +430,27 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
                   className="input-field"
                 />
               </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="depth">Głębokość (m)</Label>
+                <Input
+                  id="depth"
+                  type="number"
+                  step="0.1"
+                  min="0.5"
+                  max="5"
+                  value={dimensions.depth}
+                  onChange={(e) => updateDimension('depth', parseFloat(e.target.value) || 0)}
+                  className="input-field"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Woda: {calculations?.waterDepth?.toFixed(2) || (dimensions.depth - (dimensions.overflowType === 'skimmerowy' ? 0.1 : 0)).toFixed(2)} m
+                </p>
+              </div>
             </div>
           )}
 
-          {/* Depth section */}
+          {/* Slope, Deep Depth and Attractions section */}
           <div className="space-y-4">
             <div className="flex items-center justify-between p-4 rounded-lg bg-muted/30 border border-border">
               <div className="flex items-center gap-3">
@@ -457,24 +474,7 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
               />
             </div>
 
-            <div className={`grid gap-4 ${dimensions.hasSlope ? 'grid-cols-3' : 'grid-cols-2'}`}>
-              <div className="space-y-2">
-                <Label htmlFor="depth">{dimensions.hasSlope ? 'Głębokość płytka (m)' : 'Głębokość niecki (m)'}</Label>
-                <Input
-                  id="depth"
-                  type="number"
-                  step="0.1"
-                  min="0.5"
-                  max="5"
-                  value={dimensions.depth}
-                  onChange={(e) => updateDimension('depth', parseFloat(e.target.value) || 0)}
-                  className="input-field"
-                />
-                <p className="text-xs text-muted-foreground">
-                  Woda: {calculations?.waterDepth?.toFixed(2) || (dimensions.depth - (dimensions.overflowType === 'skimmerowy' ? 0.1 : 0)).toFixed(2)} m
-                </p>
-              </div>
-
+            <div className={`grid gap-4 ${dimensions.hasSlope ? 'grid-cols-2' : 'grid-cols-1'}`}>
               {dimensions.hasSlope && (
                 <div className="space-y-2">
                   <Label htmlFor="depthDeep">Głębokość głęboka (m)</Label>
