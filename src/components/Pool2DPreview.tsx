@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
-import { PoolDimensions, CustomPoolVertex, StairsConfig, getCornerLabel } from '@/types/configurator';
+import { PoolDimensions, CustomPoolVertex, getCornerLabel } from '@/types/configurator';
 import { DimensionDisplay } from '@/components/Pool3DVisualization';
+import { getStairsRenderData, StairsPath2D } from '@/components/pool/StairsPath2D';
 
 interface Pool2DPreviewProps {
   dimensions: PoolDimensions;
@@ -66,179 +67,11 @@ function getPoolPoints(dimensions: PoolDimensions): { x: number; y: number }[] {
   return points;
 }
 
-// Stairs configuration with step lines for 2D visualization
-interface StairsRenderData {
-  outline: { x: number; y: number }[];
-  stepLines: { x1: number; y1: number; x2: number; y2: number }[];
-}
-
-// Generate stairs points for rectangular/oval pools with step lines
-function getRegularStairsData(dimensions: PoolDimensions): StairsRenderData | null {
+// Use shared stair render data from reusable component
+function getRegularStairsData(dimensions: PoolDimensions) {
   const stairs = dimensions.stairs;
   if (!stairs?.enabled || dimensions.shape === 'nieregularny') return null;
-  
-  const { length, width } = dimensions;
-  const halfL = length / 2;
-  const halfW = width / 2;
-  const stairsWidth = typeof stairs.width === 'number' ? stairs.width : 1.5;
-  const stepDepth = stairs.stepDepth || 0.30;
-  const stepCount = stairs.stepCount || 4;
-  // Stairs length = stepCount * stepDepth (NOT auto-scaled to pool dimensions)
-  const stairsLength = stepCount * stepDepth;
-  
-  const placement = stairs.placement || 'wall';
-  const wall = stairs.wall || 'back';
-  const corner = stairs.corner || 'back-left';
-  const direction = stairs.direction || 'along-width';
-  
-  let outline: { x: number; y: number }[] = [];
-  let stepLines: { x1: number; y1: number; x2: number; y2: number }[] = [];
-  
-  if (placement === 'diagonal') {
-    // Diagonal 45° corner stairs - triangle shape
-    // Size is based on stepCount × stepDepth (same as other stair types)
-    const diagonalSize = stepCount * stepDepth;
-    const xDir = corner.includes('left') ? 1 : -1;
-    const yDir = corner.includes('back') ? 1 : -1;
-    const baseX = corner.includes('left') ? -halfL : halfL;
-    const baseY = corner.includes('back') ? -halfW : halfW;
-    
-    outline = [
-      { x: baseX, y: baseY },
-      { x: baseX + xDir * diagonalSize, y: baseY },
-      { x: baseX, y: baseY + yDir * diagonalSize }
-    ];
-    
-    // Add diagonal step lines for triangle stairs
-    for (let i = 1; i < stepCount; i++) {
-      const progress = i / stepCount;
-      const lineLen = diagonalSize * (1 - progress);
-      stepLines.push({
-        x1: baseX + xDir * lineLen,
-        y1: baseY,
-        x2: baseX,
-        y2: baseY + yDir * lineLen
-      });
-    }
-  } else if (placement === 'wall') {
-    // Wall placement: centered on wall
-    switch (wall) {
-      case 'back':
-        outline = [
-          { x: -stairsWidth / 2, y: -halfW },
-          { x: stairsWidth / 2, y: -halfW },
-          { x: stairsWidth / 2, y: -halfW + stairsLength },
-          { x: -stairsWidth / 2, y: -halfW + stairsLength }
-        ];
-        // Step lines - horizontal lines across the stairs
-        for (let i = 1; i < stepCount; i++) {
-          const stepY = -halfW + i * stepDepth;
-          stepLines.push({
-            x1: -stairsWidth / 2,
-            y1: stepY,
-            x2: stairsWidth / 2,
-            y2: stepY
-          });
-        }
-        break;
-      case 'front':
-        outline = [
-          { x: -stairsWidth / 2, y: halfW },
-          { x: stairsWidth / 2, y: halfW },
-          { x: stairsWidth / 2, y: halfW - stairsLength },
-          { x: -stairsWidth / 2, y: halfW - stairsLength }
-        ];
-        for (let i = 1; i < stepCount; i++) {
-          const stepY = halfW - i * stepDepth;
-          stepLines.push({
-            x1: -stairsWidth / 2,
-            y1: stepY,
-            x2: stairsWidth / 2,
-            y2: stepY
-          });
-        }
-        break;
-      case 'left':
-        outline = [
-          { x: -halfL, y: -stairsWidth / 2 },
-          { x: -halfL, y: stairsWidth / 2 },
-          { x: -halfL + stairsLength, y: stairsWidth / 2 },
-          { x: -halfL + stairsLength, y: -stairsWidth / 2 }
-        ];
-        for (let i = 1; i < stepCount; i++) {
-          const stepX = -halfL + i * stepDepth;
-          stepLines.push({
-            x1: stepX,
-            y1: -stairsWidth / 2,
-            x2: stepX,
-            y2: stairsWidth / 2
-          });
-        }
-        break;
-      case 'right':
-        outline = [
-          { x: halfL, y: -stairsWidth / 2 },
-          { x: halfL, y: stairsWidth / 2 },
-          { x: halfL - stairsLength, y: stairsWidth / 2 },
-          { x: halfL - stairsLength, y: -stairsWidth / 2 }
-        ];
-        for (let i = 1; i < stepCount; i++) {
-          const stepX = halfL - i * stepDepth;
-          stepLines.push({
-            x1: stepX,
-            y1: -stairsWidth / 2,
-            x2: stepX,
-            y2: stairsWidth / 2
-          });
-        }
-        break;
-    }
-  } else {
-    // Corner placement
-    const isAlongLength = direction === 'along-length';
-    const xDir = corner.includes('left') ? 1 : -1;
-    const yDir = corner.includes('back') ? 1 : -1;
-    const baseX = corner.includes('left') ? -halfL : halfL;
-    const baseY = corner.includes('back') ? -halfW : halfW;
-    
-    if (isAlongLength) {
-      outline = [
-        { x: baseX, y: baseY },
-        { x: baseX + xDir * stairsLength, y: baseY },
-        { x: baseX + xDir * stairsLength, y: baseY + yDir * stairsWidth },
-        { x: baseX, y: baseY + yDir * stairsWidth }
-      ];
-      // Step lines - vertical lines across the stairs
-      for (let i = 1; i < stepCount; i++) {
-        const stepX = baseX + xDir * i * stepDepth;
-        stepLines.push({
-          x1: stepX,
-          y1: baseY,
-          x2: stepX,
-          y2: baseY + yDir * stairsWidth
-        });
-      }
-    } else {
-      outline = [
-        { x: baseX, y: baseY },
-        { x: baseX + xDir * stairsWidth, y: baseY },
-        { x: baseX + xDir * stairsWidth, y: baseY + yDir * stairsLength },
-        { x: baseX, y: baseY + yDir * stairsLength }
-      ];
-      // Step lines - horizontal lines across the stairs
-      for (let i = 1; i < stepCount; i++) {
-        const stepY = baseY + yDir * i * stepDepth;
-        stepLines.push({
-          x1: baseX,
-          y1: stepY,
-          x2: baseX + xDir * stairsWidth,
-          y2: stepY
-        });
-      }
-    }
-  }
-  
-  return { outline, stepLines };
+  return getStairsRenderData(dimensions.length, dimensions.width, stairs);
 }
 
 // Legacy wrapper for places that just need points
