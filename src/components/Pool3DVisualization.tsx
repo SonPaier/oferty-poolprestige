@@ -502,7 +502,7 @@ function PoolMesh({ dimensions, solid = false }: { dimensions: PoolDimensions; s
 }
 
 // Stairs visualization - stairs descend to the pool floor
-// Supports both corner placement (8 configurations) and wall placement (4 walls)
+// Supports wall, corner, and diagonal (45°) placement
 function StairsMesh({ dimensions, stairs }: { dimensions: PoolDimensions; stairs: StairsConfig }) {
   if (!stairs.enabled) return null;
   
@@ -535,50 +535,86 @@ function StairsMesh({ dimensions, stairs }: { dimensions: PoolDimensions; stairs
     }), []);
 
   const actualStairsWidth = stairsWidth;
+  const actualStepCount = Math.ceil(poolDepth / stepHeight);
 
-  // Get position based on placement mode
+  // For diagonal stairs, create triangular steps
+  if (placement === 'diagonal') {
+    const diagonalSteps = useMemo(() => {
+      const stepsArr: JSX.Element[] = [];
+      
+      // Determine corner position and direction
+      const xDir = corner.includes('left') ? 1 : -1;
+      const yDir = corner.includes('back') ? 1 : -1;
+      const baseX = corner.includes('left') ? -halfL : halfL;
+      const baseY = corner.includes('back') ? -halfW : halfW;
+      
+      // Diagonal extent per step (45° angle)
+      const diagonalStep = stepDepth / Math.SQRT2;
+      
+      for (let i = 0; i < actualStepCount; i++) {
+        const stepTop = -i * stepHeight;
+        const stepBottom = -poolDepth;
+        const thisStepHeight = Math.abs(stepTop - stepBottom);
+        const posZ = (stepTop + stepBottom) / 2;
+        
+        // Step offset from corner
+        const offset = i * diagonalStep;
+        
+        // Create triangular shape for this step
+        const shape = new THREE.Shape();
+        
+        // Triangle vertices for 45° corner stairs
+        const p1x = baseX;
+        const p1y = baseY;
+        const p2x = baseX + xDir * (actualStairsWidth - offset);
+        const p2y = baseY;
+        const p3x = baseX;
+        const p3y = baseY + yDir * (actualStairsWidth - offset);
+        
+        if (actualStairsWidth - offset > 0.1) {
+          shape.moveTo(p1x, p1y);
+          shape.lineTo(p2x, p2y);
+          shape.lineTo(p3x, p3y);
+          shape.closePath();
+          
+          const extrudeSettings = {
+            depth: thisStepHeight,
+            bevelEnabled: false,
+          };
+          
+          stepsArr.push(
+            <group key={i}>
+              {/* Main step body */}
+              <mesh position={[0, 0, posZ - thisStepHeight / 2]} material={stepFrontMaterial}>
+                <extrudeGeometry args={[shape, extrudeSettings]} />
+              </mesh>
+              {/* White top surface */}
+              <mesh position={[0, 0, stepTop - 0.01]} material={stepTopMaterial}>
+                <shapeGeometry args={[shape]} />
+              </mesh>
+            </group>
+          );
+        }
+      }
+      
+      return stepsArr;
+    }, [actualStepCount, stepHeight, stepDepth, actualStairsWidth, corner, halfL, halfW, poolDepth, stepFrontMaterial, stepTopMaterial]);
+    
+    return <group>{diagonalSteps}</group>;
+  }
+
+  // Get position based on placement mode (wall or corner)
   const getPositionConfig = () => {
     if (placement === 'wall') {
-      // Wall placement: stairs are centered on the selected wall
       switch (wall) {
-        case 'back': return { 
-          baseX: 0, 
-          baseY: -halfW, 
-          isAlongLength: true, 
-          xDir: 0, 
-          yDir: 1 
-        };
-        case 'front': return { 
-          baseX: 0, 
-          baseY: halfW, 
-          isAlongLength: true, 
-          xDir: 0, 
-          yDir: -1 
-        };
-        case 'left': return { 
-          baseX: -halfL, 
-          baseY: 0, 
-          isAlongLength: false, 
-          xDir: 1, 
-          yDir: 0 
-        };
-        case 'right': return { 
-          baseX: halfL, 
-          baseY: 0, 
-          isAlongLength: false, 
-          xDir: -1, 
-          yDir: 0 
-        };
-        default: return { 
-          baseX: 0, 
-          baseY: -halfW, 
-          isAlongLength: true, 
-          xDir: 0, 
-          yDir: 1 
-        };
+        case 'back': return { baseX: 0, baseY: -halfW, isAlongLength: true, xDir: 0, yDir: 1 };
+        case 'front': return { baseX: 0, baseY: halfW, isAlongLength: true, xDir: 0, yDir: -1 };
+        case 'left': return { baseX: -halfL, baseY: 0, isAlongLength: false, xDir: 1, yDir: 0 };
+        case 'right': return { baseX: halfL, baseY: 0, isAlongLength: false, xDir: -1, yDir: 0 };
+        default: return { baseX: 0, baseY: -halfW, isAlongLength: true, xDir: 0, yDir: 1 };
       }
     } else {
-      // Corner placement: original logic
+      // Corner placement
       const isAlongLength = direction === 'along-length';
       const xDir = corner.includes('left') ? 1 : -1;
       const yDir = corner.includes('back') ? 1 : -1;
@@ -600,7 +636,6 @@ function StairsMesh({ dimensions, stairs }: { dimensions: PoolDimensions; stairs
 
   const steps = useMemo(() => {
     const stepsArr: JSX.Element[] = [];
-    const actualStepCount = Math.ceil(poolDepth / stepHeight);
     
     for (let i = 0; i < actualStepCount; i++) {
       const stepTop = -i * stepHeight;
@@ -614,22 +649,18 @@ function StairsMesh({ dimensions, stairs }: { dimensions: PoolDimensions; stairs
       let sizeX = actualStairsWidth, sizeY = stepDepth;
       
       if (placement === 'wall') {
-        // Wall placement: stairs extend perpendicular to wall
         if (isAlongLength) {
-          // Wall is back or front (horizontal), stairs extend along Y
-          posX = baseX; // centered on wall
+          posX = baseX;
           posY = baseY + yDir * (stepZ + stepDepth / 2);
           sizeX = actualStairsWidth;
           sizeY = stepDepth;
         } else {
-          // Wall is left or right (vertical), stairs extend along X
           posX = baseX + xDir * (stepZ + stepDepth / 2);
-          posY = baseY; // centered on wall
+          posY = baseY;
           sizeX = stepDepth;
           sizeY = actualStairsWidth;
         }
         
-        // Adjust for outside position
         if (position === 'outside') {
           if (isAlongLength) {
             posY = baseY - yDir * (stepZ + stepDepth / 2);
@@ -638,22 +669,19 @@ function StairsMesh({ dimensions, stairs }: { dimensions: PoolDimensions; stairs
           }
         }
       } else {
-        // Corner placement: original logic
+        // Corner placement
         if (isAlongLength) {
-          // Stairs extend along X axis (length)
           posX = baseX + xDir * (stepZ + stepDepth / 2);
           posY = baseY + yDir * (actualStairsWidth / 2);
           sizeX = stepDepth;
           sizeY = actualStairsWidth;
         } else {
-          // Stairs extend along Y axis (width)
           posX = baseX + xDir * (actualStairsWidth / 2);
           posY = baseY + yDir * (stepZ + stepDepth / 2);
           sizeX = actualStairsWidth;
           sizeY = stepDepth;
         }
         
-        // Adjust for inside/outside position
         if (position === 'outside') {
           if (isAlongLength) {
             posX = baseX - xDir * (stepZ + stepDepth / 2);
@@ -663,14 +691,11 @@ function StairsMesh({ dimensions, stairs }: { dimensions: PoolDimensions; stairs
         }
       }
       
-      // Create step with white top and blue sides
       stepsArr.push(
         <group key={i} position={[posX, posY, posZ]}>
-          {/* Main step body with blue sides */}
           <mesh material={stepFrontMaterial}>
             <boxGeometry args={[sizeX, sizeY, thisStepHeight]} />
           </mesh>
-          {/* White top surface overlay */}
           <mesh position={[0, 0, thisStepHeight / 2 - 0.01]} material={stepTopMaterial}>
             <boxGeometry args={[sizeX, sizeY, 0.02]} />
           </mesh>
@@ -679,7 +704,7 @@ function StairsMesh({ dimensions, stairs }: { dimensions: PoolDimensions; stairs
     }
     
     return stepsArr;
-  }, [stepHeight, stepDepth, actualStairsWidth, corner, direction, position, placement, wall, baseX, baseY, xDir, yDir, isAlongLength, poolDepth, stepTopMaterial, stepFrontMaterial]);
+  }, [actualStepCount, stepHeight, stepDepth, actualStairsWidth, corner, direction, position, placement, wall, baseX, baseY, xDir, yDir, isAlongLength, poolDepth, stepTopMaterial, stepFrontMaterial]);
 
   return <group>{steps}</group>;
 }
@@ -975,37 +1000,53 @@ function DimensionLine({ start, end, label, color = '#475569' }: {
 
 // Pool dimension lines (main pool only) - offset increased for better readability
 function PoolDimensionLines({ dimensions }: { dimensions: PoolDimensions }) {
-  const { length, width, depth, depthDeep, hasSlope } = dimensions;
+  const { shape, length, width, depth, depthDeep, hasSlope, customVertices } = dimensions;
   const actualDeep = hasSlope && depthDeep ? depthDeep : depth;
   const offset = 1.2; // Increased offset for better visibility
+  
+  // Calculate actual pool dimensions based on shape
+  let poolLength = length;
+  let poolWidth = width;
+  
+  if (shape === 'wlasny' && customVertices && customVertices.length >= 3) {
+    const minX = Math.min(...customVertices.map(v => v.x));
+    const maxX = Math.max(...customVertices.map(v => v.x));
+    const minY = Math.min(...customVertices.map(v => v.y));
+    const maxY = Math.max(...customVertices.map(v => v.y));
+    poolLength = maxX - minX;
+    poolWidth = maxY - minY;
+  }
+  
+  const halfL = poolLength / 2;
+  const halfW = poolWidth / 2;
   
   return (
     <group>
       {/* Length */}
       <DimensionLine
-        start={[-length / 2, -width / 2 - offset, 0]}
-        end={[length / 2, -width / 2 - offset, 0]}
-        label={`${length.toFixed(2)} m`}
+        start={[-halfL, -halfW - offset, 0]}
+        end={[halfL, -halfW - offset, 0]}
+        label={`${poolLength.toFixed(2)} m`}
       />
       
       {/* Width */}
       <DimensionLine
-        start={[length / 2 + offset, -width / 2, 0]}
-        end={[length / 2 + offset, width / 2, 0]}
-        label={`${width.toFixed(2)} m`}
+        start={[halfL + offset, -halfW, 0]}
+        end={[halfL + offset, halfW, 0]}
+        label={`${poolWidth.toFixed(2)} m`}
       />
       
       {/* Depth shallow (left side) */}
       <group>
         <Line
           points={[
-            [-length / 2 - offset, width / 2 + offset, 0],
-            [-length / 2 - offset, width / 2 + offset, -depth]
+            [-halfL - offset, halfW + offset, 0],
+            [-halfL - offset, halfW + offset, -depth]
           ]}
           color="#475569"
           lineWidth={1.5}
         />
-        <Html position={[-length / 2 - offset - 0.5, width / 2 + offset, -depth / 2]} center>
+        <Html position={[-halfL - offset - 0.5, halfW + offset, -depth / 2]} center>
           <div className="bg-background/95 px-2 py-0.5 rounded text-xs font-semibold text-foreground border border-border shadow-sm whitespace-nowrap">
             {depth.toFixed(2)} m{hasSlope ? ' (płytko)' : ''}
           </div>
@@ -1017,13 +1058,13 @@ function PoolDimensionLines({ dimensions }: { dimensions: PoolDimensions }) {
         <group>
           <Line
             points={[
-              [length / 2 + offset, width / 2 + offset, 0],
-              [length / 2 + offset, width / 2 + offset, -actualDeep]
+              [halfL + offset, halfW + offset, 0],
+              [halfL + offset, halfW + offset, -actualDeep]
             ]}
             color="#f97316"
             lineWidth={1.5}
           />
-          <Html position={[length / 2 + offset + 0.5, width / 2 + offset, -actualDeep / 2]} center>
+          <Html position={[halfL + offset + 0.5, halfW + offset, -actualDeep / 2]} center>
             <div className="bg-orange-50 px-2 py-0.5 rounded text-xs font-semibold text-orange-700 border border-orange-200 shadow-sm whitespace-nowrap">
               {actualDeep.toFixed(2)} m (głęboko)
             </div>
