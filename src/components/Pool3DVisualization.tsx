@@ -1194,18 +1194,20 @@ function CustomStairsMesh({ vertices, depth, poolVertices, rotation = 0, showDim
       const endRatio = (i + 1) / stepCount;
       
       // Slice the polygon based on rotation direction
+      // NOTE: Canvas Y axis is inverted (Y grows downward), so rotation 0/180 are swapped
       let slicedVertices: { x: number; y: number }[];
       
       if (rotation === 0) {
-        // Entry from top (Y+), steps slice along Y axis from max to min
-        const yStart = bounds.maxY - startRatio * sizeY;
-        const yEnd = bounds.maxY - endRatio * sizeY;
-        slicedVertices = slicePolygonY(transformedVertices, yEnd, yStart);
-      } else if (rotation === 180) {
-        // Entry from bottom (Y-), steps slice along Y axis from min to max
+        // Entry from top in canvas (Y grows down), so in 3D we slice from minY to maxY
+        // First step at minY (top in 3D), last step at maxY (bottom in 3D)
         const yStart = bounds.minY + startRatio * sizeY;
         const yEnd = bounds.minY + endRatio * sizeY;
         slicedVertices = slicePolygonY(transformedVertices, yStart, yEnd);
+      } else if (rotation === 180) {
+        // Entry from bottom in canvas, so in 3D we slice from maxY to minY
+        const yStart = bounds.maxY - startRatio * sizeY;
+        const yEnd = bounds.maxY - endRatio * sizeY;
+        slicedVertices = slicePolygonY(transformedVertices, yEnd, yStart);
       } else if (rotation === 90) {
         // Entry from right (X+), steps slice along X axis from max to min
         const xStart = bounds.maxX - startRatio * sizeX;
