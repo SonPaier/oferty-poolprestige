@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { PoolDimensions, PoolCorner, WallDirection, StairsConfig, WadingPoolConfig } from '@/types/configurator';
+import { PoolDimensions, StairsConfig, WadingPoolConfig } from '@/types/configurator';
 
 export interface GeometryWarning {
   type: 'collision' | 'out-of-bounds' | 'overlap';
@@ -15,7 +15,9 @@ interface BoundingBox {
   maxY: number;
 }
 
-// Get bounding box for stairs based on corner, direction, and dimensions
+// Get bounding box for stairs based on placement, corner, direction, and dimensions
+// Coordinates: X = length (left to right), Y = width (back to front)
+// Origin at back-left corner (0,0)
 function getStairsBoundingBox(
   stairs: StairsConfig,
   poolLength: number,
@@ -26,37 +28,37 @@ function getStairsBoundingBox(
 
   const stairsWidth = typeof stairs.width === 'number' ? stairs.width : 1.5;
   const stepDepth = stairs.stepDepth || 0.30;
-  const stepHeight = stairs.stepHeight || 0.20;
-  const stepCount = Math.ceil(poolDepth / stepHeight);
+  // Use stepCount from config, not calculated from height
+  const stepCount = stairs.stepCount || 4;
   const stairsLength = stepCount * stepDepth;
 
-  // For wall placement
+  // For wall placement - stairs centered on wall, extending into pool
   if (stairs.placement === 'wall') {
     const wall = stairs.wall || 'back';
     
     switch (wall) {
-      case 'back': // Top wall (y = 0)
+      case 'back': // Back wall (Y=0), stairs extend into pool (+Y direction)
         return {
           minX: (poolLength - stairsWidth) / 2,
           maxX: (poolLength + stairsWidth) / 2,
           minY: 0,
           maxY: stairsLength
         };
-      case 'front': // Bottom wall (y = poolWidth)
+      case 'front': // Front wall (Y=poolWidth), stairs extend into pool (-Y direction)
         return {
           minX: (poolLength - stairsWidth) / 2,
           maxX: (poolLength + stairsWidth) / 2,
           minY: poolWidth - stairsLength,
           maxY: poolWidth
         };
-      case 'left': // Left wall (x = 0)
+      case 'left': // Left wall (X=0), stairs extend into pool (+X direction)
         return {
           minX: 0,
           maxX: stairsLength,
           minY: (poolWidth - stairsWidth) / 2,
           maxY: (poolWidth + stairsWidth) / 2
         };
-      case 'right': // Right wall (x = poolLength)
+      case 'right': // Right wall (X=poolLength), stairs extend into pool (-X direction)
         return {
           minX: poolLength - stairsLength,
           maxX: poolLength,
@@ -83,38 +85,41 @@ function getStairsBoundingBox(
     }
   }
 
-  // For corner placement
+  // For corner placement - stairs start at corner, extend along one wall direction
   const corner = stairs.corner || 'back-left';
   const direction = stairs.direction || 'along-width';
   
-  // Determine stair extent based on direction
-  const extentAlongDir = stairsWidth;
-  const extentPerpDir = stairsLength;
+  // Width is along the selected direction, length (steps) is perpendicular
+  const isAlongLength = direction === 'along-length';
+  const sizeAlongDir = stairsWidth;
+  const sizePerp = stairsLength;
 
   switch (corner) {
-    case 'back-left':
-      if (direction === 'along-width') {
-        return { minX: 0, maxX: extentPerpDir, minY: 0, maxY: extentAlongDir };
+    case 'back-left': // Corner at (0, 0)
+      if (isAlongLength) {
+        // Steps extend along X, stair body extends along Y
+        return { minX: 0, maxX: sizeAlongDir, minY: 0, maxY: sizePerp };
       } else {
-        return { minX: 0, maxX: extentAlongDir, minY: 0, maxY: extentPerpDir };
+        // Steps extend along Y, stair body extends along X
+        return { minX: 0, maxX: sizePerp, minY: 0, maxY: sizeAlongDir };
       }
-    case 'back-right':
-      if (direction === 'along-width') {
-        return { minX: poolLength - extentPerpDir, maxX: poolLength, minY: 0, maxY: extentAlongDir };
+    case 'back-right': // Corner at (poolLength, 0)
+      if (isAlongLength) {
+        return { minX: poolLength - sizeAlongDir, maxX: poolLength, minY: 0, maxY: sizePerp };
       } else {
-        return { minX: poolLength - extentAlongDir, maxX: poolLength, minY: 0, maxY: extentPerpDir };
+        return { minX: poolLength - sizePerp, maxX: poolLength, minY: 0, maxY: sizeAlongDir };
       }
-    case 'front-left':
-      if (direction === 'along-width') {
-        return { minX: 0, maxX: extentPerpDir, minY: poolWidth - extentAlongDir, maxY: poolWidth };
+    case 'front-left': // Corner at (0, poolWidth)
+      if (isAlongLength) {
+        return { minX: 0, maxX: sizeAlongDir, minY: poolWidth - sizePerp, maxY: poolWidth };
       } else {
-        return { minX: 0, maxX: extentAlongDir, minY: poolWidth - extentPerpDir, maxY: poolWidth };
+        return { minX: 0, maxX: sizePerp, minY: poolWidth - sizeAlongDir, maxY: poolWidth };
       }
-    case 'front-right':
-      if (direction === 'along-width') {
-        return { minX: poolLength - extentPerpDir, maxX: poolLength, minY: poolWidth - extentAlongDir, maxY: poolWidth };
+    case 'front-right': // Corner at (poolLength, poolWidth)
+      if (isAlongLength) {
+        return { minX: poolLength - sizeAlongDir, maxX: poolLength, minY: poolWidth - sizePerp, maxY: poolWidth };
       } else {
-        return { minX: poolLength - extentAlongDir, maxX: poolLength, minY: poolWidth - extentPerpDir, maxY: poolWidth };
+        return { minX: poolLength - sizePerp, maxX: poolLength, minY: poolWidth - sizeAlongDir, maxY: poolWidth };
       }
   }
 
@@ -122,6 +127,7 @@ function getStairsBoundingBox(
 }
 
 // Get bounding box for wading pool based on corner, direction, and dimensions
+// Same coordinate system as stairs
 function getWadingPoolBoundingBox(
   wadingPool: WadingPoolConfig,
   poolLength: number,
@@ -129,32 +135,37 @@ function getWadingPoolBoundingBox(
 ): BoundingBox | null {
   if (!wadingPool.enabled) return null;
 
-  const wadingWidth = wadingPool.width || 2;
-  const wadingLength = wadingPool.length || 1.5;
+  const wpWidth = wadingPool.width || 2; // Width along wall
+  const wpLength = wadingPool.length || 1.5; // Length into pool
   const corner = wadingPool.corner || 'back-left';
   const direction = wadingPool.direction || 'along-width';
 
-  // Width is along the wall direction, length extends into the pool
-  const extentAlongWall = direction === 'along-width' ? wadingWidth : wadingLength;
-  const extentIntoPool = direction === 'along-width' ? wadingLength : wadingWidth;
+  // Direction determines orientation:
+  // along-width: wpWidth goes along Y axis, wpLength goes along X axis
+  // along-length: wpWidth goes along X axis, wpLength goes along Y axis
+  const isAlongLength = direction === 'along-length';
+  const sizeX = isAlongLength ? wpWidth : wpLength;
+  const sizeY = isAlongLength ? wpLength : wpWidth;
 
   switch (corner) {
-    case 'back-left':
-      return { minX: 0, maxX: extentIntoPool, minY: 0, maxY: extentAlongWall };
-    case 'back-right':
-      return { minX: poolLength - extentIntoPool, maxX: poolLength, minY: 0, maxY: extentAlongWall };
-    case 'front-left':
-      return { minX: 0, maxX: extentIntoPool, minY: poolWidth - extentAlongWall, maxY: poolWidth };
-    case 'front-right':
-      return { minX: poolLength - extentIntoPool, maxX: poolLength, minY: poolWidth - extentAlongWall, maxY: poolWidth };
+    case 'back-left': // Corner at (0, 0)
+      return { minX: 0, maxX: sizeX, minY: 0, maxY: sizeY };
+    case 'back-right': // Corner at (poolLength, 0)
+      return { minX: poolLength - sizeX, maxX: poolLength, minY: 0, maxY: sizeY };
+    case 'front-left': // Corner at (0, poolWidth)
+      return { minX: 0, maxX: sizeX, minY: poolWidth - sizeY, maxY: poolWidth };
+    case 'front-right': // Corner at (poolLength, poolWidth)
+      return { minX: poolLength - sizeX, maxX: poolLength, minY: poolWidth - sizeY, maxY: poolWidth };
   }
 
   return null;
 }
 
-// Check if two bounding boxes overlap
+// Check if two bounding boxes overlap (strict overlap, not just touching)
 function boxesOverlap(a: BoundingBox, b: BoundingBox): boolean {
-  return !(a.maxX <= b.minX || b.maxX <= a.minX || a.maxY <= b.minY || b.maxY <= a.minY);
+  // No overlap if one is completely to the left, right, above, or below the other
+  const noOverlap = a.maxX <= b.minX || b.maxX <= a.minX || a.maxY <= b.minY || b.maxY <= a.minY;
+  return !noOverlap;
 }
 
 // Check if a bounding box extends beyond pool boundaries
@@ -175,6 +186,13 @@ function isTooLarge(box: BoundingBox, poolLength: number, poolWidth: number): bo
   return boxWidth > poolLength || boxHeight > poolWidth;
 }
 
+// Calculate overlap area between two boxes (for debugging)
+function getOverlapArea(a: BoundingBox, b: BoundingBox): number {
+  const overlapX = Math.max(0, Math.min(a.maxX, b.maxX) - Math.max(a.minX, b.minX));
+  const overlapY = Math.max(0, Math.min(a.maxY, b.maxY) - Math.max(a.minY, b.minY));
+  return overlapX * overlapY;
+}
+
 export function usePoolGeometryValidation(dimensions: PoolDimensions): GeometryWarning[] {
   return useMemo(() => {
     const warnings: GeometryWarning[] = [];
@@ -190,6 +208,10 @@ export function usePoolGeometryValidation(dimensions: PoolDimensions): GeometryW
 
     const stairsBB = getStairsBoundingBox(dimensions.stairs, poolLength, poolWidth, poolDepth);
     const wadingBB = getWadingPoolBoundingBox(dimensions.wadingPool, poolLength, poolWidth);
+
+    // Debug logging (can be removed in production)
+    // console.log('Stairs BB:', stairsBB);
+    // console.log('Wading BB:', wadingBB);
 
     // Check stairs bounds
     if (stairsBB) {
@@ -231,10 +253,11 @@ export function usePoolGeometryValidation(dimensions: PoolDimensions): GeometryW
 
     // Check collision between stairs and wading pool
     if (stairsBB && wadingBB && boxesOverlap(stairsBB, wadingBB)) {
+      const overlapArea = getOverlapArea(stairsBB, wadingBB);
       warnings.push({
         type: 'collision',
         severity: 'error',
-        message: 'Schody i brodzik nakładają się na siebie. Wybierz różne narożniki lub zmień wymiary.',
+        message: `Schody i brodzik nakładają się na siebie (${overlapArea.toFixed(2)} m²). Wybierz różne narożniki lub zmień wymiary.`,
         affectedElements: ['stairs', 'wading-pool']
       });
     }
@@ -279,7 +302,7 @@ export function usePoolGeometryValidation(dimensions: PoolDimensions): GeometryW
     dimensions.stairs.corner,
     dimensions.stairs.direction,
     dimensions.stairs.width,
-    dimensions.stairs.stepHeight,
+    dimensions.stairs.stepCount, // Added stepCount instead of stepHeight
     dimensions.stairs.stepDepth,
     dimensions.wadingPool.enabled,
     dimensions.wadingPool.corner,
