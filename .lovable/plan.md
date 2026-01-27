@@ -1,146 +1,131 @@
 
-# Plan: Ujednolicony edytor kształtu basenu z oznaczeniami narożników
+# Plan naprawy wizualizacji 3D schodów
 
-## Podsumowanie
+## Podsumowanie problemów
 
-Projekt polega na integracji logiki edytora kształtu z ręcznymi parametrami wymiarów. Każdy kształt (prostokątny, owalny, własny) będzie mógł być edytowany w graficznym edytorze. Narożniki będą oznaczone literami (A, B, C, D...), co pozwoli na logiczne definiowanie ścian (np. A-B). Schody będą mogły być umieszczane pod kątem 45° z narożnika, z możliwością wyboru kierunku strzałką.
+Na podstawie analizy kodu i przesłanych zrzutów ekranu zidentyfikowano następujące problemy:
 
-## Zmiany w interfejsie użytkownika
+1. **Schody 45° są odwrócone** - geometria trójkątna nie renderuje się poprawnie
+2. **Schody w 3D mają nieprawidłowe wymiary** - widoczne na zrzucie: 2.80m × 1.60m zamiast rzeczywistych wartości
+3. **Zmiana ilości stopni nie aktualizuje rozmiaru schodów 45°** - dla schodów od ściany/narożnika działa poprawnie, ale dla 45° logika jest inna
+4. **Linie wymiarowe pokazują złe wartości** - używają starego obliczenia opartego na wysokości stopnia zamiast `stepCount`
 
-### 1. Wybór kształtu basenu
-```text
-Obecny układ:
-┌─────────────────────────────────────────────────┐
-│  [Prostokąt] [Owal] [Własny kształt]            │
-│                                                 │
-│  (Osobne pola wymiarów dla prostokąt/owal)     │
-│  (Edytor rysowania tylko dla "Własny kształt")  │
-└─────────────────────────────────────────────────┘
+---
 
-Nowy układ:
-┌─────────────────────────────────────────────────┐
-│  [Prostokąt] [Owal] [Nieregularny]              │
-│                                                 │
-│  ┌─ Wymiary bazowe ─────────────────────┐       │
-│  │ Długość: [10.0] m  Szerokość: [5.0] m│       │
-│  │           [Otwórz edytor kształtu]   │       │
-│  └──────────────────────────────────────┘       │
-│                                                 │
-│  (Podgląd 2D i 3D z literami A, B, C, D)       │
-└─────────────────────────────────────────────────┘
+## Planowane zmiany
+
+### 1. Naprawa obliczeń rozmiaru schodów 45° w 3D
+
+**Plik:** `src/components/Pool3DVisualization.tsx`
+
+**Problem:** Schody 45° używają stałej wartości `actualStairsWidth` zamiast dynamicznie obliczonej wielkości bazującej na ilości stopni i głębokości stopnia.
+
+**Rozwiązanie:** Dla schodów 45° (trójkątnych), każdy bok trójkąta powinien być równy:
+```
+diagonalSize = stepCount × stepDepth
 ```
 
-### 2. Oznaczenie narożników literami
-- Prostokąt: 4 narożniki A, B, C, D (zgodnie z ruchem wskazówek zegara)
-- Nieregularny: N narożników A, B, C, D, E, F...
-- Owal: bez literowania (kształt ciągły)
+Gdzie:
+- `stepCount` = ilość stopni wybrana przez użytkownika (2-15)
+- `stepDepth` = głębokość stopnia (domyślnie 30cm)
 
-### 3. Edytor kształtu (ulepszony)
-- Dla prostokąta: generuje bazowy prostokąt z wymiarów, można edytować wierzchołki
-- Dla nieregularnego: rysowanie dowolnego wielokąta
-- Literowanie narożników widoczne na canvasie i w panelu współrzędnych
-- Schody 45° z narożnika - strzałka kierunku z krokiem 45° (8 kierunków)
+Każdy następny stopień będzie mniejszym trójkątem, gdzie rozmiar zmniejsza się proporcjonalnie.
+
+### 2. Naprawa linii wymiarowych dla schodów
+
+**Plik:** `src/components/Pool3DVisualization.tsx` (funkcja `StairsDimensionLines`)
+
+**Problem:** Obecny kod używa:
+```javascript
+const stepCount = Math.ceil(depth / (stairs.stepHeight || 0.29));
+const stairsLength = stepCount * (stairs.stepDepth || 0.29);
+```
+
+**Rozwiązanie:** Zmiana na używanie `stairs.stepCount` z konfiguracji:
+```javascript
+const stepCount = stairs.stepCount || 4;
+const stairsLength = stepCount * (stairs.stepDepth || 0.30);
+```
+
+### 3. Synchronizacja wymiarów 2D i 3D dla schodów 45°
+
+**Plik:** `src/components/Pool2DPreview.tsx`
+
+**Problem:** W 2D używany jest `stairsWidth` jako rozmiar trójkąta, ale dla schodów 45° rozmiar powinien zależeć od `stepCount × stepDepth`.
+
+**Rozwiązanie:** Dla `placement === 'diagonal'`:
+```javascript
+const diagonalSize = stepCount * stepDepth;
+outline = [
+  { x: baseX, y: baseY },
+  { x: baseX + xDir * diagonalSize, y: baseY },
+  { x: baseX, y: baseY + yDir * diagonalSize }
+];
+```
+
+### 4. Naprawa generowania stopni trójkątnych
+
+**Plik:** `src/components/Pool3DVisualization.tsx` (sekcja diagonal w `StairsMesh`)
+
+**Problem:** Obecna logika używa `remainingSize = actualStairsWidth * (1 - stepProgress)`, co nie skaluje się poprawnie z ilością stopni.
+
+**Rozwiązanie:** Zmiana logiki na:
+```javascript
+const diagonalSize = actualStepCount * actualStepDepth;
+// Każdy stopień jest mniejszym trójkątem
+for (let i = 0; i < actualStepCount; i++) {
+  const progress = (i + 1) / actualStepCount;
+  const remainingSize = diagonalSize * (1 - progress);
+  // ... generowanie geometrii
+}
+```
+
+---
 
 ## Szczegóły techniczne
 
-### Zmiany w typach (`src/types/configurator.ts`)
-
-1. Usunięcie `PoolShape = 'prostokatny' | 'owalny' | 'wlasny'`
-2. Nowy typ: `PoolShape = 'prostokatny' | 'owalny' | 'nieregularny'`
-3. Dodanie pola `stairsCornerLabel?: string` (np. 'A', 'B') do `StairsConfig`
-4. Dodanie pola `stairsAngle?: number` (0, 45, 90, 135, 180, 225, 270, 315) - kąt kierunku schodów
-
-### Zmiany w edytorze (`src/components/CustomPoolDrawer.tsx`)
-
-1. **Generowanie z wymiarów**:
-   - Przyjmowanie props `initialLength` i `initialWidth`
-   - Automatyczne generowanie prostokąta o podanych wymiarach jako punkt startowy
-   - Synchronizacja w obie strony (zmiana wierzchołków aktualizuje wymiary)
-
-2. **Literowanie narożników**:
-   - Dodanie etykiet (A, B, C, D...) przy każdym wierzchołku basenu
-   - Wyświetlanie w canvasie i w panelu edycji współrzędnych
-   - Nazewnictwo ścian: "Ściana A-B", "Ściana B-C" itd.
-
-3. **Schody 45° z narożnika**:
-   - Rozszerzenie rotacji schodów z 4 do 8 kierunków (co 45°)
-   - Strzałka pokazująca kierunek wejścia
-   - Możliwość wyboru narożnika dla schodów (A, B, C lub D)
-
-### Zmiany w wizualizacji (`src/components/Pool2DPreview.tsx`, `Pool3DVisualization.tsx`)
-
-1. **Literowanie narożników w podglądzie 2D**:
-   - Dodanie etykiet A, B, C, D przy wierzchołkach prostokąta/nieregularnego
-
-2. **Literowanie w 3D**:
-   - Sprite/billboardy z literami przy narożnikach
-
-### Zmiany w kroku wymiarów (`src/components/steps/DimensionsStep.tsx`)
-
-1. **Zunifikowany flow**:
-   - Pola długość/szerokość zawsze widoczne (dla prostokąta/owalu)
-   - Przycisk "Edytuj w edytorze" otwiera dialog z wstępnie wygenerowanym kształtem
-   - Zmiana w edytorze aktualizuje wymiary w formularzu
-
-2. **Zmiana nazewnictwa**:
-   - "Własny kształt" -> "Nieregularny"
-
-## Przepływ danych
+### Zmiana w Pool3DVisualization.tsx - StairsMesh (diagonal)
 
 ```text
-┌─────────────────────────────────────────────────────────────────┐
-│                         DimensionsStep                          │
-│  ┌─────────────────┐    ┌──────────────────────────────────┐   │
-│  │ Długość: 10m    │───>│                                  │   │
-│  │ Szerokość: 5m   │    │         CustomPoolDrawer         │   │
-│  │ [Edytuj kształt]│    │  ┌──────────────────────────┐    │   │
-│  └─────────────────┘    │  │  A─────────────────────B │    │   │
-│                         │  │  │                     │ │    │   │
-│         Sync            │  │  │     (basen)        │ │    │   │
-│        <──────>         │  │  │                     │ │    │   │
-│                         │  │  D─────────────────────C │    │   │
-│  ┌─────────────────┐    │  └──────────────────────────┘    │   │
-│  │ Pool2DPreview   │<───│  Narożniki: A, B, C, D            │   │
-│  │ Pool3DPreview   │    │  Schody: z narożnika A, kąt 45°   │   │
-│  │ (z literami)    │    └──────────────────────────────────┘   │
-│  └─────────────────┘                                           │
-└─────────────────────────────────────────────────────────────────┘
+Przed (linie ~549-619):
+- actualStairsWidth używane jako baza rozmiaru trójkąta
+- remainingSize = actualStairsWidth * (1 - stepProgress)
+
+Po:
+- diagonalSize = actualStepCount * actualStepDepth
+- remainingSize = diagonalSize * (1 - (i+1)/actualStepCount)
 ```
 
-## Lista zmian w plikach
+### Zmiana w Pool3DVisualization.tsx - StairsDimensionLines
 
-### Pliki do modyfikacji:
+```text
+Przed (linie ~1155-1156):
+const stepCount = Math.ceil(depth / (stairs.stepHeight || 0.29));
+const stairsLength = stepCount * (stairs.stepDepth || 0.29);
 
-1. **`src/types/configurator.ts`**
-   - Zmiana `PoolShape` na `'prostokatny' | 'owalny' | 'nieregularny'`
-   - Dodanie `stairsAngle` (8 kierunków) do `StairsConfig`
-   - Aktualizacja etykiet
+Po:
+const stepCount = stairs.stepCount || 4;
+const stairsLength = stepCount * (stairs.stepDepth || 0.30);
+```
 
-2. **`src/components/CustomPoolDrawer.tsx`**
-   - Dodanie props: `initialLength`, `initialWidth`, `shape`
-   - Funkcja generowania bazowego prostokąta
-   - Literowanie narożników (A, B, C...)
-   - Rozszerzenie rotacji schodów do 8 kierunków (co 45°)
-   - Synchronizacja wymiarów z wielokątem
+### Zmiana w Pool2DPreview.tsx - getRegularStairsData (diagonal)
 
-3. **`src/components/steps/DimensionsStep.tsx`**
-   - Ujednolicenie wyboru kształtu (prostokąt/owal/nieregularny)
-   - Przycisk "Edytuj kształt" dla wszystkich typów (oprócz owalu)
-   - Przekazywanie długości/szerokości do edytora
+```text
+Przed (linie ~97-120):
+- Używa stairsWidth jako rozmiar boku trójkąta
 
-4. **`src/components/Pool2DPreview.tsx`**
-   - Dodanie etykiet literowych przy narożnikach
-   - Wsparcie dla kształtu nieregularnego
+Po:
+- Dla diagonal: diagonalSize = stepCount * stepDepth
+- Trójkąt o bokach diagonalSize × diagonalSize
+```
 
-5. **`src/components/Pool3DVisualization.tsx`**
-   - Dodanie billboardów z literami przy narożnikach
-   - Aktualizacja schodów 45°
+---
 
-6. **`src/context/ConfiguratorContext.tsx`**
-   - Aktualizacja `initialDimensions` z nowym typem shape
+## Weryfikacja
 
-## Zachowanie wstecznej kompatybilności
+Po wprowadzeniu zmian:
 
-- Istniejące oferty z `shape: 'wlasny'` będą automatycznie mapowane na `'nieregularny'`
-- Dane `customVertices` pozostają bez zmian
-- Schody z 4-kierunkową rotacją będą działać nadal (tylko rozszerzamy do 8)
+1. ✅ Zmiana ilości stopni (np. z 4 na 6) powinna zwiększać rozmiar schodów 45° zarówno w 2D jak i 3D
+2. ✅ Linie wymiarowe powinny pokazywać prawidłowe wartości odpowiadające konfiguracji
+3. ✅ Schody prostokątne (od ściany, z narożnika) powinny działać bez zmian
+4. ✅ Geometria trójkątna powinna być poprawnie zorientowana (nie do góry nogami)
