@@ -135,33 +135,69 @@ function direction(p1: Point, p2: Point, p3: Point): number {
 }
 
 /**
+ * Check if a point is strictly inside a polygon (not on the edge)
+ */
+export function isPointStrictlyInsidePolygon(point: Point, polygon: Point[], edgeTolerance: number = 0.05): boolean {
+  // First check if on edge - if so, it's not strictly inside
+  if (isPointOnPolygonEdge(point, polygon, edgeTolerance)) {
+    return false;
+  }
+  // Then check if inside
+  return isPointInsidePolygon(point, polygon);
+}
+
+/**
  * Check if two polygons overlap (share any interior area)
+ * This allows polygons to touch/share edges without being considered overlapping
  */
 export function doPolygonsOverlap(poly1: Point[], poly2: Point[]): boolean {
   if (poly1.length < 3 || poly2.length < 3) return false;
   
-  // Check if any vertex of poly1 is inside poly2
+  const edgeTolerance = 0.05; // 5cm tolerance for edge detection
+  
+  // Check if any vertex of poly1 is STRICTLY inside poly2 (not on edge)
   for (const point of poly1) {
-    if (isPointInsidePolygon(point, poly2)) return true;
+    if (isPointStrictlyInsidePolygon(point, poly2, edgeTolerance)) return true;
   }
   
-  // Check if any vertex of poly2 is inside poly1
+  // Check if any vertex of poly2 is STRICTLY inside poly1 (not on edge)
   for (const point of poly2) {
-    if (isPointInsidePolygon(point, poly1)) return true;
+    if (isPointStrictlyInsidePolygon(point, poly1, edgeTolerance)) return true;
   }
   
-  // Check if any edges intersect
+  // Check if any edges properly intersect (cross through each other, not just touch)
   for (let i = 0; i < poly1.length; i++) {
     const j = (i + 1) % poly1.length;
     for (let k = 0; k < poly2.length; k++) {
       const l = (k + 1) % poly2.length;
-      if (segmentsIntersect(poly1[i], poly1[j], poly2[k], poly2[l])) {
+      if (segmentsProperlyIntersect(poly1[i], poly1[j], poly2[k], poly2[l])) {
         return true;
       }
     }
   }
   
   return false;
+}
+
+/**
+ * Check if two line segments properly intersect (cross through each other)
+ * This excludes endpoint touching - segments that just touch at endpoints are OK
+ */
+function segmentsProperlyIntersect(p1: Point, p2: Point, p3: Point, p4: Point): boolean {
+  const d1 = direction(p3, p4, p1);
+  const d2 = direction(p3, p4, p2);
+  const d3 = direction(p1, p2, p3);
+  const d4 = direction(p1, p2, p4);
+  
+  // Use a small epsilon for comparison to handle floating point
+  const eps = 0.0001;
+  
+  // Check for proper intersection (segments cross, not just touch)
+  // Both points of one segment must be on opposite sides of the other segment
+  const cross1 = (d1 > eps && d2 < -eps) || (d1 < -eps && d2 > eps);
+  const cross2 = (d3 > eps && d4 < -eps) || (d3 < -eps && d4 > eps);
+  
+  return cross1 && cross2;
 }
 
 /**
