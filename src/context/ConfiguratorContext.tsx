@@ -66,6 +66,7 @@ const initialDimensions: PoolDimensions = {
     length: 1.5,
     depth: 0.4,
     position: 'inside',
+    hasDividingWall: true,
   },
 };
 
