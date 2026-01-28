@@ -239,6 +239,75 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
     return wallOptions[cornerIndex % 4] || wallOptions[0];
   };
 
+  // Calculate maximum available width for stairs/wading pool based on shared wall
+  // When both elements share a wall, their combined widths cannot exceed the wall length
+  const getMaxAvailableWidth = (
+    elementType: 'stairs' | 'wadingPool',
+    cornerIndex: number,
+    direction: WallDirection
+  ): number => {
+    const stairsEnabled = dimensions.stairs.enabled;
+    const wadingEnabled = dimensions.wadingPool?.enabled;
+    
+    // Get wall length based on direction
+    const wallLength = direction === 'along-length' ? dimensions.length : dimensions.width;
+    
+    // If only one element is enabled, full wall is available
+    if (!stairsEnabled || !wadingEnabled) {
+      return wallLength;
+    }
+    
+    // Check if both elements share the same wall
+    const stairsCorner = dimensions.stairs.cornerIndex ?? 0;
+    const wadingCorner = dimensions.wadingPool.cornerIndex ?? 0;
+    const stairsDir = dimensions.stairs.direction || 'along-width';
+    const wadingDir = dimensions.wadingPool.direction || 'along-width';
+    
+    // Two elements share a wall if:
+    // 1. They are on adjacent corners (differ by 1 or 3 modulo 4)
+    // 2. The element on the earlier corner extends along the shared wall direction
+    const cornerDiff = Math.abs(stairsCorner - wadingCorner);
+    const areAdjacent = cornerDiff === 1 || cornerDiff === 3;
+    
+    if (!areAdjacent) {
+      return wallLength; // Not adjacent, full wall available
+    }
+    
+    // Check if they share the same wall (same direction extending from adjacent corners)
+    // For corners A(0)-B(1): shared wall is A-B (along-length)
+    // For corners B(1)-C(2): shared wall is B-C (along-width)
+    // For corners C(2)-D(3): shared wall is C-D (along-length)
+    // For corners D(3)-A(0): shared wall is A-D (along-width)
+    
+    const smallerCorner = Math.min(stairsCorner, wadingCorner);
+    const largerCorner = Math.max(stairsCorner, wadingCorner);
+    
+    let sharedWallDirection: WallDirection;
+    if ((smallerCorner === 0 && largerCorner === 1) || (smallerCorner === 2 && largerCorner === 3)) {
+      sharedWallDirection = 'along-length';
+    } else if ((smallerCorner === 1 && largerCorner === 2) || (smallerCorner === 0 && largerCorner === 3)) {
+      sharedWallDirection = 'along-width';
+    } else {
+      return wallLength;
+    }
+    
+    // Check if both elements are oriented along the shared wall
+    const stairsOnSharedWall = stairsDir === sharedWallDirection;
+    const wadingOnSharedWall = wadingDir === sharedWallDirection;
+    
+    if (!stairsOnSharedWall || !wadingOnSharedWall) {
+      return wallLength; // Not both on shared wall
+    }
+    
+    // They share the wall - calculate remaining space
+    const otherElementWidth = elementType === 'stairs'
+      ? (dimensions.wadingPool.width || 2)
+      : (typeof dimensions.stairs.width === 'number' ? dimensions.stairs.width : 1.5);
+    
+    const maxAvailable = wallLength - otherElementWidth;
+    return Math.max(0.5, maxAvailable); // Minimum 0.5m
+  };
+
   // Update stairs config
   const updateStairs = (updates: Partial<StairsConfig>) => {
     const newStairs = { ...dimensions.stairs, ...updates };
@@ -957,23 +1026,41 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
                       )}
 
                       {/* Stairs width - only for rectangular shape */}
-                      {(dimensions.stairs.shapeType || 'rectangular') === 'rectangular' && (
-                        <div>
-                          <Label htmlFor="stairsWidth" className="text-sm font-medium mb-2 block">
-                            Szerokość schodów (m)
-                          </Label>
-                          <Input
-                            id="stairsWidth"
-                            type="number"
-                            step="0.1"
-                            min="0.5"
-                            max={5}
-                            value={typeof dimensions.stairs.width === 'number' ? dimensions.stairs.width : 1.5}
-                            onChange={(e) => updateStairs({ width: parseFloat(e.target.value) || 1.5 })}
-                            className="input-field"
-                          />
-                        </div>
-                      )}
+                      {(dimensions.stairs.shapeType || 'rectangular') === 'rectangular' && (() => {
+                        const maxWidth = getMaxAvailableWidth(
+                          'stairs',
+                          dimensions.stairs.cornerIndex ?? 0,
+                          dimensions.stairs.direction || 'along-width'
+                        );
+                        const currentWidth = typeof dimensions.stairs.width === 'number' ? dimensions.stairs.width : 1.5;
+                        const isOverLimit = currentWidth > maxWidth;
+                        
+                        return (
+                          <div>
+                            <Label htmlFor="stairsWidth" className="text-sm font-medium mb-2 block">
+                              Szerokość schodów (m)
+                            </Label>
+                            <Input
+                              id="stairsWidth"
+                              type="number"
+                              step="0.1"
+                              min="0.5"
+                              max={maxWidth}
+                              value={currentWidth}
+                              onChange={(e) => {
+                                const value = parseFloat(e.target.value) || 1.5;
+                                updateStairs({ width: Math.min(value, maxWidth) });
+                              }}
+                              className={`input-field ${isOverLimit ? 'border-destructive' : ''}`}
+                            />
+                            {dimensions.wadingPool?.enabled && (
+                              <p className="text-xs text-muted-foreground mt-1">
+                                Maks. {maxWidth.toFixed(1)}m (brodzik zajmuje {(dimensions.wadingPool.width || 2).toFixed(1)}m)
+                              </p>
+                            )}
+                          </div>
+                        );
+                      })()}
                       
                       {/* Step count and depth */}
                       <div className="grid grid-cols-2 gap-3">
@@ -1129,47 +1216,67 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
                   </div>
                   
                   {/* Size inputs */}
-                  <div className="grid grid-cols-3 gap-3">
-                    <div>
-                      <Label htmlFor="wadingWidth" className="text-xs">Szerokość (m)</Label>
-                      <Input
-                        id="wadingWidth"
-                        type="number"
-                        step="0.1"
-                        min="0.5"
-                        max="10"
-                        value={dimensions.wadingPool.width || 2}
-                        onChange={(e) => updateWadingPool({ width: parseFloat(e.target.value) || 2 })}
-                        className="input-field"
-                      />
-                    </div>
-                    <div>
-                      <Label htmlFor="wadingLength" className="text-xs">Długość (m)</Label>
-                      <Input
-                        id="wadingLength"
-                        type="number"
-                        step="0.1"
-                        min="0.5"
-                        max="10"
-                        value={dimensions.wadingPool.length || 1.5}
-                        onChange={(e) => updateWadingPool({ length: parseFloat(e.target.value) || 1.5 })}
-                        className="input-field"
-                      />
-                    </div>
-                    <div>
-                      <Label htmlFor="wadingDepth" className="text-xs">Głębokość (m)</Label>
-                      <Input
-                        id="wadingDepth"
-                        type="number"
-                        step="0.1"
-                        min="0.2"
-                        max="1"
-                        value={dimensions.wadingPool.depth || 0.4}
-                        onChange={(e) => updateWadingPool({ depth: parseFloat(e.target.value) || 0.4 })}
-                        className="input-field"
-                      />
-                    </div>
-                  </div>
+                  {(() => {
+                    const maxWidth = getMaxAvailableWidth(
+                      'wadingPool',
+                      dimensions.wadingPool.cornerIndex ?? 0,
+                      dimensions.wadingPool.direction || 'along-width'
+                    );
+                    const currentWidth = dimensions.wadingPool.width || 2;
+                    const isOverLimit = currentWidth > maxWidth;
+                    
+                    return (
+                      <div className="grid grid-cols-3 gap-3">
+                        <div>
+                          <Label htmlFor="wadingWidth" className="text-xs">Szerokość (m)</Label>
+                          <Input
+                            id="wadingWidth"
+                            type="number"
+                            step="0.1"
+                            min="0.5"
+                            max={maxWidth}
+                            value={currentWidth}
+                            onChange={(e) => {
+                              const value = parseFloat(e.target.value) || 2;
+                              updateWadingPool({ width: Math.min(value, maxWidth) });
+                            }}
+                            className={`input-field ${isOverLimit ? 'border-destructive' : ''}`}
+                          />
+                          {dimensions.stairs.enabled && (
+                            <p className="text-xs text-muted-foreground mt-0.5">
+                              Maks. {maxWidth.toFixed(1)}m
+                            </p>
+                          )}
+                        </div>
+                        <div>
+                          <Label htmlFor="wadingLength" className="text-xs">Długość (m)</Label>
+                          <Input
+                            id="wadingLength"
+                            type="number"
+                            step="0.1"
+                            min="0.5"
+                            max="10"
+                            value={dimensions.wadingPool.length || 1.5}
+                            onChange={(e) => updateWadingPool({ length: parseFloat(e.target.value) || 1.5 })}
+                            className="input-field"
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor="wadingDepth" className="text-xs">Głębokość (m)</Label>
+                          <Input
+                            id="wadingDepth"
+                            type="number"
+                            step="0.1"
+                            min="0.2"
+                            max="1"
+                            value={dimensions.wadingPool.depth || 0.4}
+                            onChange={(e) => updateWadingPool({ depth: parseFloat(e.target.value) || 0.4 })}
+                            className="input-field"
+                          />
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
               )}
             </div>
