@@ -14,11 +14,18 @@ const useStairsMaterials = () => {
     new THREE.MeshStandardMaterial({
       color: '#ffffff',
       roughness: 0.6,
+      // Prevent z-fighting with step body (blue bleeding through white)
+      polygonOffset: true,
+      polygonOffsetFactor: -1,
+      polygonOffsetUnits: -1,
     }), []);
   
   const stepFrontMaterial = useMemo(() => 
     new THREE.MeshStandardMaterial({
       color: '#5b9bd5',
+      polygonOffset: true,
+      polygonOffsetFactor: 1,
+      polygonOffsetUnits: 1,
     }), []);
 
   return { stepTopMaterial, stepFrontMaterial };
@@ -41,9 +48,29 @@ interface StairsMesh3DProps {
 // Wall thickness constant - must match Pool3DVisualization
 const WALL_THICKNESS = 0.2;
 
+function getIntoPoolAxisSigns(wadingCornerIndex: number): { intoPoolX: number; intoPoolY: number } {
+  // Matches the coordinate system used in stairsShapeGenerator:
+  // A(0): +X, +Y ; B(1): -X, +Y ; C(2): -X, -Y ; D(3): +X, -Y
+  switch (wadingCornerIndex % 4) {
+    case 0:
+      return { intoPoolX: 1, intoPoolY: 1 };
+    case 1:
+      return { intoPoolX: -1, intoPoolY: 1 };
+    case 2:
+      return { intoPoolX: -1, intoPoolY: -1 };
+    case 3:
+      return { intoPoolX: 1, intoPoolY: -1 };
+    default:
+      return { intoPoolX: 1, intoPoolY: 1 };
+  }
+}
+
 /**
  * Calculate the position for wading pool intersection points (E=4, F=5)
- * Now accounts for wall thickness - stairs start at the INSIDE edge of wading pool wall
+ * IMPORTANT:
+ * - Wading pool dimensions are EXTERNAL (include wall thickness).
+ * - The internal wall meshes extend WALL_THICKNESS/2 beyond the footprint,
+ *   so we shift the anchor along the pool wall by WALL_THICKNESS/2 away from the wading corner.
  */
 function getWadingPoolIntersectionPosition(
   cornerIndex: number,
@@ -52,66 +79,66 @@ function getWadingPoolIntersectionPosition(
   wadingPool?: StairsMesh3DProps['wadingPool']
 ): Point | null {
   if (!wadingPool?.enabled || cornerIndex < 4) return null;
-  
+
   const wadingCorner = wadingPool.cornerIndex ?? 0;
   const wadingDir = wadingPool.direction || 'along-width';
   const wadingWidth = wadingPool.width || 2;
   const wadingLength = wadingPool.length || 1.5;
-  
+
   const halfL = length / 2;
   const halfW = width / 2;
-  
-  // E = index 4, F = index 5
+
   const isE = cornerIndex === 4;
-  
-  // The wading pool dimensions are EXTERNAL (including wall thickness)
-  // Stairs should start from the INSIDE edge of the wading pool wall
-  // So we offset by WALL_THICKNESS from the wading pool's internal edge
-  
+  const { intoPoolX, intoPoolY } = getIntoPoolAxisSigns(wadingCorner);
+
+  // Determine if the intersection point is on a horizontal wall (back/front) or vertical wall (left/right)
+  // Keep in sync with the logic used in UnifiedStairs.
+  const isOnHorizontalWall = (isE && wadingDir === 'along-length') || (!isE && wadingDir === 'along-width');
+
+  // Base position (geometric intersection of the wading pool footprint with the pool boundary)
+  let p: Point | null = null;
+
   switch (wadingCorner) {
-    case 0: // Corner A (back-left)
+    case 0: // A (back-left)
       if (wadingDir === 'along-length') {
-        return isE 
-          ? { x: -halfL + wadingWidth, y: -halfW } // E on back wall - at wading pool's X edge
-          : { x: -halfL + WALL_THICKNESS, y: -halfW + wadingLength }; // F on left wall - offset by wall thickness
+        p = isE ? { x: -halfL + wadingWidth, y: -halfW } : { x: -halfL, y: -halfW + wadingLength };
       } else {
-        return isE
-          ? { x: -halfL + WALL_THICKNESS, y: -halfW + wadingWidth } // E on left wall - offset by wall thickness
-          : { x: -halfL + wadingLength, y: -halfW }; // F on back wall - at wading pool's X edge
+        p = isE ? { x: -halfL, y: -halfW + wadingWidth } : { x: -halfL + wadingLength, y: -halfW };
       }
-    case 1: // Corner B (back-right)
+      break;
+    case 1: // B (back-right)
       if (wadingDir === 'along-length') {
-        return isE
-          ? { x: halfL - wadingWidth, y: -halfW } // E on back wall
-          : { x: halfL - WALL_THICKNESS, y: -halfW + wadingLength }; // F on right wall - offset
+        p = isE ? { x: halfL - wadingWidth, y: -halfW } : { x: halfL, y: -halfW + wadingLength };
       } else {
-        return isE
-          ? { x: halfL - WALL_THICKNESS, y: -halfW + wadingWidth } // E on right wall - offset
-          : { x: halfL - wadingLength, y: -halfW }; // F on back wall
+        p = isE ? { x: halfL, y: -halfW + wadingWidth } : { x: halfL - wadingLength, y: -halfW };
       }
-    case 2: // Corner C (front-right)
+      break;
+    case 2: // C (front-right)
       if (wadingDir === 'along-length') {
-        return isE
-          ? { x: halfL - wadingWidth, y: halfW } // E on front wall
-          : { x: halfL - WALL_THICKNESS, y: halfW - wadingLength }; // F on right wall - offset
+        p = isE ? { x: halfL - wadingWidth, y: halfW } : { x: halfL, y: halfW - wadingLength };
       } else {
-        return isE
-          ? { x: halfL - WALL_THICKNESS, y: halfW - wadingWidth } // E on right wall - offset
-          : { x: halfL - wadingLength, y: halfW }; // F on front wall
+        p = isE ? { x: halfL, y: halfW - wadingWidth } : { x: halfL - wadingLength, y: halfW };
       }
-    case 3: // Corner D (front-left)
+      break;
+    case 3: // D (front-left)
       if (wadingDir === 'along-length') {
-        return isE
-          ? { x: -halfL + wadingWidth, y: halfW } // E on front wall
-          : { x: -halfL + WALL_THICKNESS, y: halfW - wadingLength }; // F on left wall - offset
+        p = isE ? { x: -halfL + wadingWidth, y: halfW } : { x: -halfL, y: halfW - wadingLength };
       } else {
-        return isE
-          ? { x: -halfL + WALL_THICKNESS, y: halfW - wadingWidth } // E on left wall - offset
-          : { x: -halfL + wadingLength, y: halfW }; // F on front wall
+        p = isE ? { x: -halfL, y: halfW - wadingWidth } : { x: -halfL + wadingLength, y: halfW };
       }
+      break;
     default:
-      return null;
+      p = null;
   }
+
+  if (!p) return null;
+
+  // Shift along the pool wall away from the wading corner to clear the concrete wall endcap.
+  const shift = WALL_THICKNESS / 2;
+  if (isOnHorizontalWall) {
+    return { x: p.x + intoPoolX * shift, y: p.y };
+  }
+  return { x: p.x, y: p.y + intoPoolY * shift };
 }
 
 /**
