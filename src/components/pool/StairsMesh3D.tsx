@@ -38,8 +38,12 @@ interface StairsMesh3DProps {
   };
 }
 
+// Wall thickness constant - must match Pool3DVisualization
+const WALL_THICKNESS = 0.2;
+
 /**
  * Calculate the position for wading pool intersection points (E=4, F=5)
+ * Now accounts for wall thickness - stairs start at the INSIDE edge of wading pool wall
  */
 function getWadingPoolIntersectionPosition(
   cornerIndex: number,
@@ -60,45 +64,49 @@ function getWadingPoolIntersectionPosition(
   // E = index 4, F = index 5
   const isE = cornerIndex === 4;
   
+  // The wading pool dimensions are EXTERNAL (including wall thickness)
+  // Stairs should start from the INSIDE edge of the wading pool wall
+  // So we offset by WALL_THICKNESS from the wading pool's internal edge
+  
   switch (wadingCorner) {
     case 0: // Corner A (back-left)
       if (wadingDir === 'along-length') {
         return isE 
-          ? { x: -halfL + wadingWidth, y: -halfW } // E on back wall
-          : { x: -halfL, y: -halfW + wadingLength }; // F on left wall
+          ? { x: -halfL + wadingWidth, y: -halfW } // E on back wall - at wading pool's X edge
+          : { x: -halfL + WALL_THICKNESS, y: -halfW + wadingLength }; // F on left wall - offset by wall thickness
       } else {
         return isE
-          ? { x: -halfL, y: -halfW + wadingWidth } // E on left wall
-          : { x: -halfL + wadingLength, y: -halfW }; // F on back wall
+          ? { x: -halfL + WALL_THICKNESS, y: -halfW + wadingWidth } // E on left wall - offset by wall thickness
+          : { x: -halfL + wadingLength, y: -halfW }; // F on back wall - at wading pool's X edge
       }
     case 1: // Corner B (back-right)
       if (wadingDir === 'along-length') {
         return isE
           ? { x: halfL - wadingWidth, y: -halfW } // E on back wall
-          : { x: halfL, y: -halfW + wadingLength }; // F on right wall
+          : { x: halfL - WALL_THICKNESS, y: -halfW + wadingLength }; // F on right wall - offset
       } else {
         return isE
-          ? { x: halfL, y: -halfW + wadingWidth } // E on right wall
+          ? { x: halfL - WALL_THICKNESS, y: -halfW + wadingWidth } // E on right wall - offset
           : { x: halfL - wadingLength, y: -halfW }; // F on back wall
       }
     case 2: // Corner C (front-right)
       if (wadingDir === 'along-length') {
         return isE
           ? { x: halfL - wadingWidth, y: halfW } // E on front wall
-          : { x: halfL, y: halfW - wadingLength }; // F on right wall
+          : { x: halfL - WALL_THICKNESS, y: halfW - wadingLength }; // F on right wall - offset
       } else {
         return isE
-          ? { x: halfL, y: halfW - wadingWidth } // E on right wall
+          ? { x: halfL - WALL_THICKNESS, y: halfW - wadingWidth } // E on right wall - offset
           : { x: halfL - wadingLength, y: halfW }; // F on front wall
       }
     case 3: // Corner D (front-left)
       if (wadingDir === 'along-length') {
         return isE
           ? { x: -halfL + wadingWidth, y: halfW } // E on front wall
-          : { x: -halfL, y: halfW - wadingLength }; // F on left wall
+          : { x: -halfL + WALL_THICKNESS, y: halfW - wadingLength }; // F on left wall - offset
       } else {
         return isE
-          ? { x: -halfL, y: halfW - wadingWidth } // E on left wall
+          ? { x: -halfL + WALL_THICKNESS, y: halfW - wadingWidth } // E on left wall - offset
           : { x: -halfL + wadingLength, y: halfW }; // F on front wall
       }
     default:
