@@ -44,10 +44,15 @@ import {
   PoolWall,
   WallDirection,
   StairsPlacement,
+  StairsShapeType,
   poolCornerLabels,
   poolWallLabels,
   wallDirectionLabels,
-  stairsPlacementLabels
+  stairsPlacementLabels,
+  stairsShapeTypeLabels,
+  getCornerLabel,
+  mapCornerToIndex,
+  mapIndexToCorner
 } from '@/types/configurator';
 import { calculatePoolMetrics, calculateFoilOptimization } from '@/lib/calculations';
 import { CustomPoolDrawer } from '@/components/CustomPoolDrawer';
@@ -84,6 +89,51 @@ const PoolShapeIcon = ({ shape, isSelected }: { shape: PoolShape; isSelected: bo
           <circle cx="30" cy="5" r="2" fill={strokeColor}/>
           <circle cx="45" cy="10" r="2" fill={strokeColor}/>
           <circle cx="50" cy="25" r="2" fill={strokeColor}/>
+        </svg>
+      );
+    default:
+      return null;
+  }
+};
+
+// SVG Stairs Shape Icons for the 4 stair types
+const StairsShapeIcon = ({ shapeType, isSelected }: { shapeType: StairsShapeType; isSelected: boolean }) => {
+  const strokeColor = isSelected ? 'hsl(190 80% 42%)' : 'currentColor';
+  const fillColor = isSelected ? 'hsl(190 80% 42% / 0.1)' : 'transparent';
+  
+  switch (shapeType) {
+    case 'rectangular':
+      return (
+        <svg viewBox="0 0 40 24" className="w-10 h-6">
+          <rect x="4" y="4" width="32" height="16" rx="1" fill={fillColor} stroke={strokeColor} strokeWidth="1.5"/>
+          <line x1="12" y1="4" x2="12" y2="20" stroke={strokeColor} strokeWidth="1" strokeDasharray="2 1"/>
+          <line x1="20" y1="4" x2="20" y2="20" stroke={strokeColor} strokeWidth="1" strokeDasharray="2 1"/>
+          <line x1="28" y1="4" x2="28" y2="20" stroke={strokeColor} strokeWidth="1" strokeDasharray="2 1"/>
+        </svg>
+      );
+    case 'diagonal-45':
+      return (
+        <svg viewBox="0 0 40 24" className="w-10 h-6">
+          <path d="M4 4 L36 4 L4 20 Z" fill={fillColor} stroke={strokeColor} strokeWidth="1.5"/>
+          <line x1="12" y1="4" x2="4" y2="10" stroke={strokeColor} strokeWidth="1" strokeDasharray="2 1"/>
+          <line x1="20" y1="4" x2="4" y2="14" stroke={strokeColor} strokeWidth="1" strokeDasharray="2 1"/>
+          <line x1="28" y1="4" x2="4" y2="18" stroke={strokeColor} strokeWidth="1" strokeDasharray="2 1"/>
+        </svg>
+      );
+    case 'l-shape':
+      return (
+        <svg viewBox="0 0 40 24" className="w-10 h-6">
+          <path d="M4 4 L20 4 L20 10 L10 10 L10 20 L4 20 Z" fill={fillColor} stroke={strokeColor} strokeWidth="1.5"/>
+          <line x1="4" y1="8" x2="20" y2="8" stroke={strokeColor} strokeWidth="1" strokeDasharray="2 1"/>
+          <line x1="4" y1="14" x2="10" y2="14" stroke={strokeColor} strokeWidth="1" strokeDasharray="2 1"/>
+        </svg>
+      );
+    case 'triangle':
+      return (
+        <svg viewBox="0 0 40 24" className="w-10 h-6">
+          <path d="M4 20 L20 4 L36 16 Z" fill={fillColor} stroke={strokeColor} strokeWidth="1.5"/>
+          <line x1="10" y1="15" x2="26" y2="10" stroke={strokeColor} strokeWidth="1" strokeDasharray="2 1"/>
+          <line x1="13" y1="17" x2="31" y2="13" stroke={strokeColor} strokeWidth="1" strokeDasharray="2 1"/>
         </svg>
       );
     default:
@@ -171,6 +221,24 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
     if (updates.enabled && !newStairs.stepCount) {
       newStairs.stepCount = 4; // Default to 4 steps
       newStairs.stepHeight = calculateStepHeight(dimensions.depth, 4);
+    }
+    // Set default shapeType when enabling if not set
+    if (updates.enabled && !newStairs.shapeType) {
+      newStairs.shapeType = 'rectangular';
+      newStairs.cornerIndex = 0;
+    }
+    // Sync cornerIndex with legacy corner field for backward compatibility
+    if (updates.cornerIndex !== undefined) {
+      newStairs.corner = mapIndexToCorner(updates.cornerIndex);
+      newStairs.cornerLabel = getCornerLabel(updates.cornerIndex);
+    }
+    // Sync shapeType with legacy placement field for backward compatibility
+    if (updates.shapeType !== undefined) {
+      if (updates.shapeType === 'diagonal-45') {
+        newStairs.placement = 'diagonal';
+      } else {
+        newStairs.placement = 'corner';
+      }
     }
     dispatch({
       type: 'SET_DIMENSIONS',
@@ -651,130 +719,167 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
                     </>
                   ) : (
                     <>
-                      {/* Placement type - only for rectangular pools */}
+                      {/* Shape type selection - 4 buttons */}
                       <div>
-                        <Label className="text-sm font-medium mb-2 block">Typ umiejscowienia</Label>
-                        <RadioGroup
-                          value={dimensions.stairs.placement || 'wall'}
-                          onValueChange={(value) => updateStairs({ placement: value as StairsPlacement })}
-                          className="grid grid-cols-2 gap-2"
-                        >
-                          {(Object.keys(stairsPlacementLabels) as StairsPlacement[]).map((pl) => (
-                            <div key={pl} className="relative">
-                              <RadioGroupItem
-                                value={pl}
-                                id={`placement-${pl}`}
-                                className="peer sr-only"
-                              />
-                              <Label
-                                htmlFor={`placement-${pl}`}
-                                className="flex flex-col items-center justify-center p-3 rounded-lg border border-border bg-background cursor-pointer transition-all peer-data-[state=checked]:border-primary peer-data-[state=checked]:bg-primary/10 hover:bg-muted/50 text-sm"
-                              >
-                                {stairsPlacementLabels[pl]}
-                              </Label>
-                            </div>
+                        <Label className="text-sm font-medium mb-2 block">Typ schodów</Label>
+                        <div className="grid grid-cols-2 gap-2">
+                          {(['rectangular', 'diagonal-45', 'l-shape', 'triangle'] as StairsShapeType[]).map((type) => (
+                            <button
+                              key={type}
+                              onClick={() => updateStairs({ shapeType: type })}
+                              className={`flex flex-col items-center justify-center p-3 rounded-lg border transition-all ${
+                                (dimensions.stairs.shapeType || 'rectangular') === type
+                                  ? 'border-primary bg-primary/10 shadow-md'
+                                  : 'border-border bg-background hover:bg-muted/50 hover:border-primary/30'
+                              }`}
+                            >
+                              <StairsShapeIcon shapeType={type} isSelected={(dimensions.stairs.shapeType || 'rectangular') === type} />
+                              <span className={`text-xs mt-1 text-center ${
+                                (dimensions.stairs.shapeType || 'rectangular') === type ? 'text-primary font-medium' : 'text-muted-foreground'
+                              }`}>
+                                {stairsShapeTypeLabels[type]}
+                              </span>
+                            </button>
                           ))}
-                        </RadioGroup>
+                        </div>
                       </div>
                       
-                      {/* Wall selection - visible when placement === 'wall' */}
-                      {dimensions.stairs.placement === 'wall' && (
-                        <div>
-                          <Label className="text-sm font-medium mb-2 block">Ściana</Label>
-                          <Select
-                            value={dimensions.stairs.wall || 'back'}
-                            onValueChange={(value) => updateStairs({ wall: value as PoolWall })}
-                          >
-                            <SelectTrigger className="w-full">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {(Object.keys(poolWallLabels) as PoolWall[]).map((w) => (
-                                <SelectItem key={w} value={w}>
-                                  {poolWallLabels[w]}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
+                      {/* Corner selection (A, B, C, D) */}
+                      <div>
+                        <Label className="text-sm font-medium mb-2 block">Narożnik startowy</Label>
+                        <div className="grid grid-cols-4 gap-2">
+                          {getCornerLabels().map((corner, index) => (
+                            <button
+                              key={corner.value}
+                              onClick={() => updateStairs({ cornerIndex: index })}
+                              className={`flex flex-col items-center justify-center p-2 rounded-lg border transition-all ${
+                                (dimensions.stairs.cornerIndex ?? 0) === index
+                                  ? 'border-primary bg-primary/10 shadow-md'
+                                  : 'border-border bg-background hover:bg-muted/50 hover:border-primary/30'
+                              }`}
+                            >
+                              <span className={`text-lg font-bold ${
+                                (dimensions.stairs.cornerIndex ?? 0) === index ? 'text-primary' : 'text-muted-foreground'
+                              }`}>
+                                {corner.value}
+                              </span>
+                              <span className="text-[10px] text-muted-foreground mt-0.5">
+                                {index === 0 ? 'tylny L' : index === 1 ? 'tylny P' : index === 2 ? 'przedni P' : 'przedni L'}
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Shape-specific parameters */}
+                      {(dimensions.stairs.shapeType || 'rectangular') === 'l-shape' && (
+                        <div className="grid grid-cols-3 gap-2">
+                          <div>
+                            <Label htmlFor="legA" className="text-xs">Ramię A (m)</Label>
+                            <Input
+                              id="legA"
+                              type="number"
+                              step="0.1"
+                              min="0.5"
+                              max="5"
+                              value={dimensions.stairs.legA || 1.5}
+                              onChange={(e) => updateStairs({ legA: parseFloat(e.target.value) || 1.5 })}
+                              className="input-field"
+                            />
+                          </div>
+                          <div>
+                            <Label htmlFor="legB" className="text-xs">Ramię B (m)</Label>
+                            <Input
+                              id="legB"
+                              type="number"
+                              step="0.1"
+                              min="0.5"
+                              max="5"
+                              value={dimensions.stairs.legB || 1.0}
+                              onChange={(e) => updateStairs({ legB: parseFloat(e.target.value) || 1.0 })}
+                              className="input-field"
+                            />
+                          </div>
+                          <div>
+                            <Label htmlFor="legWidth" className="text-xs">Szerokość (m)</Label>
+                            <Input
+                              id="legWidth"
+                              type="number"
+                              step="0.1"
+                              min="0.3"
+                              max="2"
+                              value={dimensions.stairs.legWidth || 0.6}
+                              onChange={(e) => updateStairs({ legWidth: parseFloat(e.target.value) || 0.6 })}
+                              className="input-field"
+                            />
+                          </div>
                         </div>
                       )}
-                      
-                      {/* Corner selection with labels (A, B, C...) - visible when placement === 'corner' or 'diagonal' */}
-                      {(dimensions.stairs.placement === 'corner' || dimensions.stairs.placement === 'diagonal') && (
-                        <>
+
+                      {(dimensions.stairs.shapeType || 'rectangular') === 'triangle' && (
+                        <div className="grid grid-cols-3 gap-2">
                           <div>
-                            <Label className="text-sm font-medium mb-2 block">Narożnik (A, B, C...)</Label>
-                            <Select
-                              value={dimensions.stairs.cornerLabel || 'A'}
-                              onValueChange={(value) => {
-                                // Map letter to PoolCorner for backward compatibility
-                                const cornerMap: Record<string, PoolCorner> = {
-                                  'A': 'back-left',
-                                  'B': 'back-right',
-                                  'C': 'front-right',
-                                  'D': 'front-left'
-                                };
-                                updateStairs({ 
-                                  cornerLabel: value,
-                                  corner: cornerMap[value] || 'back-left'
-                                });
-                              }}
-                            >
-                              <SelectTrigger className="w-full">
-                                <SelectValue placeholder="Wybierz narożnik" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {getCornerLabels().map((corner) => (
-                                  <SelectItem key={corner.value} value={corner.value}>
-                                    {corner.label}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
+                            <Label htmlFor="sideA" className="text-xs">Bok A (m)</Label>
+                            <Input
+                              id="sideA"
+                              type="number"
+                              step="0.1"
+                              min="0.5"
+                              max="5"
+                              value={dimensions.stairs.sideA || 1.5}
+                              onChange={(e) => updateStairs({ sideA: parseFloat(e.target.value) || 1.5 })}
+                              className="input-field"
+                            />
                           </div>
-                          {dimensions.stairs.placement === 'corner' && (
-                            <div>
-                              <Label className="text-sm font-medium mb-2 block">Kierunek</Label>
-                              <Select
-                                value={dimensions.stairs.direction || 'along-width'}
-                                onValueChange={(value) => updateStairs({ direction: value as WallDirection })}
-                              >
-                                <SelectTrigger className="w-full">
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {(Object.keys(wallDirectionLabels) as WallDirection[]).map((d) => (
-                                    <SelectItem key={d} value={d}>
-                                      {wallDirectionLabels[d]}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                            </div>
-                          )}
-                        </>
+                          <div>
+                            <Label htmlFor="sideB" className="text-xs">Bok B (m)</Label>
+                            <Input
+                              id="sideB"
+                              type="number"
+                              step="0.1"
+                              min="0.5"
+                              max="5"
+                              value={dimensions.stairs.sideB || 1.2}
+                              onChange={(e) => updateStairs({ sideB: parseFloat(e.target.value) || 1.2 })}
+                              className="input-field"
+                            />
+                          </div>
+                          <div>
+                            <Label htmlFor="sideC" className="text-xs">Bok C (m)</Label>
+                            <Input
+                              id="sideC"
+                              type="number"
+                              step="0.1"
+                              min="0.5"
+                              max="5"
+                              value={dimensions.stairs.sideC || 1.0}
+                              onChange={(e) => updateStairs({ sideC: parseFloat(e.target.value) || 1.0 })}
+                              className="input-field"
+                            />
+                          </div>
+                        </div>
                       )}
                     </>
                   )}
                   
-                  {/* Stairs width */}
-                  <div>
-                    <Label htmlFor="stairsWidth" className="text-sm font-medium mb-2 block">
-                      Szerokość schodów (m)
-                    </Label>
-                    <Input
-                      id="stairsWidth"
-                      type="number"
-                      step="0.1"
-                      min="0.5"
-                      max={dimensions.stairs.placement === 'wall' 
-                        ? (dimensions.stairs.wall === 'left' || dimensions.stairs.wall === 'right' ? dimensions.width : dimensions.length)
-                        : 5}
-                      value={typeof dimensions.stairs.width === 'number' ? dimensions.stairs.width : 1.5}
-                      onChange={(e) => updateStairs({ width: parseFloat(e.target.value) || 1.5 })}
-                      className="input-field"
-                    />
-                  </div>
+                  {/* Stairs width - only for rectangular shape */}
+                  {(dimensions.stairs.shapeType || 'rectangular') === 'rectangular' && (
+                    <div>
+                      <Label htmlFor="stairsWidth" className="text-sm font-medium mb-2 block">
+                        Szerokość schodów (m)
+                      </Label>
+                      <Input
+                        id="stairsWidth"
+                        type="number"
+                        step="0.1"
+                        min="0.5"
+                        max={5}
+                        value={typeof dimensions.stairs.width === 'number' ? dimensions.stairs.width : 1.5}
+                        onChange={(e) => updateStairs({ width: parseFloat(e.target.value) || 1.5 })}
+                        className="input-field"
+                      />
+                    </div>
+                  )}
                   
                   {/* Step count and depth */}
                   <div className="grid grid-cols-2 gap-3">
