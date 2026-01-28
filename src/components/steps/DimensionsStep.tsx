@@ -236,29 +236,34 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
     perimeter: number,
     stairsVertices?: CustomPoolVertex[],
     wadingPoolVertices?: CustomPoolVertex[],
-    stairsRotation?: number
+    stairsRotation?: number,
+    stairsConfig?: Partial<StairsConfig>
   ) => {
     // Convert single vertices to arrays for the new format
     const stairsArray = stairsVertices && stairsVertices.length >= 3 ? [stairsVertices] : dimensions.customStairsVertices || [];
     const rotationsArray = stairsRotation !== undefined ? [stairsRotation] : dimensions.customStairsRotations || [];
     const wadingArray = wadingPoolVertices && wadingPoolVertices.length >= 3 ? [wadingPoolVertices] : dimensions.customWadingPoolVertices || [];
 
+    // Merge stairs config from drawer with existing config
+    const updatedStairsConfig: StairsConfig = {
+      ...dimensions.stairs,
+      enabled: stairsArray.length > 0 ? true : dimensions.stairs?.enabled || false,
+      ...(stairsConfig || {}),
+    };
+
     dispatch({
       type: 'SET_DIMENSIONS',
       payload: {
         ...dimensions,
-        shape: 'nieregularny',
+        shape: dimensions.shape, // Keep current shape (could be prostokatny or nieregularny)
         customVertices: poolVertices,
         customArea: area,
         customPerimeter: perimeter,
         customStairsVertices: stairsArray,
         customStairsRotations: rotationsArray,
         customWadingPoolVertices: wadingArray,
-        // isIrregular left unchanged - user can manually toggle it
-        // If custom stairs/wading pool drawn, enable them
-        stairs: stairsArray.length > 0
-          ? { ...dimensions.stairs, enabled: true }
-          : dimensions.stairs,
+        // Update stairs config with parameters from drawer
+        stairs: updatedStairsConfig,
         wadingPool: wadingArray.length > 0
           ? { ...dimensions.wadingPool, enabled: true }
           : dimensions.wadingPool,
@@ -288,6 +293,7 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
             initialLength={dimensions.length}
             initialWidth={dimensions.width}
             shape={dimensions.shape === 'nieregularny' ? 'nieregularny' : 'prostokatny'}
+            initialStairsConfig={dimensions.stairs}
           />
         </DialogContent>
       </Dialog>
@@ -607,8 +613,9 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
             </div>
           </div>
 
-          {/* Stairs configuration - available for all shapes */}
-          <div className="space-y-4 p-4 rounded-lg bg-muted/30 border border-border">
+          {/* Stairs configuration - available for rectangular and irregular shapes (NOT oval) */}
+          {dimensions.shape !== 'owalny' && (
+            <div className="space-y-4 p-4 rounded-lg bg-muted/30 border border-border">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <Footprints className="w-5 h-5 text-primary" />
@@ -628,106 +635,124 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
               
               {dimensions.stairs?.enabled && (
                 <div className="space-y-4 pt-3 border-t border-border">
-                  {/* Placement type */}
-                  <div>
-                    <Label className="text-sm font-medium mb-2 block">Typ umiejscowienia</Label>
-                    <RadioGroup
-                      value={dimensions.stairs.placement || 'wall'}
-                      onValueChange={(value) => updateStairs({ placement: value as StairsPlacement })}
-                      className="grid grid-cols-2 gap-2"
-                    >
-                      {(Object.keys(stairsPlacementLabels) as StairsPlacement[]).map((pl) => (
-                        <div key={pl} className="relative">
-                          <RadioGroupItem
-                            value={pl}
-                            id={`placement-${pl}`}
-                            className="peer sr-only"
-                          />
-                          <Label
-                            htmlFor={`placement-${pl}`}
-                            className="flex flex-col items-center justify-center p-3 rounded-lg border border-border bg-background cursor-pointer transition-all peer-data-[state=checked]:border-primary peer-data-[state=checked]:bg-primary/10 hover:bg-muted/50 text-sm"
-                          >
-                            {stairsPlacementLabels[pl]}
-                          </Label>
-                        </div>
-                      ))}
-                    </RadioGroup>
-                  </div>
-                  
-                  {/* Wall selection - visible when placement === 'wall' */}
-                  {dimensions.stairs.placement === 'wall' && (
-                    <div>
-                      <Label className="text-sm font-medium mb-2 block">Ściana</Label>
-                      <Select
-                        value={dimensions.stairs.wall || 'back'}
-                        onValueChange={(value) => updateStairs({ wall: value as PoolWall })}
-                      >
-                        <SelectTrigger className="w-full">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {(Object.keys(poolWallLabels) as PoolWall[]).map((w) => (
-                            <SelectItem key={w} value={w}>
-                              {poolWallLabels[w]}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  )}
-                  
-                  {/* Corner selection with labels (A, B, C...) - visible when placement === 'corner' or 'diagonal' */}
-                  {(dimensions.stairs.placement === 'corner' || dimensions.stairs.placement === 'diagonal') && (
+                  {/* For irregular shapes - show simplified controls and link to shape editor */}
+                  {isCustomShape ? (
                     <>
-                      <div>
-                        <Label className="text-sm font-medium mb-2 block">Narożnik (A, B, C...)</Label>
-                        <Select
-                          value={dimensions.stairs.cornerLabel || 'A'}
-                          onValueChange={(value) => {
-                            // Map letter to PoolCorner for backward compatibility
-                            const cornerMap: Record<string, PoolCorner> = {
-                              'A': 'back-left',
-                              'B': 'back-right',
-                              'C': 'front-right',
-                              'D': 'front-left'
-                            };
-                            updateStairs({ 
-                              cornerLabel: value,
-                              corner: cornerMap[value] || 'back-left'
-                            });
-                          }}
-                        >
-                          <SelectTrigger className="w-full">
-                            <SelectValue placeholder="Wybierz narożnik" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {getCornerLabels().map((corner) => (
-                              <SelectItem key={corner.value} value={corner.value}>
-                                {corner.label}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                      <div className="p-3 rounded-lg bg-primary/10 border border-primary/20 text-sm">
+                        <p className="font-medium mb-1">Schody rysowane w edytorze kształtu</p>
+                        <p className="text-muted-foreground text-xs">
+                          Pozycja i kształt schodów definiowane są graficznie. Poniżej możesz zmienić parametry (liczba stopni, głębokość, szerokość), a zmiany zostaną naniesione na rysunek.
+                        </p>
+                        <Button variant="outline" size="sm" className="mt-2" onClick={() => setShowCustomDrawer(true)}>
+                          <Pencil className="w-3 h-3 mr-1" />
+                          Edytuj pozycję schodów
+                        </Button>
                       </div>
-                      {dimensions.stairs.placement === 'corner' && (
+                    </>
+                  ) : (
+                    <>
+                      {/* Placement type - only for rectangular pools */}
+                      <div>
+                        <Label className="text-sm font-medium mb-2 block">Typ umiejscowienia</Label>
+                        <RadioGroup
+                          value={dimensions.stairs.placement || 'wall'}
+                          onValueChange={(value) => updateStairs({ placement: value as StairsPlacement })}
+                          className="grid grid-cols-2 gap-2"
+                        >
+                          {(Object.keys(stairsPlacementLabels) as StairsPlacement[]).map((pl) => (
+                            <div key={pl} className="relative">
+                              <RadioGroupItem
+                                value={pl}
+                                id={`placement-${pl}`}
+                                className="peer sr-only"
+                              />
+                              <Label
+                                htmlFor={`placement-${pl}`}
+                                className="flex flex-col items-center justify-center p-3 rounded-lg border border-border bg-background cursor-pointer transition-all peer-data-[state=checked]:border-primary peer-data-[state=checked]:bg-primary/10 hover:bg-muted/50 text-sm"
+                              >
+                                {stairsPlacementLabels[pl]}
+                              </Label>
+                            </div>
+                          ))}
+                        </RadioGroup>
+                      </div>
+                      
+                      {/* Wall selection - visible when placement === 'wall' */}
+                      {dimensions.stairs.placement === 'wall' && (
                         <div>
-                          <Label className="text-sm font-medium mb-2 block">Kierunek</Label>
+                          <Label className="text-sm font-medium mb-2 block">Ściana</Label>
                           <Select
-                            value={dimensions.stairs.direction || 'along-width'}
-                            onValueChange={(value) => updateStairs({ direction: value as WallDirection })}
+                            value={dimensions.stairs.wall || 'back'}
+                            onValueChange={(value) => updateStairs({ wall: value as PoolWall })}
                           >
                             <SelectTrigger className="w-full">
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
-                              {(Object.keys(wallDirectionLabels) as WallDirection[]).map((d) => (
-                                <SelectItem key={d} value={d}>
-                                  {wallDirectionLabels[d]}
+                              {(Object.keys(poolWallLabels) as PoolWall[]).map((w) => (
+                                <SelectItem key={w} value={w}>
+                                  {poolWallLabels[w]}
                                 </SelectItem>
                               ))}
                             </SelectContent>
                           </Select>
                         </div>
+                      )}
+                      
+                      {/* Corner selection with labels (A, B, C...) - visible when placement === 'corner' or 'diagonal' */}
+                      {(dimensions.stairs.placement === 'corner' || dimensions.stairs.placement === 'diagonal') && (
+                        <>
+                          <div>
+                            <Label className="text-sm font-medium mb-2 block">Narożnik (A, B, C...)</Label>
+                            <Select
+                              value={dimensions.stairs.cornerLabel || 'A'}
+                              onValueChange={(value) => {
+                                // Map letter to PoolCorner for backward compatibility
+                                const cornerMap: Record<string, PoolCorner> = {
+                                  'A': 'back-left',
+                                  'B': 'back-right',
+                                  'C': 'front-right',
+                                  'D': 'front-left'
+                                };
+                                updateStairs({ 
+                                  cornerLabel: value,
+                                  corner: cornerMap[value] || 'back-left'
+                                });
+                              }}
+                            >
+                              <SelectTrigger className="w-full">
+                                <SelectValue placeholder="Wybierz narożnik" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {getCornerLabels().map((corner) => (
+                                  <SelectItem key={corner.value} value={corner.value}>
+                                    {corner.label}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          {dimensions.stairs.placement === 'corner' && (
+                            <div>
+                              <Label className="text-sm font-medium mb-2 block">Kierunek</Label>
+                              <Select
+                                value={dimensions.stairs.direction || 'along-width'}
+                                onValueChange={(value) => updateStairs({ direction: value as WallDirection })}
+                              >
+                                <SelectTrigger className="w-full">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {(Object.keys(wallDirectionLabels) as WallDirection[]).map((d) => (
+                                    <SelectItem key={d} value={d}>
+                                      {wallDirectionLabels[d]}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          )}
+                        </>
                       )}
                     </>
                   )}
@@ -817,9 +842,10 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
                 </div>
               )}
             </div>
+          )}
 
-          {/* Wading pool configuration for non-custom shapes */}
-          {!isCustomShape && (
+          {/* Wading pool configuration for rectangular shapes only (NOT oval or irregular) */}
+          {dimensions.shape === 'prostokatny' && (
             <div className="space-y-4 p-4 rounded-lg bg-muted/30 border border-border">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
