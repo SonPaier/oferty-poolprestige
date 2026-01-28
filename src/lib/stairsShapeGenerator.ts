@@ -354,6 +354,10 @@ function getInwardDirectionsForWadingIntersection(
 
 /**
  * Generate rectangular stairs with explicit direction vectors (for wading pool intersection points)
+ * IMPORTANT: The directions are already correctly calculated by getInwardDirectionsForWadingIntersection
+ * based on the user's stairsDirection choice, so we use them directly without swapping!
+ * - dx1/dy1 = width direction (parallel to the chosen alignment)
+ * - dx2/dy2 = depth/length direction (where stairs descend into pool)
  */
 function generateRectangularStairsWithDirections(
   cornerPos: Point,
@@ -361,27 +365,18 @@ function generateRectangularStairsWithDirections(
   stairsWidth: number,
   stepCount: number,
   stepDepth: number,
-  stairsDirection: 'along-length' | 'along-width'
+  _stairsDirection: 'along-length' | 'along-width' // Not used - directions already incorporate this
 ): StairsGeometry {
   const { dx1, dy1, dx2, dy2 } = directions;
   const stairsLength = stepCount * stepDepth;
   
-  // For wading pool intersection points, dx1/dy1 is width direction, dx2/dy2 is depth direction
-  // The stairsDirection affects how we interpret the directions from the wading intersection function
-  let widthDx: number, widthDy: number;
-  let lengthDx: number, lengthDy: number;
-  
-  if (stairsDirection === 'along-length') {
-    widthDx = dx1;
-    widthDy = dy1;
-    lengthDx = dx2;
-    lengthDy = dy2;
-  } else {
-    widthDx = dx2;
-    widthDy = dy2;
-    lengthDx = dx1;
-    lengthDy = dy1;
-  }
+  // Use directions directly - they are already correctly oriented by getInwardDirectionsForWadingIntersection
+  // dx1/dy1 = width direction (where stair width extends)
+  // dx2/dy2 = depth direction (where stairs descend into pool)
+  const widthDx = dx1;
+  const widthDy = dy1;
+  const lengthDx = dx2;
+  const lengthDy = dy2;
   
   const vertices: Point[] = [
     { x: cornerPos.x, y: cornerPos.y },
