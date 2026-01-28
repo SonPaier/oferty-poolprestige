@@ -139,6 +139,7 @@ export function StairsMesh3D({ length, width, depth, stairs, wadingPool }: Stair
         stepTopMaterial={stepTopMaterial}
         stepFrontMaterial={stepFrontMaterial}
         wadingIntersectionPos={wadingIntersectionPos}
+        wadingPool={wadingPool}
       />
     );
   }
@@ -164,6 +165,7 @@ interface UnifiedStairsProps {
   stepTopMaterial: THREE.Material;
   stepFrontMaterial: THREE.Material;
   wadingIntersectionPos?: Point | null;
+  wadingPool?: StairsMesh3DProps['wadingPool'];
 }
 
 function UnifiedStairs({
@@ -174,8 +176,15 @@ function UnifiedStairs({
   stepTopMaterial,
   stepFrontMaterial,
   wadingIntersectionPos,
+  wadingPool,
 }: UnifiedStairsProps) {
-  const geometry = generateStairsGeometry(length, width, stairs, wadingIntersectionPos ?? undefined);
+  // Build wading pool config for the geometry generator
+  const cornerIndex = stairs.cornerIndex ?? 0;
+  const wadingPoolConfig = (cornerIndex >= 4 && wadingPool?.enabled) 
+    ? { cornerIndex: wadingPool.cornerIndex ?? 0, direction: wadingPool.direction || 'along-width' as const }
+    : undefined;
+  
+  const geometry = generateStairsGeometry(length, width, stairs, wadingIntersectionPos ?? undefined, wadingPoolConfig);
   if (!geometry || geometry.vertices.length < 3) return null;
   
   const shapeType = stairs.shapeType || 'rectangular';

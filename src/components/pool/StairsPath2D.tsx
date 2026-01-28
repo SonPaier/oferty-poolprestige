@@ -125,7 +125,12 @@ function getStairsRenderDataNew(
   const cornerIndex = stairs.cornerIndex ?? 0;
   const wadingPos = cornerIndex >= 4 ? getWadingPoolIntersectionPosition2D(cornerIndex, length, width, wadingPool) : undefined;
   
-  const geometry = generateStairsGeometry(length, width, stairs, wadingPos ?? undefined);
+  // Build wading pool config for the geometry generator
+  const wadingPoolConfig = (cornerIndex >= 4 && wadingPool?.enabled) 
+    ? { cornerIndex: wadingPool.cornerIndex ?? 0, direction: wadingPool.direction || 'along-width' as const }
+    : undefined;
+  
+  const geometry = generateStairsGeometry(length, width, stairs, wadingPos ?? undefined, wadingPoolConfig);
   if (!geometry || geometry.vertices.length < 3) return null;
   
   return {
