@@ -215,12 +215,63 @@ export default function Pool2DPreview({ dimensions, height = 300, dimensionDispl
   // Get full stairs data including step lines
   const stairsData = useMemo(() => {
     if (dimensions.shape === 'nieregularny' && dimensions.customStairsVertices?.[0]) {
-      // For custom shapes, just return outline without step lines for now
+      const stairsVerts = dimensions.customStairsVertices[0];
+      // Transform vertices for rendering (centered on pool)
       const outline = transformCustomVertices(
-        dimensions.customStairsVertices[0],
+        stairsVerts,
         dimensions.customVertices
       );
-      return { outline, stepLines: [] };
+      
+      // Generate step lines based on stairs config
+      const stepCount = dimensions.stairs.stepCount || 4;
+      const stepLines: { x1: number; y1: number; x2: number; y2: number }[] = [];
+      
+      // Get pool center for transformation
+      let poolCenterX = 0;
+      let poolCenterY = 0;
+      if (dimensions.customVertices && dimensions.customVertices.length >= 3) {
+        const minX = Math.min(...dimensions.customVertices.map(v => v.x));
+        const maxX = Math.max(...dimensions.customVertices.map(v => v.x));
+        const minY = Math.min(...dimensions.customVertices.map(v => v.y));
+        const maxY = Math.max(...dimensions.customVertices.map(v => v.y));
+        poolCenterX = (minX + maxX) / 2;
+        poolCenterY = (minY + maxY) / 2;
+      }
+      
+      if (stairsVerts.length === 3) {
+        // Diagonal 45° stairs (triangle) - step lines parallel to hypotenuse
+        const v0 = stairsVerts[0];
+        const v1 = stairsVerts[1];
+        const v2 = stairsVerts[2];
+        
+        for (let i = 1; i < stepCount; i++) {
+          const progress = i / stepCount;
+          const p1x = v0.x + (v1.x - v0.x) * progress - poolCenterX;
+          const p1y = v0.y + (v1.y - v0.y) * progress - poolCenterY;
+          const p2x = v0.x + (v2.x - v0.x) * progress - poolCenterX;
+          const p2y = v0.y + (v2.y - v0.y) * progress - poolCenterY;
+          
+          stepLines.push({ x1: p1x, y1: p1y, x2: p2x, y2: p2y });
+        }
+      } else if (stairsVerts.length === 4) {
+        // Rectangular stairs - step lines perpendicular to entry direction
+        const v0 = stairsVerts[0];
+        const v1 = stairsVerts[1];
+        const v3 = stairsVerts[3];
+        
+        // Direction from v0 to v3 is the depth direction (entry direction)
+        for (let i = 1; i < stepCount; i++) {
+          const progress = i / stepCount;
+          const p1x = v0.x + (v3.x - v0.x) * progress - poolCenterX;
+          const p1y = v0.y + (v3.y - v0.y) * progress - poolCenterY;
+          const p2x = v1.x + (stairsVerts[2].x - v1.x) * progress - poolCenterX;
+          const p2y = v1.y + (stairsVerts[2].y - v1.y) * progress - poolCenterY;
+          
+          stepLines.push({ x1: p1x, y1: p1y, x2: p2x, y2: p2y });
+        }
+      }
+      
+      return { outline, stepLines };
     }
     // For regular shapes, get full stairs data
     return getRegularStairsData(dimensions);
@@ -327,6 +378,9 @@ export default function Pool2DPreview({ dimensions, height = 300, dimensionDispl
     
     return `${x} ${y} ${scaledW} ${scaledH}`;
   }, [bounds, zoom, pan]);
+  
+  // Calculate zoom percentage for display
+  const zoomPercentage = Math.round(zoom * 100);
   
   return (
     <div 
@@ -641,7 +695,7 @@ export default function Pool2DPreview({ dimensions, height = 300, dimensionDispl
       
       {/* Title & zoom info */}
       <div className="absolute top-2 left-2 bg-white/90 rounded px-2 py-1 text-xs font-medium">
-        Widok z góry (2D) {zoom !== 1 && `• ${Math.round(zoom * 100)}%`}
+        Widok z góry (2D) • {zoomPercentage}%
       </div>
     </div>
   );
