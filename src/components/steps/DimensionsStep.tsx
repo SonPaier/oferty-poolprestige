@@ -190,6 +190,55 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
     ];
   };
 
+  // Get occupied corner indices
+  const getOccupiedCorners = () => {
+    const occupied: { index: number; by: 'stairs' | 'wadingPool' }[] = [];
+    
+    if (dimensions.stairs.enabled && dimensions.stairs.cornerIndex !== undefined) {
+      occupied.push({ index: dimensions.stairs.cornerIndex, by: 'stairs' });
+    }
+    
+    if (dimensions.wadingPool?.enabled && dimensions.wadingPool.cornerIndex !== undefined) {
+      occupied.push({ index: dimensions.wadingPool.cornerIndex, by: 'wadingPool' });
+    }
+    
+    return occupied;
+  };
+
+  // Check if a corner is occupied by another element
+  const isCornerOccupied = (cornerIndex: number, currentElement: 'stairs' | 'wadingPool') => {
+    const occupied = getOccupiedCorners();
+    return occupied.some(o => o.index === cornerIndex && o.by !== currentElement);
+  };
+
+  // Get wall direction labels based on selected corner (for rectangular stairs)
+  const getWallDirectionOptions = (cornerIndex: number) => {
+    // For each corner, we can place stairs along one of two adjacent walls
+    // Corner A (0) = back-left: walls A-B (back) or A-D (left)
+    // Corner B (1) = back-right: walls A-B (back) or B-C (right)
+    // Corner C (2) = front-right: walls B-C (right) or C-D (front)
+    // Corner D (3) = front-left: walls C-D (front) or A-D (left)
+    const wallOptions: Record<number, { value: WallDirection; label: string }[]> = {
+      0: [
+        { value: 'along-length', label: 'Wzdłuż ściany A-B (tylna)' },
+        { value: 'along-width', label: 'Wzdłuż ściany A-D (lewa)' }
+      ],
+      1: [
+        { value: 'along-length', label: 'Wzdłuż ściany A-B (tylna)' },
+        { value: 'along-width', label: 'Wzdłuż ściany B-C (prawa)' }
+      ],
+      2: [
+        { value: 'along-width', label: 'Wzdłuż ściany B-C (prawa)' },
+        { value: 'along-length', label: 'Wzdłuż ściany C-D (przednia)' }
+      ],
+      3: [
+        { value: 'along-length', label: 'Wzdłuż ściany C-D (przednia)' },
+        { value: 'along-width', label: 'Wzdłuż ściany A-D (lewa)' }
+      ]
+    };
+    return wallOptions[cornerIndex % 4] || wallOptions[0];
+  };
+
   // Update stairs config
   const updateStairs = (updates: Partial<StairsConfig>) => {
     const newStairs = { ...dimensions.stairs, ...updates };
@@ -232,9 +281,25 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
 
   // Update wading pool config
   const updateWadingPool = (updates: Partial<WadingPoolConfig>) => {
+    const newWadingPool = { ...dimensions.wadingPool, ...updates };
+    
+    // Sync cornerIndex with legacy corner field for backward compatibility
+    if (updates.cornerIndex !== undefined) {
+      newWadingPool.corner = mapIndexToCorner(updates.cornerIndex);
+      newWadingPool.cornerLabel = getCornerLabel(updates.cornerIndex);
+    }
+    // Set defaults when enabling
+    if (updates.enabled && newWadingPool.cornerIndex === undefined) {
+      // Find first available corner
+      const stairsCorner = dimensions.stairs.enabled ? (dimensions.stairs.cornerIndex ?? 0) : -1;
+      newWadingPool.cornerIndex = stairsCorner === 0 ? 1 : 0;
+      newWadingPool.corner = mapIndexToCorner(newWadingPool.cornerIndex);
+      newWadingPool.cornerLabel = getCornerLabel(newWadingPool.cornerIndex);
+    }
+    
     dispatch({
       type: 'SET_DIMENSIONS',
-      payload: { ...dimensions, wadingPool: { ...dimensions.wadingPool, ...updates } },
+      payload: { ...dimensions, wadingPool: newWadingPool },
     });
   };
 
@@ -832,28 +897,64 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
                       <div>
                         <Label className="text-sm font-medium mb-2 block">Narożnik startowy</Label>
                         <div className="grid grid-cols-4 gap-2">
-                          {getCornerLabels().map((corner, index) => (
-                            <button
-                              key={corner.value}
-                              onClick={() => updateStairs({ cornerIndex: index })}
-                              className={`flex flex-col items-center justify-center p-2 rounded-lg border transition-all ${
-                                (dimensions.stairs.cornerIndex ?? 0) === index
-                                  ? 'border-primary bg-primary/10 shadow-md'
-                                  : 'border-border bg-background hover:bg-muted/50 hover:border-primary/30'
-                              }`}
-                            >
-                              <span className={`text-lg font-bold ${
-                                (dimensions.stairs.cornerIndex ?? 0) === index ? 'text-primary' : 'text-muted-foreground'
-                              }`}>
-                                {corner.value}
-                              </span>
-                              <span className="text-[10px] text-muted-foreground mt-0.5">
-                                {index === 0 ? 'tylny L' : index === 1 ? 'tylny P' : index === 2 ? 'przedni P' : 'przedni L'}
-                              </span>
-                            </button>
-                          ))}
+                          {getCornerLabels().map((corner, index) => {
+                            const isOccupied = isCornerOccupied(index, 'stairs');
+                            return (
+                              <button
+                                key={corner.value}
+                                onClick={() => !isOccupied && updateStairs({ cornerIndex: index })}
+                                disabled={isOccupied}
+                                className={`flex flex-col items-center justify-center p-2 rounded-lg border transition-all ${
+                                  (dimensions.stairs.cornerIndex ?? 0) === index
+                                    ? 'border-primary bg-primary/10 shadow-md'
+                                    : isOccupied
+                                      ? 'border-border bg-muted/50 opacity-50 cursor-not-allowed'
+                                      : 'border-border bg-background hover:bg-muted/50 hover:border-primary/30'
+                                }`}
+                              >
+                                <span className={`text-lg font-bold ${
+                                  (dimensions.stairs.cornerIndex ?? 0) === index 
+                                    ? 'text-primary' 
+                                    : isOccupied 
+                                      ? 'text-muted-foreground/50' 
+                                      : 'text-muted-foreground'
+                                }`}>
+                                  {corner.value}
+                                </span>
+                                <span className="text-[10px] text-muted-foreground mt-0.5">
+                                  {isOccupied ? 'brodzik' : index === 0 ? 'tylny L' : index === 1 ? 'tylny P' : index === 2 ? 'przedni P' : 'przedni L'}
+                                </span>
+                              </button>
+                            );
+                          })}
                         </div>
                       </div>
+
+                      {/* Wall direction selection - only for rectangular stairs */}
+                      {(dimensions.stairs.shapeType || 'rectangular') === 'rectangular' && (
+                        <div>
+                          <Label className="text-sm font-medium mb-2 block">Równolegle do ściany</Label>
+                          <div className="grid grid-cols-1 gap-2">
+                            {getWallDirectionOptions(dimensions.stairs.cornerIndex ?? 0).map((option) => (
+                              <button
+                                key={option.value}
+                                onClick={() => updateStairs({ direction: option.value })}
+                                className={`flex items-center justify-start p-3 rounded-lg border transition-all ${
+                                  dimensions.stairs.direction === option.value
+                                    ? 'border-primary bg-primary/10 shadow-md'
+                                    : 'border-border bg-background hover:bg-muted/50 hover:border-primary/30'
+                                }`}
+                              >
+                                <span className={`text-sm ${
+                                  dimensions.stairs.direction === option.value ? 'text-primary font-medium' : 'text-muted-foreground'
+                                }`}>
+                                  {option.label}
+                                </span>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
 
                       {/* Stairs width - only for rectangular shape */}
                       {(dimensions.stairs.shapeType || 'rectangular') === 'rectangular' && (
@@ -966,44 +1067,65 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
               
               {dimensions.wadingPool?.enabled && (
                 <div className="space-y-4 pt-3 border-t border-border">
-                  {/* Corner selection */}
+                  {/* Corner selection (A, B, C, D) - same style as stairs */}
                   <div>
-                    <Label className="text-sm font-medium mb-2 block">Narożnik</Label>
-                    <Select
-                      value={dimensions.wadingPool.corner || 'back-left'}
-                      onValueChange={(value) => updateWadingPool({ corner: value as PoolCorner })}
-                    >
-                      <SelectTrigger className="w-full">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {(Object.keys(poolCornerLabels) as PoolCorner[]).map((c) => (
-                          <SelectItem key={c} value={c}>
-                            {poolCornerLabels[c]}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <Label className="text-sm font-medium mb-2 block">Narożnik startowy</Label>
+                    <div className="grid grid-cols-4 gap-2">
+                      {getCornerLabels().map((corner, index) => {
+                        const isOccupied = isCornerOccupied(index, 'wadingPool');
+                        return (
+                          <button
+                            key={corner.value}
+                            onClick={() => !isOccupied && updateWadingPool({ cornerIndex: index })}
+                            disabled={isOccupied}
+                            className={`flex flex-col items-center justify-center p-2 rounded-lg border transition-all ${
+                              (dimensions.wadingPool.cornerIndex ?? 0) === index
+                                ? 'border-primary bg-primary/10 shadow-md'
+                                : isOccupied
+                                  ? 'border-border bg-muted/50 opacity-50 cursor-not-allowed'
+                                  : 'border-border bg-background hover:bg-muted/50 hover:border-primary/30'
+                            }`}
+                          >
+                            <span className={`text-lg font-bold ${
+                              (dimensions.wadingPool.cornerIndex ?? 0) === index 
+                                ? 'text-primary' 
+                                : isOccupied 
+                                  ? 'text-muted-foreground/50' 
+                                  : 'text-muted-foreground'
+                            }`}>
+                              {corner.value}
+                            </span>
+                            <span className="text-[10px] text-muted-foreground mt-0.5">
+                              {isOccupied ? 'schody' : index === 0 ? 'tylny L' : index === 1 ? 'tylny P' : index === 2 ? 'przedni P' : 'przedni L'}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
                   
-                  {/* Direction */}
+                  {/* Direction selection - buttons instead of dropdown */}
                   <div>
-                    <Label className="text-sm font-medium mb-2 block">Kierunek</Label>
-                    <Select
-                      value={dimensions.wadingPool.direction || 'along-width'}
-                      onValueChange={(value) => updateWadingPool({ direction: value as WallDirection })}
-                    >
-                      <SelectTrigger className="w-full">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {(Object.keys(wallDirectionLabels) as WallDirection[]).map((d) => (
-                          <SelectItem key={d} value={d}>
-                            {wallDirectionLabels[d]}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <Label className="text-sm font-medium mb-2 block">Równolegle do ściany</Label>
+                    <div className="grid grid-cols-1 gap-2">
+                      {getWallDirectionOptions(dimensions.wadingPool.cornerIndex ?? 0).map((option) => (
+                        <button
+                          key={option.value}
+                          onClick={() => updateWadingPool({ direction: option.value })}
+                          className={`flex items-center justify-start p-3 rounded-lg border transition-all ${
+                            dimensions.wadingPool.direction === option.value
+                              ? 'border-primary bg-primary/10 shadow-md'
+                              : 'border-border bg-background hover:bg-muted/50 hover:border-primary/30'
+                          }`}
+                        >
+                          <span className={`text-sm ${
+                            dimensions.wadingPool.direction === option.value ? 'text-primary font-medium' : 'text-muted-foreground'
+                          }`}>
+                            {option.label}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
                   </div>
                   
                   {/* Size inputs */}
