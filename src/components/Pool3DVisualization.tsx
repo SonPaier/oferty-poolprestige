@@ -1592,8 +1592,9 @@ function CustomWadingPoolMesh({
   hasDividingWall?: boolean;
   dividingWallOffset?: number;
 }) {
+  // Floor material - same blue as WadingPoolMesh (#0369a1)
   const floorMaterial = useMemo(() => 
-    new THREE.MeshStandardMaterial({ color: '#5b9bd5' }), []);
+    new THREE.MeshStandardMaterial({ color: '#0369a1' }), []);
   
   // Use concrete material for all wall surfaces (uniform grey, no blue stripe)
   const concreteMaterial = useMemo(() => 

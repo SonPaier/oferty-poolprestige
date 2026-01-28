@@ -1017,7 +1017,11 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
           </div>
 
           {/* Stairs configuration - available for rectangular and irregular shapes (NOT oval) */}
+          {/* For irregular shapes: only show if stairs were drawn in editor (no toggle) */}
           {dimensions.shape !== 'owalny' && (
+            // For rectangular pools: show toggle
+            // For irregular pools: only show if customStairsVertices exist (drawn in editor)
+            (dimensions.shape !== 'nieregularny' || (dimensions.customStairsVertices && dimensions.customStairsVertices.some(arr => arr.length >= 3))) && (
             <div className="space-y-4 p-4 rounded-lg bg-muted/30 border border-border">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
@@ -1025,18 +1029,21 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
                   <div>
                     <Label htmlFor="stairsEnabled" className="font-medium">Schody</Label>
                     <p className="text-xs text-muted-foreground">
-                      Dodaj schody do basenu
+                      {isCustomShape ? 'Schody narysowane w edytorze' : 'Dodaj schody do basenu'}
                     </p>
                   </div>
                 </div>
-                <Switch
-                  id="stairsEnabled"
-                  checked={dimensions.stairs?.enabled || false}
-                  onCheckedChange={(checked) => updateStairs({ enabled: checked })}
-                />
+                {/* Hide toggle for irregular pools - stairs are drawn in editor */}
+                {!isCustomShape && (
+                  <Switch
+                    id="stairsEnabled"
+                    checked={dimensions.stairs?.enabled || false}
+                    onCheckedChange={(checked) => updateStairs({ enabled: checked })}
+                  />
+                )}
               </div>
               
-              {dimensions.stairs?.enabled && (
+              {(isCustomShape || dimensions.stairs?.enabled) && (
                 <div className="space-y-4 pt-3 border-t border-border">
                   {/* For irregular shapes - show simplified read-only controls */}
                   {isCustomShape ? (
@@ -1388,10 +1395,15 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
                 </div>
               )}
             </div>
+            )
           )}
 
-          {/* Wading pool configuration for rectangular shapes only (NOT oval or irregular) */}
-          {dimensions.shape === 'prostokatny' && (
+          {/* Wading pool configuration for rectangular and irregular shapes (NOT oval) */}
+          {/* For irregular shapes: only show if wading pool was drawn in editor (no toggle) */}
+          {dimensions.shape !== 'owalny' && (
+            // For rectangular pools: show toggle
+            // For irregular pools: only show if customWadingPoolVertices exist (drawn in editor)
+            (dimensions.shape !== 'nieregularny' || (dimensions.customWadingPoolVertices && dimensions.customWadingPoolVertices.some(arr => arr.length >= 3))) && (
             <div className="space-y-4 p-4 rounded-lg bg-muted/30 border border-border">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
@@ -1399,177 +1411,216 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
                   <div>
                     <Label htmlFor="wadingPoolEnabled" className="font-medium">Brodzik</Label>
                     <p className="text-xs text-muted-foreground">
-                      Dodaj brodzik dla dzieci
+                      {isCustomShape ? 'Brodzik narysowany w edytorze' : 'Dodaj brodzik dla dzieci'}
                     </p>
                   </div>
                 </div>
-                <Switch
-                  id="wadingPoolEnabled"
-                  checked={dimensions.wadingPool?.enabled || false}
-                  onCheckedChange={(checked) => updateWadingPool({ enabled: checked })}
-                />
+                {/* Hide toggle for irregular pools - wading pool is drawn in editor */}
+                {!isCustomShape && (
+                  <Switch
+                    id="wadingPoolEnabled"
+                    checked={dimensions.wadingPool?.enabled || false}
+                    onCheckedChange={(checked) => updateWadingPool({ enabled: checked })}
+                  />
+                )}
               </div>
               
-              {dimensions.wadingPool?.enabled && (
+              {(isCustomShape || dimensions.wadingPool?.enabled) && (
                 <div className="space-y-4 pt-3 border-t border-border">
-                  {/* Corner selection (A, B, C, D) - same style as stairs */}
-                  <div>
-                    <Label className="text-sm font-medium mb-2 block">Narożnik startowy</Label>
-                    <div className="grid grid-cols-4 gap-2">
-                      {getCornerLabels().map((corner, index) => {
-                        const isOccupied = isCornerOccupied(index, 'wadingPool');
-                        return (
-                          <button
-                            key={corner.value}
-                            onClick={() => !isOccupied && updateWadingPool({ cornerIndex: index })}
-                            disabled={isOccupied}
-                            className={`flex flex-col items-center justify-center p-2 rounded-lg border transition-all ${
-                              (dimensions.wadingPool.cornerIndex ?? 0) === index
-                                ? 'border-primary bg-primary/10 shadow-md'
-                                : isOccupied
-                                  ? 'border-border bg-muted/50 opacity-50 cursor-not-allowed'
-                                  : 'border-border bg-background hover:bg-muted/50 hover:border-primary/30'
-                            }`}
-                          >
-                            <span className={`text-lg font-bold ${
-                              (dimensions.wadingPool.cornerIndex ?? 0) === index 
-                                ? 'text-primary' 
-                                : isOccupied 
-                                  ? 'text-muted-foreground/50' 
-                                  : 'text-muted-foreground'
-                            }`}>
-                              {corner.value}
-                            </span>
-                            <span className="text-[10px] text-muted-foreground mt-0.5">
-                              {isOccupied ? 'schody' : index === 0 ? 'tylny L' : index === 1 ? 'tylny P' : index === 2 ? 'przedni P' : 'przedni L'}
-                            </span>
-                          </button>
-                        );
-                      })}
+                  {/* For irregular shapes - show simplified controls with edit button */}
+                  {isCustomShape && (
+                    <div className="p-3 rounded-lg bg-primary/10 border border-primary/20 text-sm">
+                      <p className="font-medium mb-1">Brodzik rysowany w edytorze kształtu</p>
+                      <p className="text-muted-foreground text-xs">
+                        Pozycja i kształt brodzika definiowane są graficznie. Poniżej możesz zmienić parametry murka.
+                      </p>
+                      <Button variant="outline" size="sm" className="mt-2" onClick={() => setShowCustomDrawer(true)}>
+                        <Pencil className="w-3 h-3 mr-1" />
+                        Edytuj pozycję brodzika
+                      </Button>
                     </div>
-                  </div>
+                  )}
                   
-                  {/* Direction selection - buttons instead of dropdown */}
-                  <div>
-                    <Label className="text-sm font-medium mb-2 block">Równolegle do ściany</Label>
-                    <div className="grid grid-cols-1 gap-2">
-                      {getWallDirectionOptions(dimensions.wadingPool.cornerIndex ?? 0).map((option) => (
-                        <button
-                          key={option.value}
-                          onClick={() => updateWadingPool({ direction: option.value })}
-                          className={`flex items-center justify-start p-3 rounded-lg border transition-all ${
-                            dimensions.wadingPool.direction === option.value
-                              ? 'border-primary bg-primary/10 shadow-md'
-                              : 'border-border bg-background hover:bg-muted/50 hover:border-primary/30'
-                          }`}
-                        >
-                          <span className={`text-sm ${
-                            dimensions.wadingPool.direction === option.value ? 'text-primary font-medium' : 'text-muted-foreground'
-                          }`}>
-                            {option.label}
-                          </span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  
-                  {/* Size inputs */}
-                  {(() => {
-                    const maxWidth = getMaxAvailableWidth(
-                      'wadingPool',
-                      dimensions.wadingPool.cornerIndex ?? 0,
-                      dimensions.wadingPool.direction || 'along-width'
-                    );
-                    const currentWidth = dimensions.wadingPool.width || 2;
-                    const isOverLimit = currentWidth > maxWidth;
-                    
-                    return (
-                      <div className="grid grid-cols-3 gap-3">
-                        <div>
-                          <Label htmlFor="wadingWidth" className="text-xs">Szerokość (m)</Label>
-                          <Input
-                            id="wadingWidth"
-                            type="number"
-                            step="0.1"
-                            min="0.5"
-                            max={maxWidth}
-                            value={currentWidth}
-                            onChange={(e) => {
-                              const value = parseFloat(e.target.value) || 2;
-                              updateWadingPool({ width: Math.min(value, maxWidth) });
-                            }}
-                            className={`input-field ${isOverLimit ? 'border-destructive' : ''}`}
-                          />
-                          {dimensions.stairs.enabled && (
-                            <p className="text-xs text-muted-foreground mt-0.5">
-                              Maks. {maxWidth.toFixed(1)}m
-                            </p>
-                          )}
-                        </div>
-                        <div>
-                          <Label htmlFor="wadingLength" className="text-xs">Długość (m)</Label>
-                          <Input
-                            id="wadingLength"
-                            type="number"
-                            step="0.1"
-                            min="0.5"
-                            max="10"
-                            value={dimensions.wadingPool.length || 1.5}
-                            onChange={(e) => updateWadingPool({ length: parseFloat(e.target.value) || 1.5 })}
-                            className="input-field"
-                          />
-                        </div>
-                        <div>
-                          <Label htmlFor="wadingDepth" className="text-xs">Głębokość (m)</Label>
-                          <Input
-                            id="wadingDepth"
-                            type="number"
-                            step="0.1"
-                            min="0.2"
-                            max="1"
-                            value={dimensions.wadingPool.depth || 0.4}
-                            onChange={(e) => updateWadingPool({ depth: parseFloat(e.target.value) || 0.4 })}
-                            className="input-field"
-                          />
+                  {/* For rectangular pools - show full positioning controls */}
+                  {!isCustomShape && (
+                    <>
+                      {/* Corner selection (A, B, C, D) - same style as stairs */}
+                      <div>
+                        <Label className="text-sm font-medium mb-2 block">Narożnik startowy</Label>
+                        <div className="grid grid-cols-4 gap-2">
+                          {getCornerLabels().map((corner, index) => {
+                            const isOccupied = isCornerOccupied(index, 'wadingPool');
+                            return (
+                              <button
+                                key={corner.value}
+                                onClick={() => !isOccupied && updateWadingPool({ cornerIndex: index })}
+                                disabled={isOccupied}
+                                className={`flex flex-col items-center justify-center p-2 rounded-lg border transition-all ${
+                                  (dimensions.wadingPool.cornerIndex ?? 0) === index
+                                    ? 'border-primary bg-primary/10 shadow-md'
+                                    : isOccupied
+                                      ? 'border-border bg-muted/50 opacity-50 cursor-not-allowed'
+                                      : 'border-border bg-background hover:bg-muted/50 hover:border-primary/30'
+                                }`}
+                              >
+                                <span className={`text-lg font-bold ${
+                                  (dimensions.wadingPool.cornerIndex ?? 0) === index 
+                                    ? 'text-primary' 
+                                    : isOccupied 
+                                      ? 'text-muted-foreground/50' 
+                                      : 'text-muted-foreground'
+                                }`}>
+                                  {corner.value}
+                                </span>
+                                <span className="text-[10px] text-muted-foreground mt-0.5">
+                                  {isOccupied ? 'schody' : index === 0 ? 'tylny L' : index === 1 ? 'tylny P' : index === 2 ? 'przedni P' : 'przedni L'}
+                                </span>
+                              </button>
+                            );
+                          })}
                         </div>
                       </div>
-                    );
-                  })()}
+                      
+                      {/* Direction selection - buttons instead of dropdown */}
+                      <div>
+                        <Label className="text-sm font-medium mb-2 block">Równolegle do ściany</Label>
+                        <div className="grid grid-cols-1 gap-2">
+                          {getWallDirectionOptions(dimensions.wadingPool.cornerIndex ?? 0).map((option) => (
+                            <button
+                              key={option.value}
+                              onClick={() => updateWadingPool({ direction: option.value })}
+                              className={`flex items-center justify-start p-3 rounded-lg border transition-all ${
+                                dimensions.wadingPool.direction === option.value
+                                  ? 'border-primary bg-primary/10 shadow-md'
+                                  : 'border-border bg-background hover:bg-muted/50 hover:border-primary/30'
+                              }`}
+                            >
+                              <span className={`text-sm ${
+                                dimensions.wadingPool.direction === option.value ? 'text-primary font-medium' : 'text-muted-foreground'
+                              }`}>
+                                {option.label}
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      
+                      {/* Size inputs */}
+                      {(() => {
+                        const maxWidth = getMaxAvailableWidth(
+                          'wadingPool',
+                          dimensions.wadingPool.cornerIndex ?? 0,
+                          dimensions.wadingPool.direction || 'along-width'
+                        );
+                        const currentWidth = dimensions.wadingPool.width || 2;
+                        const isOverLimit = currentWidth > maxWidth;
+                        
+                        return (
+                          <div className="grid grid-cols-3 gap-3">
+                            <div>
+                              <Label htmlFor="wadingWidth" className="text-xs">Szerokość (m)</Label>
+                              <Input
+                                id="wadingWidth"
+                                type="number"
+                                step="0.1"
+                                min="0.5"
+                                max={maxWidth}
+                                value={currentWidth}
+                                onChange={(e) => {
+                                  const value = parseFloat(e.target.value) || 2;
+                                  updateWadingPool({ width: Math.min(value, maxWidth) });
+                                }}
+                                className={`input-field ${isOverLimit ? 'border-destructive' : ''}`}
+                              />
+                              {dimensions.stairs.enabled && (
+                                <p className="text-xs text-muted-foreground mt-0.5">
+                                  Maks. {maxWidth.toFixed(1)}m
+                                </p>
+                              )}
+                            </div>
+                            <div>
+                              <Label htmlFor="wadingLength" className="text-xs">Długość (m)</Label>
+                              <Input
+                                id="wadingLength"
+                                type="number"
+                                step="0.1"
+                                min="0.5"
+                                max="10"
+                                value={dimensions.wadingPool.length || 1.5}
+                                onChange={(e) => updateWadingPool({ length: parseFloat(e.target.value) || 1.5 })}
+                                className="input-field"
+                              />
+                            </div>
+                            <div>
+                              <Label htmlFor="wadingDepthRect" className="text-xs">Głębokość (m)</Label>
+                              <Input
+                                id="wadingDepthRect"
+                                type="number"
+                                step="0.1"
+                                min="0.2"
+                                max="1"
+                                value={dimensions.wadingPool.depth || 0.4}
+                                onChange={(e) => updateWadingPool({ depth: parseFloat(e.target.value) || 0.4 })}
+                                className="input-field"
+                              />
+                            </div>
+                          </div>
+                        );
+                      })()}
+                      
+                      <p className="text-xs text-muted-foreground -mt-2">
+                        * Wymiary zewnętrzne (łącznie ze ścianą 20cm)
+                      </p>
+                    </>
+                  )}
                   
-                  <p className="text-xs text-muted-foreground -mt-2">
-                    * Wymiary zewnętrzne (łącznie ze ścianą 20cm)
-                  </p>
+                  {/* Depth input for irregular pools */}
+                  {isCustomShape && (
+                    <div className="space-y-2">
+                      <Label htmlFor="wadingDepthIrregular" className="text-sm font-medium">Głębokość brodzika (m)</Label>
+                      <Input
+                        id="wadingDepthIrregular"
+                        type="number"
+                        step="0.1"
+                        min="0.2"
+                        max="1"
+                        value={dimensions.wadingPool?.depth || 0.4}
+                        onChange={(e) => updateWadingPool({ depth: parseFloat(e.target.value) || 0.4 })}
+                        className="input-field"
+                      />
+                    </div>
+                  )}
                   
-                  {/* Dividing wall toggle */}
+                  {/* Dividing wall toggle - for both rectangular and irregular */}
                   <div className="flex items-center justify-between p-3 rounded-lg bg-muted/30 border border-border">
                     <div className="flex items-center gap-2">
                       <div>
                         <Label htmlFor="hasDividingWall" className="font-medium text-sm">Murek oddzielający</Label>
                         <p className="text-xs text-muted-foreground">
-                          {dimensions.wadingPool.hasDividingWall !== false 
-                            ? `Góra murka: ${dimensions.wadingPool.dividingWallOffset ?? 0}cm poniżej krawędzi basenu`
+                          {dimensions.wadingPool?.hasDividingWall !== false 
+                            ? `Góra murka: ${dimensions.wadingPool?.dividingWallOffset ?? 0}cm poniżej krawędzi basenu`
                             : 'Bez murku - płynne przejście'}
                         </p>
                       </div>
                     </div>
                     <Switch
                       id="hasDividingWall"
-                      checked={dimensions.wadingPool.hasDividingWall !== false}
+                      checked={dimensions.wadingPool?.hasDividingWall !== false}
                       onCheckedChange={(checked) => updateWadingPool({ hasDividingWall: checked })}
                     />
                   </div>
                   
                   {/* Wall offset input - only when dividing wall is enabled */}
-                  {dimensions.wadingPool.hasDividingWall !== false && (
+                  {dimensions.wadingPool?.hasDividingWall !== false && (
                     <div className="space-y-2 p-3 rounded-lg bg-muted/20 border border-border">
                       <Label htmlFor="wallOffset" className="text-sm">Góra murka od krawędzi basenu (cm)</Label>
                       <Input
                         id="wallOffset"
                         type="number"
                         min={0}
-                        max={Math.round(dimensions.depth * 100) - Math.round((dimensions.wadingPool.depth ?? 0.4) * 100)}
+                        max={Math.round(dimensions.depth * 100) - Math.round((dimensions.wadingPool?.depth ?? 0.4) * 100)}
                         step={1}
-                        value={dimensions.wadingPool.dividingWallOffset ?? 0}
+                        value={dimensions.wadingPool?.dividingWallOffset ?? 0}
                         onChange={(e) => updateWadingPool({ dividingWallOffset: Number(e.target.value) })}
                         className="h-9"
                       />
@@ -1581,6 +1632,7 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
                 </div>
               )}
             </div>
+            )
           )}
 
           {/* Geometry validation warnings */}
