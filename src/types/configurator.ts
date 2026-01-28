@@ -62,7 +62,9 @@ export interface StairsConfig {
 
 export interface WadingPoolConfig {
   enabled: boolean;
-  corner: PoolCorner; // który narożnik
+  corner: PoolCorner; // który narożnik (legacy)
+  cornerIndex?: number; // indeks narożnika (0=A, 1=B, 2=C...) - nowy sposób
+  cornerLabel?: string; // etykieta narożnika (A, B, C, D...)
   direction: WallDirection; // wzdłuż której ściany
   width: number; // szerokość brodzika (wzdłuż ściany)
   length: number; // długość brodzika (w głąb basenu)
@@ -92,6 +94,8 @@ export const defaultStairsConfig: StairsConfig = {
 export const defaultWadingPoolConfig: WadingPoolConfig = {
   enabled: false,
   corner: 'back-left',
+  cornerIndex: 0, // A
+  cornerLabel: 'A',
   direction: 'along-width',
   width: 2,
   length: 1.5,
