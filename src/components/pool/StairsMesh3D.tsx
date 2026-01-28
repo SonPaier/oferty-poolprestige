@@ -327,17 +327,17 @@ function DiagonalStairs3D({
       const innerRatio = (i + 1) / stepCount;
       
       // Create trapezoid shape for this step (slice between two parallel lines)
-      // Outer edge points (at outerRatio distance from hypotenuse toward corner)
-      const outer1x = v0.x + dx1 * (1 - outerRatio);
-      const outer1y = v0.y + dy1 * (1 - outerRatio);
-      const outer2x = v0.x + dx2 * (1 - outerRatio);
-      const outer2y = v0.y + dy2 * (1 - outerRatio);
+      // Outer edge points (at outerRatio distance from corner toward hypotenuse)
+      const outer1x = v0.x + dx1 * outerRatio;
+      const outer1y = v0.y + dy1 * outerRatio;
+      const outer2x = v0.x + dx2 * outerRatio;
+      const outer2y = v0.y + dy2 * outerRatio;
       
-      // Inner edge points (at innerRatio distance from hypotenuse toward corner)
-      const inner1x = v0.x + dx1 * (1 - innerRatio);
-      const inner1y = v0.y + dy1 * (1 - innerRatio);
-      const inner2x = v0.x + dx2 * (1 - innerRatio);
-      const inner2y = v0.y + dy2 * (1 - innerRatio);
+      // Inner edge points (at innerRatio distance from corner toward hypotenuse)
+      const inner1x = v0.x + dx1 * innerRatio;
+      const inner1y = v0.y + dy1 * innerRatio;
+      const inner2x = v0.x + dx2 * innerRatio;
+      const inner2y = v0.y + dy2 * innerRatio;
       
       const shape = new THREE.Shape();
       
