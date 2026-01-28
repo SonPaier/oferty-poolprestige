@@ -1,224 +1,144 @@
 
-# Plan: Uproszczona logika tworzenia schodów
+# Plan: Automatyczne obliczanie głębokości stopnia dla ręcznie rysowanych schodów
 
-## Podsumowanie
+## Podsumowanie problemu
+Przy ręcznym rysowaniu schodów w edytorze basenu nieregularnego:
+- Wyświetlana długość schodów nie zgadza się z faktycznie narysowanym kształtem
+- Głębokość stopnia powinna być automatycznie wyliczana z wzoru: `długość / liczba_stopni`
+- System nie wie, która krawędź to "długość" (kierunek schodzenia)
 
-Wprowadzenie zunifikowanego systemu schodów jako niezależnego bloku graficznego, który:
-- Zawsze startuje od wybranego narożnika basenu (A, B, C, D...)
-- Obsługuje 4 typy kształtów: prostokąt, trójkąt 45°, L-kształt, trójkąt nierównoramienny
-- Umożliwia dwukierunkową synchronizację między parametrami liczbowymi a grafiką
-- Działa identycznie dla basenów prostokątnych i nieregularnych
+## Rozwiązanie
 
----
+### 1. Funkcja obliczająca długość z wierzchołków
 
-## Faza 1: Rozszerzenie modelu danych
-
-### Plik: `src/types/configurator.ts`
-
-Dodanie nowych typów i rozszerzenie interfejsu `StairsConfig`:
+Dodanie funkcji `calculateStairsLengthFromVertices()` w `CustomPoolDrawer.tsx`:
 
 ```text
-Nowe typy:
-- StairsShapeType = 'rectangular' | 'diagonal-45' | 'l-shape' | 'triangle'
+Dla prostokąta (4 punkty):
+├── Oblicz długości wszystkich 4 krawędzi
+├── Znajdź dłuższą krawędź → to jest "długość schodów" (kierunek schodzenia)
+└── Krótsza krawędź → to jest "szerokość schodów"
 
-Rozszerzony StairsConfig:
-- shapeType: StairsShapeType (zastępuje "placement")
-- cornerIndex: number (indeks narożnika 0=A, 1=B...)
-- vertices?: Point[] (wierzchołki kształtu)
+Dla trójkąta 45° (3 punkty):
+├── Krawędź od punktu 0 do 1 → ramię 1
+├── Krawędź od punktu 0 do 2 → ramię 2  
+└── Dłuższa z nich → "długość" schodów
+```
 
-Parametry dla L-kształtu:
-- legA?: number (długość ramienia A)
-- legB?: number (długość ramienia B)
-- legWidth?: number (szerokość ramion)
+### 2. Automatyczna aktualizacja parametrów po narysowaniu
 
-Parametry dla trójkąta nierównoramiennego:
-- sideA?: number, sideB?: number, sideC?: number
+W momencie zamknięcia kształtu schodów (gdy użytkownik kliknie pierwszy punkt):
+```text
+1. Oblicz całkowitą długość z geometrii
+2. Zachowaj aktualną liczbę stopni
+3. Przelicz głębokość stopnia: stepDepth = obliczona_długość / stepCount
+4. Zaktualizuj również szerokość (krótsza krawędź)
+5. Wyświetl toast z informacją o obliczonych wymiarach
+```
 
-Przyszłość:
-- cornerRadius?: number (zaokrąglenia)
+### 3. Aktualizacja przy przesuwaniu wierzchołków
+
+Gdy użytkownik przeciągnie wierzchołek:
+```text
+1. Po zakończeniu przeciągania (object:modified event)
+2. Jeśli modyfikowane są schody → przelicz długość z nowych wierzchołków
+3. Przelicz stepDepth = nowa_długość / stepCount
+4. Zaktualizuj UI w czasie rzeczywistym
+```
+
+### 4. Zmiana liczby stopni → przelicz tylko głębokość
+
+Gdy użytkownik zmieni liczbę stopni w polu input:
+```text
+1. Oblicz aktualną długość z wierzchołków (nie zmieniaj kształtu!)
+2. Przelicz: stepDepth = aktualna_długość / nowa_liczba_stopni
+3. Zaktualizuj wyświetlanie stopni na rysunku
+```
+
+### 5. Poprawa renderowania linii stopni
+
+Linie stopni będą teraz generowane na podstawie:
+```text
+Prostokąt:
+├── Znajdź kierunek "długości" (dłuższa krawędź)
+├── Dziel tę krawędź równomiernie na stepCount części
+└── Rysuj linie prostopadłe do kierunku długości
+
+Trójkąt 45°:
+├── Znajdź punkt startowy (narożnik basenu)
+├── Dziel każde ramię proporcjonalnie (i/stepCount)
+└── Rysuj linie równoległe do przeciwprostokątnej
 ```
 
 ---
 
-## Faza 2: Generator kształtów schodów
+## Szczegóły techniczne
 
-### Nowy plik: `src/lib/stairsShapeGenerator.ts`
+### Zmiany w `CustomPoolDrawer.tsx`
 
-Moduł generujący wierzchołki i linie stopni dla każdego typu schodów:
-
-**Funkcje eksportowane:**
-1. `generateRectangularStairs(cornerPos, poolCornerAngle, width, stepCount, stepDepth)` → vertices[]
-2. `generateDiagonal45Stairs(cornerPos, poolCornerAngle, stepCount, stepDepth)` → vertices[]
-3. `generateLShapeStairs(cornerPos, poolCornerAngle, legA, legB, legWidth)` → vertices[]
-4. `generateTriangleStairs(cornerPos, poolCornerAngle, sideA, sideB, sideC)` → vertices[]
-5. `calculateStepLines(vertices, stepCount, shapeType)` → stepLines[]
-
-**Algorytm linii stopni dla L-kształtu:**
-```text
-      ┌───────────────┐
-      │   Ramię A     │
-      │  ─────────    │ ← stopnie równoległe do krótkiego boku
-      │  ─────────    │
-      ├────┬──────────┘
-      │ 45°│ Zakręt trójkątny
-      │ R  │  ───      
-      │ a  │  ───      ← stopnie równoległe do krótkiego boku
-      │ m  │  
-      │ B  │
-      └────┘
+**Nowa funkcja:**
+```typescript
+const calculateDimensionsFromVertices = (vertices: Point[], type: 'rectangular' | 'diagonal'): {
+  stairsLength: number;  // długość w kierunku schodzenia
+  stairsWidth: number;   // szerokość schodów
+  stepDepth: number;     // obliczona głębokość stopnia
+} => {
+  // Dla prostokąta: znajdź dłuższą i krótszą krawędź
+  // Dla trójkąta: znajdź dłuższe ramię
+  // Oblicz stepDepth = stairsLength / stairsStepCount
+}
 ```
 
-**Algorytm linii stopni dla trójkąta nierównoramiennego:**
-- Identyfikacja najdłuższego boku
-- Linie stopni równoległe do najdłuższego boku
-- Podział odległości od wierzchołka do najdłuższego boku na stepCount części
+**Zmiany w obsłudze zdarzeń:**
+1. `handleMouseDown` (zamknięcie kształtu) → wywołaj `calculateDimensionsFromVertices`
+2. `handleObjectModified` (przeciągnięcie wierzchołka) → przelicz wymiary dla schodów
+3. `handleStairsParamsChange` (zmiana stepCount) → NIE regeneruj kształtu, tylko przelicz stepDepth
 
----
+**Zmiany w UI:**
+- Wyświetlaj "Obliczona długość" zamiast "Długość schodów" gdy rysujesz ręcznie
+- Pole "Głęb. stopnia" staje się tylko do odczytu (automatycznie obliczane)
 
-## Faza 3: Aktualizacja edytora graficznego
+### Zmiany w `Pool2DPreview.tsx`
 
-### Plik: `src/components/CustomPoolDrawer.tsx`
-
-**Zmiany:**
-
-1. **Panel szablonów schodów** - rozszerzenie istniejącego UI:
-   - 4 przyciski z ikonami: Prostokąt, 45°, L-kształt, Trójkąt
-   - Dodatkowy tryb "Własny" dla pełnej edycji wierzchołków
-
-2. **Wybór narożnika startowego:**
-   - Dropdown z literami narożników (A, B, C, D...)
-   - Alternatywnie: kliknięcie na narożnik basenu
-
-3. **Parametry zależne od typu:**
-   - Prostokąt: szerokość, liczba stopni, głębokość stopnia
-   - 45°: liczba stopni, głębokość stopnia
-   - L-kształt: ramię A, ramię B, szerokość ramion, liczba stopni, głębokość stopnia
-   - Trójkąt: 3 boki, liczba stopni, głębokość stopnia
-
-4. **Automatyczne generowanie kształtu:**
-   - Przy wyborze szablonu i narożnika → automatyczna generacja wierzchołków
-   - Wierzchołki pozycjonowane względem wybranego narożnika basenu
-   - Kierunek zawsze do wewnątrz bryły basenu
-
-5. **Dwukierunkowa synchronizacja:**
-   - Zmiana parametrów → regeneracja wierzchołków z zachowaniem pozycji narożnika
-   - Przeciąganie wierzchołków → przeliczenie parametrów (dla prostych kształtów)
-
----
-
-## Faza 4: Aktualizacja wizualizacji 2D
-
-### Plik: `src/components/pool/StairsPath2D.tsx`
-
-**Zmiany:**
-
-1. **Nowe typy kształtów:**
-   - Rozszerzenie funkcji `getStairsRenderData()` o obsługę `'l-shape'` i `'triangle'`
-
-2. **Linie stopni dla L-kształtu:**
-   - Obliczenie punktu zakrętu (połączenie ramion)
-   - Generowanie linii równoległych do krótkiego boku każdego ramienia
-   - Trójkątny element przejściowy w zakręcie (45°)
-
-3. **Linie stopni dla trójkąta nierównoramiennego:**
-   - Identyfikacja najdłuższego boku
-   - Linie równoległe do tego boku
-
----
-
-## Faza 5: Aktualizacja wizualizacji 3D
-
-### Plik: `src/components/pool/StairsMesh3D.tsx`
-
-**Zmiany:**
-
-1. **Nowe komponenty geometrii:**
-   - `LShapeStairs` - generowanie geometrii L z użyciem `ExtrudeGeometry`
-   - `TriangleStairs` - generowanie geometrii trójkąta nierównoramiennego
-
-2. **Algorytm generowania stopni 3D dla L-kształtu:**
-   - Podział całkowitej długości ścieżki (legA + zakręt + legB) na segmenty
-   - Każdy stopień jako osobny mesh z odpowiednią pozycją Z
-   - Zakręt realizowany jako klin trójkątny
-
-3. **Algorytm dla trójkąta nierównoramiennego:**
-   - Stopnie jako równoległe plastry do najdłuższego boku
-   - Każdy stopień mniejszy od poprzedniego
-
----
-
-## Faza 6: Uproszczenie interfejsu DimensionsStep
-
-### Plik: `src/components/steps/DimensionsStep.tsx`
-
-**Zmiany dla basenów prostokątnych:**
-
-1. **Zastąpienie osobnych dropdownów** ("placement", "wall", "corner") przez:
-   - Wybór typu schodów: 4 przyciski (Prostokąt, 45°, L, Trójkąt)
-   - Wybór narożnika: A, B, C, D
-
-2. **Parametry kontekstowe:**
-   - Dynamiczne wyświetlanie pól w zależności od wybranego typu
-   - L-kształt: 2 pola długości ramion + szerokość
-   - Trójkąt: 3 pola długości boków
-
-**Zmiany dla basenów nieregularnych:**
-- Zachowanie obecnej logiki z przyciskiem "Edytuj w edytorze kształtu"
-- Parametry schodów edytowalne zarówno w DimensionsStep jak i w edytorze
-
----
-
-## Kolejność implementacji
-
-| Krok | Opis | Pliki |
-|------|------|-------|
-| 1 | Rozszerzenie typów i StairsConfig | `configurator.ts` |
-| 2 | Generator kształtów | `stairsShapeGenerator.ts` (NOWY) |
-| 3 | Aktualizacja 2D | `StairsPath2D.tsx` |
-| 4 | Aktualizacja 3D | `StairsMesh3D.tsx` |
-| 5 | Edytor graficzny | `CustomPoolDrawer.tsx` |
-| 6 | Interfejs główny | `DimensionsStep.tsx` |
-| 7 | Testy i walidacja | Wszystkie komponenty |
-
----
-
-## Szczegóły algorytmów
-
-### Pozycjonowanie schodów od narożnika
-
-```text
-Dla narożnika A (index=0) w basenie prostokątnym:
-- Pozycja bazowa: (0, 0) w układzie basenu
-- Kierunek do wewnątrz: zależy od kątów ścian przyległych
-
-Algorytm:
-1. Pobierz współrzędne wybranego narożnika
-2. Oblicz kąty obu przyległych ścian
-3. Wybierz kierunek "do wewnątrz" jako bisektrysa kątów
-4. Wygeneruj wierzchołki schodów względem tej pozycji i kierunku
+Linie stopni dla basenów nieregularnych będą korzystać z nowej logiki:
+```typescript
+// Oblicz kierunek "długości" z dłuższej krawędzi
+// Generuj linie stopni proporcjonalnie do stepCount
 ```
 
-### Walidacja geometrii
+### Przepływ danych
 
-Przy każdej zmianie parametrów sprawdzenie:
-- Czy schody mieszczą się w obrysie basenu
-- Czy nie nachodzą na brodzik (jeśli włączony)
-- Ostrzeżenie gdy schody > 30% powierzchni basenu
+```text
+Użytkownik rysuje punkty
+        ↓
+Zamknięcie kształtu
+        ↓
+┌─────────────────────────────────┐
+│ calculateDimensionsFromVertices │
+│ ├── stairsLength = dłuższa krawędź
+│ ├── stairsWidth = krótsza krawędź  
+│ └── stepDepth = length / stepCount
+└─────────────────────────────────┘
+        ↓
+Aktualizacja state: setStairsWidth, setStairsStepDepth
+        ↓
+Wyświetlenie w UI + toast
+        ↓
+Renderowanie stopni z nowymi parametrami
+```
 
 ---
 
-## Kompatybilność wsteczna
+## Pliki do modyfikacji
 
-Istniejące oferty z zapisanymi schodami będą nadal działać:
-- Stare wartości `placement: 'wall' | 'corner' | 'diagonal'` będą mapowane na nowe `shapeType`
-- `placement: 'diagonal'` → `shapeType: 'diagonal-45'`
-- `placement: 'wall'` / `'corner'` → `shapeType: 'rectangular'`
+| Plik | Zmiany |
+|------|--------|
+| `src/components/CustomPoolDrawer.tsx` | Dodanie `calculateDimensionsFromVertices`, modyfikacja obsługi zdarzeń |
+| `src/components/Pool2DPreview.tsx` | Poprawa generowania linii stopni dla nieregularnych basenów |
 
----
+## Oczekiwany rezultat
 
-## Przyszłe rozszerzenia
-
-Po zaimplementowaniu podstawowej logiki:
-1. **Zaokrąglenia** - dodanie parametru `cornerRadius` do każdego typu
-2. **Schody łukowe** - nowy typ `'arc'` dla półkolistych schodów
-3. **Wielokrotne schody** - obsługa wielu zestawów schodów w jednym basenie
+1. Po narysowaniu schodów ręcznie → system automatycznie wyliczy głębokość stopnia
+2. Wyświetlana "Długość schodów" będzie zgadzać się z faktycznym kształtem
+3. Zmiana liczby stopni → kształt pozostaje, zmienia się tylko głębokość stopnia
+4. Linie stopni renderują się poprawnie, równomiernie rozłożone
