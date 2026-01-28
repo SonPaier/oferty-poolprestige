@@ -6,7 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Trash2, RotateCcw, Check, MousePointer, Plus, Grid3X3, Footprints, Baby, Waves, RotateCw, Calculator, Triangle, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { getCornerLabel, stairsAngleLabels, StairsConfig } from '@/types/configurator';
+import { getCornerLabel, stairsAngleLabels, StairsConfig, WadingPoolConfig } from '@/types/configurator';
 import { analyzeTriangleGeometry, calculatePerpendicularRotation } from '@/lib/scaleneTriangleStairs';
 import { 
   validateVertexPosition, 
@@ -33,7 +33,8 @@ interface CustomPoolDrawerProps {
     stairsVertices?: Point[],
     wadingPoolVertices?: Point[],
     stairsRotation?: number,
-    stairsConfig?: Partial<StairsConfig>
+    stairsConfig?: Partial<StairsConfig>,
+    wadingPoolConfig?: Partial<WadingPoolConfig>
   ) => void;
   onCancel: () => void;
   initialPoolVertices?: Point[];
@@ -44,6 +45,7 @@ interface CustomPoolDrawerProps {
   initialWidth?: number;
   shape?: 'prostokatny' | 'nieregularny';
   initialStairsConfig?: Partial<StairsConfig>;
+  initialWadingPoolConfig?: Partial<WadingPoolConfig>;
 }
 
 const GRID_SIZE = 30; // pixels per meter (smaller to fit 25m)
@@ -79,7 +81,8 @@ export function CustomPoolDrawer({
   initialLength,
   initialWidth,
   shape = 'nieregularny',
-  initialStairsConfig
+  initialStairsConfig,
+  initialWadingPoolConfig
 }: CustomPoolDrawerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fabricRef = useRef<FabricCanvas | null>(null);
@@ -98,6 +101,17 @@ export function CustomPoolDrawer({
   const [stairsStepDepth, setStairsStepDepth] = useState<number>(initialStairsConfig?.stepDepth || 0.30);
   const [stairsType, setStairsType] = useState<'rectangular' | 'diagonal'>(
     initialStairsConfig?.placement === 'diagonal' ? 'diagonal' : 'rectangular'
+  );
+  
+  // Wading pool parameters state
+  const [wadingHasDividingWall, setWadingHasDividingWall] = useState<boolean>(
+    initialWadingPoolConfig?.hasDividingWall !== false
+  );
+  const [wadingDividingWallOffset, setWadingDividingWallOffset] = useState<number>(
+    initialWadingPoolConfig?.dividingWallOffset ?? 0
+  );
+  const [wadingDepth, setWadingDepth] = useState<number>(
+    initialWadingPoolConfig?.depth ?? 0.4
   );
   
   // Generate initial vertices from length/width if provided and no custom vertices
@@ -1093,6 +1107,13 @@ export function CustomPoolDrawer({
       placement: stairsType === 'diagonal' ? 'diagonal' : 'corner',
     };
     
+    // Create wading pool config from current parameters
+    const wadingPoolConfig: Partial<WadingPoolConfig> = {
+      hasDividingWall: wadingHasDividingWall,
+      dividingWallOffset: wadingDividingWallOffset,
+      depth: wadingDepth,
+    };
+    
     onComplete(
       poolVertices, 
       area, 
@@ -1100,7 +1121,8 @@ export function CustomPoolDrawer({
       stairsVertices.length >= 3 ? stairsVertices : undefined,
       wadingPoolVertices.length >= 3 ? wadingPoolVertices : undefined,
       stairsVertices.length >= 3 ? stairsRotation : undefined,
-      stairsVertices.length >= 3 ? stairsConfig : undefined
+      stairsVertices.length >= 3 ? stairsConfig : undefined,
+      wadingPoolVertices.length >= 3 ? wadingPoolConfig : undefined
     );
   };
 
@@ -1394,6 +1416,69 @@ export function CustomPoolDrawer({
               {stairsType === 'diagonal' ? 'Generuj trójkąt schodów 45°' : 'Generuj prostokąt schodów'}
             </Button>
           )}
+        </div>
+      )}
+
+      {/* Wading pool parameters controls - visible when in wading pool mode */}
+      {currentMode === 'wadingPool' && wadingPoolVertices.length >= 3 && (
+        <div className="p-4 rounded-lg bg-purple-50 border border-purple-200">
+          <div className="flex items-center gap-2 mb-3">
+            <Baby className="w-4 h-4 text-purple-600" />
+            <Label className="font-medium text-purple-800">Parametry brodzika</Label>
+          </div>
+          
+          <div className="grid grid-cols-3 gap-4">
+            <div>
+              <Label htmlFor="drawerWadingDepth" className="text-xs text-purple-700">Głębokość (m)</Label>
+              <Input
+                id="drawerWadingDepth"
+                type="number"
+                step="0.1"
+                min="0.1"
+                max="1.0"
+                value={wadingDepth.toFixed(2)}
+                onChange={(e) => setWadingDepth(parseFloat(e.target.value) || 0.4)}
+                className="h-8 text-sm"
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="drawerHasDividingWall"
+                checked={wadingHasDividingWall}
+                onChange={(e) => setWadingHasDividingWall(e.target.checked)}
+                className="rounded border-purple-300"
+              />
+              <Label htmlFor="drawerHasDividingWall" className="text-xs text-purple-700">Murek oddzielający</Label>
+            </div>
+            {wadingHasDividingWall && (
+              <div>
+                <Label htmlFor="drawerWallOffset" className="text-xs text-purple-700">
+                  Góra murka od krawędzi (cm)
+                </Label>
+                <Input
+                  id="drawerWallOffset"
+                  type="number"
+                  step="5"
+                  min="0"
+                  max="100"
+                  value={wadingDividingWallOffset}
+                  onChange={(e) => setWadingDividingWallOffset(parseInt(e.target.value) || 0)}
+                  className="h-8 text-sm"
+                />
+              </div>
+            )}
+          </div>
+          
+          <div className="mt-2 text-xs text-purple-600">
+            {wadingHasDividingWall ? (
+              wadingDividingWallOffset === 0 
+                ? 'Murek równo z krawędzią basenu' 
+                : `Murek ${wadingDividingWallOffset}cm poniżej krawędzi basenu`
+            ) : (
+              'Brak murka oddzielającego'
+            )}
+          </div>
         </div>
       )}
 

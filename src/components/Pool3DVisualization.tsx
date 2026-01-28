@@ -1575,21 +1575,47 @@ function slicePolygonX(vertices: { x: number; y: number }[], xMin: number, xMax:
 }
 
 // Custom wading pool mesh (from drawn vertices) - uses actual polygon shape
-function CustomWadingPoolMesh({ vertices, wadingDepth, poolDepth, poolVertices, showDimensions = true }: { 
+function CustomWadingPoolMesh({ 
+  vertices, 
+  wadingDepth, 
+  poolDepth, 
+  poolVertices, 
+  showDimensions = true,
+  hasDividingWall = true,
+  dividingWallOffset = 0
+}: { 
   vertices: CustomPoolVertex[]; 
   wadingDepth: number;
   poolDepth: number;
   poolVertices: CustomPoolVertex[];
   showDimensions?: boolean;
+  hasDividingWall?: boolean;
+  dividingWallOffset?: number;
 }) {
   const floorMaterial = useMemo(() => 
     new THREE.MeshStandardMaterial({ color: '#5b9bd5' }), []);
-  const wallMaterial = useMemo(() => 
-    new THREE.MeshStandardMaterial({ color: '#5b9bd5' }), []);
+  
+  // Use concrete material for all wall surfaces (uniform grey, no blue stripe)
+  const concreteMaterial = useMemo(() => 
+    new THREE.MeshStandardMaterial({ 
+      color: '#ffffff', 
+      roughness: 0.6,
+      polygonOffset: true,
+      polygonOffsetFactor: -1,
+      polygonOffsetUnits: -1,
+    }), []);
   const rimMaterial = useMemo(() => 
     new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.6 }), []);
 
   const RIM_WIDTH = 0.15;
+  
+  // Dividing wall offset from pool edge in meters (converted from cm)
+  const wallOffsetFromEdge = (dividingWallOffset ?? 0) / 100;
+  
+  // The dividing wall extends from (z = -wallOffsetFromEdge) down to (z = -wadingDepth)
+  const dividingWallHeight = hasDividingWall 
+    ? Math.max(0, wadingDepth - wallOffsetFromEdge)
+    : 0;
 
   // Calculate pool center
   const poolCenter = useMemo(() => {
@@ -1691,14 +1717,31 @@ function CustomWadingPoolMesh({ vertices, wadingDepth, poolDepth, poolVertices, 
       const angle = Math.atan2(dy, dx);
       
       // Wall
+      // Only render dividing wall if enabled and has height
+      if (hasDividingWall && dividingWallHeight > 0.01) {
+        // Dividing wall from z = -wallOffsetFromEdge down to z = -wadingDepth
+        wallElements.push(
+          <mesh 
+            key={`wall-${i}`}
+            position={[midX, midY, -wallOffsetFromEdge - dividingWallHeight / 2]}
+            rotation={[0, 0, angle]}
+            material={concreteMaterial}
+          >
+            <boxGeometry args={[length, RIM_WIDTH, dividingWallHeight]} />
+          </mesh>
+        );
+      }
+      
+      // Internal structural wall below wading pool floor
+      const internalWallHeight = poolDepth - wadingDepth;
       wallElements.push(
         <mesh 
-          key={`wall-${i}`}
-          position={[midX, midY, floorZ - wadingDepth / 2]}
+          key={`internal-wall-${i}`}
+          position={[midX, midY, -wadingDepth - internalWallHeight / 2]}
           rotation={[0, 0, angle]}
-          material={wallMaterial}
+          material={concreteMaterial}
         >
-          <boxGeometry args={[length, RIM_WIDTH, wadingDepth]} />
+          <boxGeometry args={[length, RIM_WIDTH, internalWallHeight]} />
         </mesh>
       );
       
@@ -1716,7 +1759,7 @@ function CustomWadingPoolMesh({ vertices, wadingDepth, poolDepth, poolVertices, 
     }
     
     return { walls: wallElements, rims: rimElements };
-  }, [transformedVertices, transformedPoolVertices, poolBounds, floorZ, wadingDepth, wallMaterial, rimMaterial]);
+  }, [transformedVertices, transformedPoolVertices, poolBounds, floorZ, wadingDepth, concreteMaterial, rimMaterial, hasDividingWall, dividingWallHeight, wallOffsetFromEdge, poolDepth]);
 
   // Water shape (slightly inset from wading pool shape)
 
@@ -1725,7 +1768,7 @@ function CustomWadingPoolMesh({ vertices, wadingDepth, poolDepth, poolVertices, 
   return (
     <group>
       {/* Platform using actual polygon shape */}
-      <mesh geometry={platformGeo} material={wallMaterial} />
+      <mesh geometry={platformGeo} material={concreteMaterial} />
       
       {/* Floor surface */}
       <mesh position={[0, 0, floorZ]} geometry={floorGeo} material={floorMaterial} />
@@ -1866,6 +1909,8 @@ function Scene({ dimensions, calculations: _calculations, showFoilLayout, rollWi
               poolDepth={dimensions.depth}
               poolVertices={dimensions.customVertices || []}
               showDimensions={dimensionDisplay === 'all' || dimensionDisplay === 'wading'}
+              hasDividingWall={dimensions.wadingPool?.hasDividingWall !== false}
+              dividingWallOffset={dimensions.wadingPool?.dividingWallOffset ?? 0}
             />
           )
         ))}
