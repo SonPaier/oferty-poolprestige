@@ -22,7 +22,8 @@ function getStairsBoundingBox(
   stairs: StairsConfig,
   poolLength: number,
   poolWidth: number,
-  poolDepth: number
+  poolDepth: number,
+  wadingPool?: WadingPoolConfig
 ): BoundingBox | null {
   if (!stairs.enabled) return null;
 
@@ -31,6 +32,16 @@ function getStairsBoundingBox(
   // Use stepCount from config, not calculated from height
   const stepCount = stairs.stepCount || 4;
   const stairsLength = stepCount * stepDepth;
+  
+  // Check if stairs are placed at wading pool intersection points (E=4, F=5)
+  const cornerIndex = stairs.cornerIndex ?? 0;
+  if (cornerIndex >= 4 && wadingPool?.enabled) {
+    // Stairs at wading pool intersection points - these are positioned OUTSIDE the wading pool
+    // so they cannot overlap with it by definition
+    return getStairsBoundingBoxAtWadingIntersection(
+      stairs, cornerIndex, poolLength, poolWidth, wadingPool
+    );
+  }
 
   // For wall placement - stairs centered on wall, extending into pool
   if (stairs.placement === 'wall') {
@@ -69,9 +80,9 @@ function getStairsBoundingBox(
   }
 
   // For diagonal placement (45° corner stairs) - triangular shape approximated as square bounding box
-  if (stairs.placement === 'diagonal') {
+  if (stairs.placement === 'diagonal' || stairs.shapeType === 'diagonal-45') {
     const corner = stairs.corner || 'back-left';
-    const diagonalSize = stairsWidth; // The triangle extends this far in both X and Y
+    const diagonalSize = stairsLength; // For diagonal-45, size is stepCount * stepDepth
     
     switch (corner) {
       case 'back-left':
@@ -123,6 +134,187 @@ function getStairsBoundingBox(
       }
   }
 
+  return null;
+}
+
+// Get bounding box for stairs placed at wading pool intersection points (E, F)
+// These stairs are positioned OUTSIDE the wading pool footprint by definition
+function getStairsBoundingBoxAtWadingIntersection(
+  stairs: StairsConfig,
+  cornerIndex: number,
+  poolLength: number,
+  poolWidth: number,
+  wadingPool: WadingPoolConfig
+): BoundingBox | null {
+  const stairsWidth = typeof stairs.width === 'number' ? stairs.width : 1.5;
+  const stepDepth = stairs.stepDepth || 0.30;
+  const stepCount = stairs.stepCount || 4;
+  const stairsLength = stepCount * stepDepth;
+  const direction = stairs.direction || 'along-width';
+  
+  const wadingCorner = wadingPool.cornerIndex ?? 0;
+  const wadingDir = wadingPool.direction || 'along-width';
+  const wadingWidth = wadingPool.width || 2;
+  const wadingLength = wadingPool.length || 1.5;
+  
+  const isE = cornerIndex === 4;
+  
+  // Determine the intersection point position (where stairs start)
+  // and which direction the stairs extend (into the main pool, not into wading pool)
+  let startX = 0, startY = 0;
+  let extendX = 0, extendY = 0;
+  
+  // Calculate based on wading pool corner and direction
+  switch (wadingCorner) {
+    case 0: // A (back-left) at (0, 0)
+      if (wadingDir === 'along-length') {
+        // E is on back wall, F is on left wall
+        if (isE) {
+          startX = wadingWidth; startY = 0;
+          // Extend along wall (+X) or into pool (+Y)
+          if (direction === 'along-length') {
+            extendX = stairsWidth; extendY = stairsLength;
+          } else {
+            extendX = stairsLength; extendY = stairsWidth;
+          }
+        } else {
+          startX = 0; startY = wadingLength;
+          if (direction === 'along-width') {
+            extendX = stairsLength; extendY = stairsWidth;
+          } else {
+            extendX = stairsWidth; extendY = stairsLength;
+          }
+        }
+      } else {
+        if (isE) {
+          startX = 0; startY = wadingWidth;
+          if (direction === 'along-width') {
+            extendX = stairsLength; extendY = stairsWidth;
+          } else {
+            extendX = stairsWidth; extendY = stairsLength;
+          }
+        } else {
+          startX = wadingLength; startY = 0;
+          if (direction === 'along-length') {
+            extendX = stairsWidth; extendY = stairsLength;
+          } else {
+            extendX = stairsLength; extendY = stairsWidth;
+          }
+        }
+      }
+      return {
+        minX: startX,
+        maxX: startX + extendX,
+        minY: startY,
+        maxY: startY + extendY
+      };
+      
+    case 1: // B (back-right) at (poolLength, 0)
+      if (wadingDir === 'along-length') {
+        if (isE) {
+          startX = poolLength - wadingWidth; startY = 0;
+          if (direction === 'along-length') {
+            return { minX: startX - stairsWidth, maxX: startX, minY: 0, maxY: stairsLength };
+          } else {
+            return { minX: startX - stairsLength, maxX: startX, minY: 0, maxY: stairsWidth };
+          }
+        } else {
+          startX = poolLength; startY = wadingLength;
+          if (direction === 'along-width') {
+            return { minX: poolLength - stairsLength, maxX: poolLength, minY: startY, maxY: startY + stairsWidth };
+          } else {
+            return { minX: poolLength - stairsWidth, maxX: poolLength, minY: startY, maxY: startY + stairsLength };
+          }
+        }
+      } else {
+        if (isE) {
+          startX = poolLength; startY = wadingWidth;
+          if (direction === 'along-width') {
+            return { minX: poolLength - stairsLength, maxX: poolLength, minY: startY, maxY: startY + stairsWidth };
+          } else {
+            return { minX: poolLength - stairsWidth, maxX: poolLength, minY: startY, maxY: startY + stairsLength };
+          }
+        } else {
+          startX = poolLength - wadingLength; startY = 0;
+          if (direction === 'along-length') {
+            return { minX: startX - stairsWidth, maxX: startX, minY: 0, maxY: stairsLength };
+          } else {
+            return { minX: startX - stairsLength, maxX: startX, minY: 0, maxY: stairsWidth };
+          }
+        }
+      }
+      
+    case 2: // C (front-right) at (poolLength, poolWidth)
+      if (wadingDir === 'along-length') {
+        if (isE) {
+          startX = poolLength - wadingWidth; startY = poolWidth;
+          if (direction === 'along-length') {
+            return { minX: startX - stairsWidth, maxX: startX, minY: poolWidth - stairsLength, maxY: poolWidth };
+          } else {
+            return { minX: startX - stairsLength, maxX: startX, minY: poolWidth - stairsWidth, maxY: poolWidth };
+          }
+        } else {
+          startX = poolLength; startY = poolWidth - wadingLength;
+          if (direction === 'along-width') {
+            return { minX: poolLength - stairsLength, maxX: poolLength, minY: startY - stairsWidth, maxY: startY };
+          } else {
+            return { minX: poolLength - stairsWidth, maxX: poolLength, minY: startY - stairsLength, maxY: startY };
+          }
+        }
+      } else {
+        if (isE) {
+          startX = poolLength; startY = poolWidth - wadingWidth;
+          if (direction === 'along-width') {
+            return { minX: poolLength - stairsLength, maxX: poolLength, minY: startY - stairsWidth, maxY: startY };
+          } else {
+            return { minX: poolLength - stairsWidth, maxX: poolLength, minY: startY - stairsLength, maxY: startY };
+          }
+        } else {
+          startX = poolLength - wadingLength; startY = poolWidth;
+          if (direction === 'along-length') {
+            return { minX: startX - stairsWidth, maxX: startX, minY: poolWidth - stairsLength, maxY: poolWidth };
+          } else {
+            return { minX: startX - stairsLength, maxX: startX, minY: poolWidth - stairsWidth, maxY: poolWidth };
+          }
+        }
+      }
+      
+    case 3: // D (front-left) at (0, poolWidth)
+      if (wadingDir === 'along-length') {
+        if (isE) {
+          startX = wadingWidth; startY = poolWidth;
+          if (direction === 'along-length') {
+            return { minX: startX, maxX: startX + stairsWidth, minY: poolWidth - stairsLength, maxY: poolWidth };
+          } else {
+            return { minX: startX, maxX: startX + stairsLength, minY: poolWidth - stairsWidth, maxY: poolWidth };
+          }
+        } else {
+          startX = 0; startY = poolWidth - wadingLength;
+          if (direction === 'along-width') {
+            return { minX: 0, maxX: stairsLength, minY: startY - stairsWidth, maxY: startY };
+          } else {
+            return { minX: 0, maxX: stairsWidth, minY: startY - stairsLength, maxY: startY };
+          }
+        }
+      } else {
+        if (isE) {
+          startX = 0; startY = poolWidth - wadingWidth;
+          if (direction === 'along-width') {
+            return { minX: 0, maxX: stairsLength, minY: startY - stairsWidth, maxY: startY };
+          } else {
+            return { minX: 0, maxX: stairsWidth, minY: startY - stairsLength, maxY: startY };
+          }
+        } else {
+          startX = wadingLength; startY = poolWidth;
+          if (direction === 'along-length') {
+            return { minX: startX, maxX: startX + stairsWidth, minY: poolWidth - stairsLength, maxY: poolWidth };
+          } else {
+            return { minX: startX, maxX: startX + stairsLength, minY: poolWidth - stairsWidth, maxY: poolWidth };
+          }
+        }
+      }
+  }
+  
   return null;
 }
 
@@ -206,7 +398,7 @@ export function usePoolGeometryValidation(dimensions: PoolDimensions): GeometryW
     const poolWidth = dimensions.width || 4;
     const poolDepth = dimensions.depth || 1.5;
 
-    const stairsBB = getStairsBoundingBox(dimensions.stairs, poolLength, poolWidth, poolDepth);
+    const stairsBB = getStairsBoundingBox(dimensions.stairs, poolLength, poolWidth, poolDepth, dimensions.wadingPool);
     const wadingBB = getWadingPoolBoundingBox(dimensions.wadingPool, poolLength, poolWidth);
 
     // Debug logging (can be removed in production)
@@ -300,12 +492,15 @@ export function usePoolGeometryValidation(dimensions: PoolDimensions): GeometryW
     dimensions.stairs.placement,
     dimensions.stairs.wall,
     dimensions.stairs.corner,
+    dimensions.stairs.cornerIndex,
+    dimensions.stairs.shapeType,
     dimensions.stairs.direction,
     dimensions.stairs.width,
-    dimensions.stairs.stepCount, // Added stepCount instead of stepHeight
+    dimensions.stairs.stepCount,
     dimensions.stairs.stepDepth,
     dimensions.wadingPool.enabled,
     dimensions.wadingPool.corner,
+    dimensions.wadingPool.cornerIndex,
     dimensions.wadingPool.direction,
     dimensions.wadingPool.width,
     dimensions.wadingPool.length
