@@ -16,8 +16,10 @@ import {
 // Dimension display options - exported for use in other components
 export type DimensionDisplay = 'all' | 'pool' | 'stairs' | 'wading' | 'none';
 
-// Wall thickness constant (20cm)
-const WALL_THICKNESS = 0.2;
+// Wall thickness constants
+const POOL_WALL_THICKNESS = 0.24; // Pool walls = 24cm
+const WADING_WALL_THICKNESS = 0.15; // Wading pool walls = 15cm
+const WALL_THICKNESS = POOL_WALL_THICKNESS; // Alias for backward compatibility
 
 // Helper: ensure polygon vertices are in counter-clockwise order
 function ensureCounterClockwise(vertices: THREE.Vector2[]): THREE.Vector2[] {
@@ -536,7 +538,7 @@ function StairsMesh({ dimensions, stairs }: { dimensions: PoolDimensions; stairs
 
 // Wading pool visualization - always in corner, walls extend to pool floor
 // Uses corner + direction for 8 possible configurations
-// Dimensions are external (including wall thickness)
+// Dimensions are external (including wall thickness = 15cm)
 function WadingPoolMesh({ dimensions, wadingPool }: { dimensions: PoolDimensions; wadingPool: WadingPoolConfig }) {
   if (!wadingPool.enabled) return null;
   
@@ -555,21 +557,24 @@ function WadingPoolMesh({ dimensions, wadingPool }: { dimensions: PoolDimensions
   const poolDepth = depth || 1.5;
   
   // Calculate dividing wall height based on stairs and pool type
+  // This is the height of the wall ABOVE the wading pool water level
   let dividingWallHeight: number;
   if (hasDividingWall) {
     if (stairs?.enabled) {
-      // Wall height = first step height
+      // Wall height = first step riser height (one step below pool edge)
       const stepCount = stairs.stepCount || 4;
       dividingWallHeight = poolDepth / (stepCount + 1);
     } else {
-      // No stairs - wall flush with pool edge (overflow) or 15cm below (skimmer)
+      // No stairs:
+      // - Overflow (rynnowy): wall is flush with pool edge (height = 0 from top)
+      // - Skimmer: wall is 15cm below pool edge
       dividingWallHeight = overflowType === 'skimmerowy' ? 0.15 : 0;
     }
   } else {
     dividingWallHeight = 0; // No dividing wall
   }
   
-  // Internal wall height from wading pool floor to main pool floor
+  // Internal wall height from wading pool floor down to main pool floor
   const internalWallHeight = poolDepth - wpDepth;
 
   const wallMaterial = useMemo(() => 
@@ -625,75 +630,98 @@ function WadingPoolMesh({ dimensions, wadingPool }: { dimensions: PoolDimensions
 
   const { posX, posY, sizeX, sizeY, wallXSide, wallYSide } = cornerConfig;
 
+  // The wading pool floor sits at z = -wpDepth
+  // Internal concrete walls go from -wpDepth down to -poolDepth
+  // Blue interior walls go from top (z=0 or z=-dividingWallHeight) down to -wpDepth
+  
+  // When hasDividingWall is OFF:
+  // - No wall above wading pool floor (z=0 to z=-wpDepth) - just open
+  // - Only concrete structure below wading pool floor
+  
+  // When hasDividingWall is ON:
+  // - White concrete section from z=0 to z=-dividingWallHeight (the "murek")
+  // - Blue interior from z=-dividingWallHeight to z=-wpDepth
+
   return (
     <group position={[posX, posY, 0]}>
-      {/* Floor of wading pool (płaskie dno brodzika) */}
+      {/* Floor of wading pool (płaskie dno brodzika) - at wading pool depth */}
       <mesh position={[0, 0, -wpDepth]}>
-        <boxGeometry args={[sizeX, sizeY, WALL_THICKNESS]} />
+        <boxGeometry args={[sizeX, sizeY, WADING_WALL_THICKNESS]} />
         <meshStandardMaterial color="#0369a1" />
       </mesh>
       
-      {/* Water in wading pool removed */}
-      
-      {/* Dividing wall section (above water line in wading pool) - only if hasDividingWall */}
-      {hasDividingWall && dividingWallHeight > 0 && (
-        <>
-          {/* Top portion of internal wall along X axis (from pool edge down by dividingWallHeight) */}
-          <mesh 
-            position={[0, wallYSide * sizeY / 2, -dividingWallHeight / 2]} 
-            material={concreteMaterial}
-          >
-            <boxGeometry args={[sizeX + WALL_THICKNESS, WALL_THICKNESS, dividingWallHeight]} />
-          </mesh>
-          
-          {/* Top portion of internal wall along Y axis */}
-          <mesh 
-            position={[wallXSide * sizeX / 2, 0, -dividingWallHeight / 2]} 
-            material={concreteMaterial}
-          >
-            <boxGeometry args={[WALL_THICKNESS, sizeY + WALL_THICKNESS, dividingWallHeight]} />
-          </mesh>
-        </>
-      )}
-      
-      {/* Internal wall along X axis - extends from wading pool floor to main pool floor */}
-      <mesh 
-        position={[0, wallYSide * sizeY / 2, -wpDepth - internalWallHeight / 2]} 
-        material={concreteMaterial}
-      >
-        <boxGeometry args={[sizeX + WALL_THICKNESS, WALL_THICKNESS, internalWallHeight]} />
-      </mesh>
-      
-      {/* Internal wall along Y axis - extends from wading pool floor to main pool floor */}
-      <mesh 
-        position={[wallXSide * sizeX / 2, 0, -wpDepth - internalWallHeight / 2]} 
-        material={concreteMaterial}
-      >
-        <boxGeometry args={[WALL_THICKNESS, sizeY + WALL_THICKNESS, internalWallHeight]} />
-      </mesh>
-      
       {/* 
-        Blue interior walls of wading pool - only rendered from dividing wall height (or 0) to wading pool floor.
-        When hasDividingWall is false, we DON'T render any blue walls at all (no visible "murek").
-        The white concrete walls below the wading pool floor level are still rendered.
+        CASE 1: hasDividingWall = true
+        Render white concrete wall from top to dividingWallHeight,
+        then blue interior from dividingWallHeight to wpDepth
       */}
       {hasDividingWall && (
         <>
-          <mesh 
-            position={[0, wallYSide * sizeY / 2, -dividingWallHeight - (wpDepth - dividingWallHeight) / 2]} 
-            material={wallMaterial}
-          >
-            <boxGeometry args={[sizeX + WALL_THICKNESS, WALL_THICKNESS, wpDepth - dividingWallHeight]} />
-          </mesh>
+          {/* White concrete "murek" section - from pool edge down to dividingWallHeight */}
+          {dividingWallHeight > 0.001 && (
+            <>
+              {/* Murek along X axis */}
+              <mesh 
+                position={[0, wallYSide * (sizeY / 2 - WADING_WALL_THICKNESS / 2), -dividingWallHeight / 2]} 
+                material={concreteMaterial}
+              >
+                <boxGeometry args={[sizeX, WADING_WALL_THICKNESS, dividingWallHeight]} />
+              </mesh>
+              
+              {/* Murek along Y axis */}
+              <mesh 
+                position={[wallXSide * (sizeX / 2 - WADING_WALL_THICKNESS / 2), 0, -dividingWallHeight / 2]} 
+                material={concreteMaterial}
+              >
+                <boxGeometry args={[WADING_WALL_THICKNESS, sizeY, dividingWallHeight]} />
+              </mesh>
+            </>
+          )}
           
-          <mesh 
-            position={[wallXSide * sizeX / 2, 0, -dividingWallHeight - (wpDepth - dividingWallHeight) / 2]} 
-            material={wallMaterial}
-          >
-            <boxGeometry args={[WALL_THICKNESS, sizeY + WALL_THICKNESS, wpDepth - dividingWallHeight]} />
-          </mesh>
+          {/* Blue interior wall section - from dividingWallHeight to wpDepth */}
+          {wpDepth > dividingWallHeight && (
+            <>
+              {/* Blue wall along X axis */}
+              <mesh 
+                position={[0, wallYSide * (sizeY / 2 - WADING_WALL_THICKNESS / 2), -dividingWallHeight - (wpDepth - dividingWallHeight) / 2]} 
+                material={wallMaterial}
+              >
+                <boxGeometry args={[sizeX, WADING_WALL_THICKNESS, wpDepth - dividingWallHeight]} />
+              </mesh>
+              
+              {/* Blue wall along Y axis */}
+              <mesh 
+                position={[wallXSide * (sizeX / 2 - WADING_WALL_THICKNESS / 2), 0, -dividingWallHeight - (wpDepth - dividingWallHeight) / 2]} 
+                material={wallMaterial}
+              >
+                <boxGeometry args={[WADING_WALL_THICKNESS, sizeY, wpDepth - dividingWallHeight]} />
+              </mesh>
+            </>
+          )}
         </>
       )}
+      
+      {/* 
+        CASE 2: hasDividingWall = false
+        No wall from pool edge to wading pool floor - completely open
+        Just the concrete structure below wading pool floor
+      */}
+      
+      {/* Internal concrete wall - extends from wading pool floor DOWN to main pool floor */}
+      {/* This is always rendered (structural support below wading pool) */}
+      <mesh 
+        position={[0, wallYSide * (sizeY / 2 - WADING_WALL_THICKNESS / 2), -wpDepth - internalWallHeight / 2]} 
+        material={concreteMaterial}
+      >
+        <boxGeometry args={[sizeX, WADING_WALL_THICKNESS, internalWallHeight]} />
+      </mesh>
+      
+      <mesh 
+        position={[wallXSide * (sizeX / 2 - WADING_WALL_THICKNESS / 2), 0, -wpDepth - internalWallHeight / 2]} 
+        material={concreteMaterial}
+      >
+        <boxGeometry args={[WADING_WALL_THICKNESS, sizeY, internalWallHeight]} />
+      </mesh>
     </group>
   );
 }
