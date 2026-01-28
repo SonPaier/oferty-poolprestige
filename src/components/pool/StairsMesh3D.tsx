@@ -342,11 +342,12 @@ function DiagonalStairs3D({
       const shape = new THREE.Shape();
       
       // Draw trapezoid (or triangle for last step)
-      shape.moveTo(outer1x - v0.x, outer1y - v0.y);
-      shape.lineTo(outer2x - v0.x, outer2y - v0.y);
-      shape.lineTo(inner2x - v0.x, inner2y - v0.y);
+      // Use absolute coordinates for shape - no offset needed
+      shape.moveTo(outer1x, outer1y);
+      shape.lineTo(outer2x, outer2y);
+      shape.lineTo(inner2x, inner2y);
       if (innerRatio < 0.999) {
-        shape.lineTo(inner1x - v0.x, inner1y - v0.y);
+        shape.lineTo(inner1x, inner1y);
       }
       shape.closePath();
       
@@ -356,8 +357,9 @@ function DiagonalStairs3D({
       });
       extrudeGeometry.translate(0, 0, -stepHeight);
       
+      // Position at Z level only - shape already has correct XY coordinates
       stepsArr.push(
-        <group key={i} position={[v0.x, v0.y, stepTop]}>
+        <group key={i} position={[0, 0, stepTop]}>
           <mesh geometry={extrudeGeometry} material={stepFrontMaterial} />
           <mesh position={[0, 0, 0.01]} material={stepTopMaterial}>
             <shapeGeometry args={[shape]} />
