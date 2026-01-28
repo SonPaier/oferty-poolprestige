@@ -9,7 +9,16 @@ export type PoolLiningType = 'foliowany' | 'ceramiczny';
 // Stairs rotation angles (8 directions for 45° increments)
 export type StairsAngle = 0 | 45 | 90 | 135 | 180 | 225 | 270 | 315;
 
+// NEW: Unified stair shape types
+export type StairsShapeType = 'rectangular' | 'diagonal-45' | 'l-shape' | 'triangle';
+
 export interface CustomPoolVertex {
+  x: number;
+  y: number;
+}
+
+// Point interface for stair vertices
+export interface Point {
   x: number;
   y: number;
 }
@@ -23,16 +32,38 @@ export type StairsPlacement = 'wall' | 'corner' | 'diagonal'; // od ściany, z n
 export interface StairsConfig {
   enabled: boolean;
   position: StairsPosition; // wewnątrz/zewnątrz basenu
+  
+  // NEW: Unified shape-based configuration
+  shapeType?: StairsShapeType; // typ kształtu schodów
+  cornerIndex?: number; // indeks narożnika (0=A, 1=B, 2=C...)
+  vertices?: Point[]; // wygenerowane wierzchołki kształtu
+  
+  // LEGACY: Old placement system (for backward compatibility)
   placement: StairsPlacement; // od ściany, z narożnika lub pod kątem 45°
   wall: PoolWall; // od której ściany (gdy placement === 'wall')
   corner: PoolCorner; // który narożnik (gdy placement === 'corner' lub 'diagonal')
   cornerLabel?: string; // etykieta narożnika (A, B, C, D...)
   direction: WallDirection; // wzdłuż której ściany (dla placement === 'corner')
+  
+  // Common parameters
   width: number | 'full'; // szerokość schodków lub 'full' = pełna szerokość boku
   stepHeight: number; // wysokość stopnia (domyślnie 0.29m)
   stepCount: number; // wyliczane z głębokości / stepHeight
   stepDepth: number; // głębokość stopnia (domyślnie 0.29m)
   angle?: number; // kąt kierunku schodów (0, 45, 90, 135, 180, 225, 270, 315) - dla custom drawer
+  
+  // L-shape specific parameters
+  legA?: number; // długość ramienia A (m)
+  legB?: number; // długość ramienia B (m)
+  legWidth?: number; // szerokość ramion L-kształtu (m)
+  
+  // Triangle (scalene) specific parameters
+  sideA?: number; // długość boku A (m)
+  sideB?: number; // długość boku B (m)
+  sideC?: number; // długość boku C (m)
+  
+  // Future: corner rounding
+  cornerRadius?: number; // promień zaokrąglenia narożników (m)
 }
 
 export interface WadingPoolConfig {
@@ -48,6 +79,8 @@ export interface WadingPoolConfig {
 export const defaultStairsConfig: StairsConfig = {
   enabled: false,
   position: 'inside',
+  shapeType: 'rectangular',
+  cornerIndex: 0, // A
   placement: 'wall',
   wall: 'back',
   corner: 'back-left',
@@ -56,6 +89,14 @@ export const defaultStairsConfig: StairsConfig = {
   stepHeight: 0.20, // 20cm max height per step
   stepCount: 4,
   stepDepth: 0.30, // 30cm depth per step
+  // L-shape defaults
+  legA: 1.5,
+  legB: 1.0,
+  legWidth: 0.6,
+  // Triangle defaults
+  sideA: 1.5,
+  sideB: 1.2,
+  sideC: 1.0,
 };
 
 export const defaultWadingPoolConfig: WadingPoolConfig = {
@@ -77,6 +118,14 @@ export const stairsPlacementLabels: Record<StairsPlacement, string> = {
   wall: 'Od ściany',
   corner: 'Z narożnika',
   diagonal: 'Narożnik 45°',
+};
+
+// NEW: Shape type labels
+export const stairsShapeTypeLabels: Record<StairsShapeType, string> = {
+  'rectangular': 'Prostokątne',
+  'diagonal-45': 'Trójkąt 45°',
+  'l-shape': 'L-kształt',
+  'triangle': 'Trójkąt',
 };
 
 export const poolWallLabels: Record<PoolWall, string> = {
@@ -322,6 +371,40 @@ export function getWallLabel(cornerIndex: number, totalCorners: number): string 
   const startLabel = getCornerLabel(cornerIndex);
   const endLabel = getCornerLabel((cornerIndex + 1) % totalCorners);
   return `${startLabel}-${endLabel}`;
+}
+
+// Helper to map legacy placement to new shapeType
+export function mapPlacementToShapeType(placement: StairsPlacement): StairsShapeType {
+  switch (placement) {
+    case 'diagonal':
+      return 'diagonal-45';
+    case 'wall':
+    case 'corner':
+    default:
+      return 'rectangular';
+  }
+}
+
+// Helper to map PoolCorner to cornerIndex for rectangular pools
+export function mapCornerToIndex(corner: PoolCorner): number {
+  switch (corner) {
+    case 'back-left': return 0; // A
+    case 'back-right': return 1; // B
+    case 'front-right': return 2; // C
+    case 'front-left': return 3; // D
+    default: return 0;
+  }
+}
+
+// Helper to map cornerIndex back to PoolCorner for rectangular pools
+export function mapIndexToCorner(index: number): PoolCorner {
+  switch (index % 4) {
+    case 0: return 'back-left';
+    case 1: return 'back-right';
+    case 2: return 'front-right';
+    case 3: return 'front-left';
+    default: return 'back-left';
+  }
 }
 
 // Stairs angle labels (8 directions)

@@ -1,6 +1,12 @@
 import { useMemo } from 'react';
 import * as THREE from 'three';
-import { StairsConfig } from '@/types/configurator';
+import { StairsConfig, StairsShapeType, Point } from '@/types/configurator';
+import { 
+  generateStairsGeometry, 
+  getPoolCornerPosition, 
+  getInwardDirections,
+  StairsGeometry 
+} from '@/lib/stairsShapeGenerator';
 
 // Shared materials for all stair types
 const useStairsMaterials = () => {
@@ -26,18 +32,411 @@ interface StairsMesh3DProps {
 }
 
 /**
- * Reusable 3D stairs mesh component supporting:
- * - Wall placement (back, front, left, right)
- * - Corner placement (back-left, back-right, front-left, front-right)
- * - Diagonal 45° placement
- * 
- * Works for rectangular, oval, and irregular pool shapes.
+ * Reusable 3D stairs mesh component supporting all shape types:
+ * - Rectangular
+ * - Diagonal 45°
+ * - L-shape
+ * - Triangle (scalene)
  */
 export function StairsMesh3D({ length, width, depth, stairs }: StairsMesh3DProps) {
   if (!stairs.enabled) return null;
 
   const { stepTopMaterial, stepFrontMaterial } = useStairsMaterials();
   
+  // Determine which renderer to use based on shapeType
+  const shapeType = stairs.shapeType;
+  
+  // If new shapeType is set, use unified renderer
+  if (shapeType) {
+    return (
+      <UnifiedStairs
+        length={length}
+        width={width}
+        depth={depth}
+        stairs={stairs}
+        stepTopMaterial={stepTopMaterial}
+        stepFrontMaterial={stepFrontMaterial}
+      />
+    );
+  }
+  
+  // Legacy support for old placement-based config
+  return (
+    <LegacyStairs
+      length={length}
+      width={width}
+      depth={depth}
+      stairs={stairs}
+      stepTopMaterial={stepTopMaterial}
+      stepFrontMaterial={stepFrontMaterial}
+    />
+  );
+}
+
+interface UnifiedStairsProps {
+  length: number;
+  width: number;
+  depth: number;
+  stairs: StairsConfig;
+  stepTopMaterial: THREE.Material;
+  stepFrontMaterial: THREE.Material;
+}
+
+function UnifiedStairs({
+  length,
+  width,
+  depth,
+  stairs,
+  stepTopMaterial,
+  stepFrontMaterial,
+}: UnifiedStairsProps) {
+  const geometry = generateStairsGeometry(length, width, stairs);
+  if (!geometry || geometry.vertices.length < 3) return null;
+  
+  const shapeType = stairs.shapeType || 'rectangular';
+  const stepCount = stairs.stepCount || 4;
+  const poolDepth = depth || 1.5;
+  const stepHeight = poolDepth / (stepCount + 1);
+  
+  switch (shapeType) {
+    case 'rectangular':
+      return (
+        <RectangularStairs3D
+          vertices={geometry.vertices}
+          stepCount={stepCount}
+          stepHeight={stepHeight}
+          poolDepth={poolDepth}
+          stepTopMaterial={stepTopMaterial}
+          stepFrontMaterial={stepFrontMaterial}
+        />
+      );
+    
+    case 'diagonal-45':
+      return (
+        <DiagonalStairs3D
+          vertices={geometry.vertices}
+          stepCount={stepCount}
+          stepHeight={stepHeight}
+          stepTopMaterial={stepTopMaterial}
+          stepFrontMaterial={stepFrontMaterial}
+        />
+      );
+    
+    case 'l-shape':
+      return (
+        <LShapeStairs3D
+          stairs={stairs}
+          length={length}
+          width={width}
+          stepCount={stepCount}
+          stepHeight={stepHeight}
+          poolDepth={poolDepth}
+          stepTopMaterial={stepTopMaterial}
+          stepFrontMaterial={stepFrontMaterial}
+        />
+      );
+    
+    case 'triangle':
+      return (
+        <TriangleStairs3D
+          vertices={geometry.vertices}
+          stepCount={stepCount}
+          stepHeight={stepHeight}
+          stepTopMaterial={stepTopMaterial}
+          stepFrontMaterial={stepFrontMaterial}
+        />
+      );
+    
+    default:
+      return null;
+  }
+}
+
+interface RectangularStairs3DProps {
+  vertices: Point[];
+  stepCount: number;
+  stepHeight: number;
+  poolDepth: number;
+  stepTopMaterial: THREE.Material;
+  stepFrontMaterial: THREE.Material;
+}
+
+function RectangularStairs3D({
+  vertices,
+  stepCount,
+  stepHeight,
+  poolDepth,
+  stepTopMaterial,
+  stepFrontMaterial,
+}: RectangularStairs3DProps) {
+  const steps = useMemo(() => {
+    if (vertices.length !== 4) return [];
+    
+    const [v0, v1, v2, v3] = vertices;
+    
+    // Calculate dimensions
+    const widthVec = { x: v1.x - v0.x, y: v1.y - v0.y };
+    const depthVec = { x: v3.x - v0.x, y: v3.y - v0.y };
+    const stairsWidth = Math.hypot(widthVec.x, widthVec.y);
+    const stairsDepth = Math.hypot(depthVec.x, depthVec.y);
+    const stepDepth = stairsDepth / stepCount;
+    
+    // Center of stairs base
+    const centerX = (v0.x + v1.x + v2.x + v3.x) / 4;
+    const centerY = (v0.y + v1.y + v2.y + v3.y) / 4;
+    
+    // Rotation angle
+    const angle = Math.atan2(widthVec.y, widthVec.x);
+    
+    const stepsArr: JSX.Element[] = [];
+    
+    for (let i = 0; i < stepCount; i++) {
+      const stepTop = -(i + 1) * stepHeight;
+      const stepBottom = -poolDepth;
+      const thisStepHeight = Math.abs(stepTop - stepBottom);
+      const posZ = (stepTop + stepBottom) / 2;
+      
+      // Position along depth direction
+      const progress = (i + 0.5) / stepCount;
+      const offsetX = v0.x + depthVec.x * progress + widthVec.x * 0.5;
+      const offsetY = v0.y + depthVec.y * progress + widthVec.y * 0.5;
+      
+      stepsArr.push(
+        <group key={i} position={[offsetX, offsetY, posZ]} rotation={[0, 0, angle]}>
+          <mesh material={stepFrontMaterial}>
+            <boxGeometry args={[stairsWidth, stepDepth, thisStepHeight]} />
+          </mesh>
+          <mesh position={[0, 0, thisStepHeight / 2 - 0.01]} material={stepTopMaterial}>
+            <boxGeometry args={[stairsWidth, stepDepth, 0.02]} />
+          </mesh>
+        </group>
+      );
+    }
+    
+    return stepsArr;
+  }, [vertices, stepCount, stepHeight, poolDepth, stepTopMaterial, stepFrontMaterial]);
+
+  return <group>{steps}</group>;
+}
+
+interface DiagonalStairs3DProps {
+  vertices: Point[];
+  stepCount: number;
+  stepHeight: number;
+  stepTopMaterial: THREE.Material;
+  stepFrontMaterial: THREE.Material;
+}
+
+function DiagonalStairs3D({
+  vertices,
+  stepCount,
+  stepHeight,
+  stepTopMaterial,
+  stepFrontMaterial,
+}: DiagonalStairs3DProps) {
+  const steps = useMemo(() => {
+    if (vertices.length !== 3) return [];
+    
+    const [v0, v1, v2] = vertices;
+    const stepsArr: JSX.Element[] = [];
+    
+    // Create triangle shape for each step (terrace style)
+    for (let i = 0; i < stepCount; i++) {
+      const stepTop = -(i + 1) * stepHeight;
+      const progress = (i + 1) / stepCount;
+      
+      // Scale triangle from corner
+      const scale = progress;
+      const shape = new THREE.Shape();
+      
+      // Relative positions from v0
+      const dx1 = (v1.x - v0.x) * scale;
+      const dy1 = (v1.y - v0.y) * scale;
+      const dx2 = (v2.x - v0.x) * scale;
+      const dy2 = (v2.y - v0.y) * scale;
+      
+      shape.moveTo(0, 0);
+      shape.lineTo(dx1, dy1);
+      shape.lineTo(dx2, dy2);
+      shape.closePath();
+      
+      const extrudeGeometry = new THREE.ExtrudeGeometry(shape, {
+        depth: stepHeight,
+        bevelEnabled: false,
+      });
+      extrudeGeometry.translate(0, 0, -stepHeight);
+      
+      stepsArr.push(
+        <group key={i} position={[v0.x, v0.y, stepTop]}>
+          <mesh geometry={extrudeGeometry} material={stepFrontMaterial} />
+          <mesh position={[0, 0, 0.01]} material={stepTopMaterial}>
+            <shapeGeometry args={[shape]} />
+          </mesh>
+        </group>
+      );
+    }
+    
+    return stepsArr;
+  }, [vertices, stepCount, stepHeight, stepTopMaterial, stepFrontMaterial]);
+
+  return <group>{steps}</group>;
+}
+
+interface LShapeStairs3DProps {
+  stairs: StairsConfig;
+  length: number;
+  width: number;
+  stepCount: number;
+  stepHeight: number;
+  poolDepth: number;
+  stepTopMaterial: THREE.Material;
+  stepFrontMaterial: THREE.Material;
+}
+
+function LShapeStairs3D({
+  stairs,
+  length,
+  width,
+  stepCount,
+  stepHeight,
+  poolDepth,
+  stepTopMaterial,
+  stepFrontMaterial,
+}: LShapeStairs3DProps) {
+  const steps = useMemo(() => {
+    const cornerIndex = stairs.cornerIndex ?? 0;
+    const legA = stairs.legA || 1.5;
+    const legB = stairs.legB || 1.0;
+    const legWidth = stairs.legWidth || 0.6;
+    
+    const cornerPos = getPoolCornerPosition(length, width, cornerIndex);
+    const { dx1, dy1, dx2, dy2 } = getInwardDirections(cornerIndex);
+    
+    const stepsArr: JSX.Element[] = [];
+    
+    // Create L-shaped extrusion for each step level
+    for (let i = 0; i < stepCount; i++) {
+      const stepTop = -(i + 1) * stepHeight;
+      const stepBottom = -poolDepth;
+      const thisStepHeight = Math.abs(stepTop - stepBottom);
+      const posZ = (stepTop + stepBottom) / 2;
+      
+      // Scale factor for this step
+      const scale = (i + 1) / stepCount;
+      const scaledLegA = legA * scale;
+      const scaledLegB = legB * scale;
+      const scaledWidth = legWidth * scale;
+      
+      // Create L-shape
+      const shape = new THREE.Shape();
+      shape.moveTo(0, 0);
+      shape.lineTo(dx1 * scaledLegA, dy1 * scaledLegA);
+      shape.lineTo(dx1 * scaledLegA + dx2 * scaledWidth, dy1 * scaledLegA + dy2 * scaledWidth);
+      shape.lineTo(dx1 * scaledWidth + dx2 * scaledWidth, dy1 * scaledWidth + dy2 * scaledWidth);
+      shape.lineTo(dx1 * scaledWidth + dx2 * scaledLegB, dy1 * scaledWidth + dy2 * scaledLegB);
+      shape.lineTo(dx2 * scaledLegB, dy2 * scaledLegB);
+      shape.closePath();
+      
+      stepsArr.push(
+        <group key={i} position={[cornerPos.x, cornerPos.y, posZ]}>
+          <mesh material={stepFrontMaterial}>
+            <extrudeGeometry args={[shape, { depth: thisStepHeight, bevelEnabled: false }]} />
+          </mesh>
+          <mesh position={[0, 0, thisStepHeight / 2 + 0.01]} material={stepTopMaterial}>
+            <shapeGeometry args={[shape]} />
+          </mesh>
+        </group>
+      );
+    }
+    
+    return stepsArr;
+  }, [stairs, length, width, stepCount, stepHeight, poolDepth, stepTopMaterial, stepFrontMaterial]);
+
+  return <group>{steps}</group>;
+}
+
+interface TriangleStairs3DProps {
+  vertices: Point[];
+  stepCount: number;
+  stepHeight: number;
+  stepTopMaterial: THREE.Material;
+  stepFrontMaterial: THREE.Material;
+}
+
+function TriangleStairs3D({
+  vertices,
+  stepCount,
+  stepHeight,
+  stepTopMaterial,
+  stepFrontMaterial,
+}: TriangleStairs3DProps) {
+  const steps = useMemo(() => {
+    if (vertices.length !== 3) return [];
+    
+    const [v0, v1, v2] = vertices;
+    const stepsArr: JSX.Element[] = [];
+    
+    // Similar to diagonal but with arbitrary triangle
+    for (let i = 0; i < stepCount; i++) {
+      const stepTop = -(i + 1) * stepHeight;
+      const progress = (i + 1) / stepCount;
+      
+      const shape = new THREE.Shape();
+      
+      // Scale from centroid
+      const cx = (v0.x + v1.x + v2.x) / 3;
+      const cy = (v0.y + v1.y + v2.y) / 3;
+      
+      const sv0 = { x: cx + (v0.x - cx) * progress, y: cy + (v0.y - cy) * progress };
+      const sv1 = { x: cx + (v1.x - cx) * progress, y: cy + (v1.y - cy) * progress };
+      const sv2 = { x: cx + (v2.x - cx) * progress, y: cy + (v2.y - cy) * progress };
+      
+      shape.moveTo(sv0.x - cx, sv0.y - cy);
+      shape.lineTo(sv1.x - cx, sv1.y - cy);
+      shape.lineTo(sv2.x - cx, sv2.y - cy);
+      shape.closePath();
+      
+      const extrudeGeometry = new THREE.ExtrudeGeometry(shape, {
+        depth: stepHeight,
+        bevelEnabled: false,
+      });
+      extrudeGeometry.translate(0, 0, -stepHeight);
+      
+      stepsArr.push(
+        <group key={i} position={[cx, cy, stepTop]}>
+          <mesh geometry={extrudeGeometry} material={stepFrontMaterial} />
+          <mesh position={[0, 0, 0.01]} material={stepTopMaterial}>
+            <shapeGeometry args={[shape]} />
+          </mesh>
+        </group>
+      );
+    }
+    
+    return stepsArr;
+  }, [vertices, stepCount, stepHeight, stepTopMaterial, stepFrontMaterial]);
+
+  return <group>{steps}</group>;
+}
+
+// ===== LEGACY SUPPORT =====
+
+interface LegacyStairsProps {
+  length: number;
+  width: number;
+  depth: number;
+  stairs: StairsConfig;
+  stepTopMaterial: THREE.Material;
+  stepFrontMaterial: THREE.Material;
+}
+
+function LegacyStairs({
+  length,
+  width,
+  depth,
+  stairs,
+  stepTopMaterial,
+  stepFrontMaterial,
+}: LegacyStairsProps) {
   const placement = stairs.placement || 'wall';
   const wall = stairs.wall || 'back';
   const corner = stairs.corner || 'back-left';
@@ -49,32 +448,26 @@ export function StairsMesh3D({ length, width, depth, stairs }: StairsMesh3DProps
   const halfL = (length || 8) / 2;
   const halfW = (width || 4) / 2;
   
-  // Use step count from config, calculate equal step heights
   const actualStepCount = stairs.stepCount && stairs.stepCount >= 2 ? stairs.stepCount : 4;
-  // Divide depth into (stepCount + 1) segments so the last tread is NOT flush with the pool floor
   const actualStepHeight = poolDepth / (actualStepCount + 1);
-  const actualStepDepth = stepDepth;
-  const actualStairsWidth = stairsWidth;
 
-  // For diagonal stairs, create triangular *terrace* steps
   if (placement === 'diagonal') {
     return (
-      <DiagonalStairs
+      <LegacyDiagonalStairs
         corner={corner}
         halfL={halfL}
         halfW={halfW}
         stepCount={actualStepCount}
         stepHeight={actualStepHeight}
-        stepDepth={actualStepDepth}
+        stepDepth={stepDepth}
         stepTopMaterial={stepTopMaterial}
         stepFrontMaterial={stepFrontMaterial}
       />
     );
   }
 
-  // Wall or corner placement
   return (
-    <RegularStairs
+    <LegacyRegularStairs
       placement={placement}
       wall={wall}
       corner={corner}
@@ -82,17 +475,17 @@ export function StairsMesh3D({ length, width, depth, stairs }: StairsMesh3DProps
       halfL={halfL}
       halfW={halfW}
       poolDepth={poolDepth}
-      stairsWidth={actualStairsWidth}
+      stairsWidth={stairsWidth}
       stepCount={actualStepCount}
       stepHeight={actualStepHeight}
-      stepDepth={actualStepDepth}
+      stepDepth={stepDepth}
       stepTopMaterial={stepTopMaterial}
       stepFrontMaterial={stepFrontMaterial}
     />
   );
 }
 
-interface DiagonalStairsProps {
+interface LegacyDiagonalStairsProps {
   corner: string;
   halfL: number;
   halfW: number;
@@ -103,7 +496,7 @@ interface DiagonalStairsProps {
   stepFrontMaterial: THREE.Material;
 }
 
-function DiagonalStairs({
+function LegacyDiagonalStairs({
   corner,
   halfL,
   halfW,
@@ -112,20 +505,15 @@ function DiagonalStairs({
   stepDepth,
   stepTopMaterial,
   stepFrontMaterial,
-}: DiagonalStairsProps) {
+}: LegacyDiagonalStairsProps) {
   const diagonalSteps = useMemo(() => {
     const stepsArr: JSX.Element[] = [];
 
     const baseX = corner.includes('left') ? -halfL : halfL;
     const baseY = corner.includes('back') ? -halfW : halfW;
 
-    // Total "run" along each leg for 45° stairs
-    const diagonalSize = stepCount * stepDepth;
-
-    // Create triangle shape for a given size
     const makeTriangleShape = (size: number) => {
       const shape = new THREE.Shape();
-      // CCW winding order for correct normals
       switch (corner) {
         case 'back-left':
           shape.moveTo(0, 0);
@@ -155,14 +543,9 @@ function DiagonalStairs({
       return shape;
     };
 
-    // Create steps as terraces - each step is a thin triangular slab
-    // Step 1 (top) is smallest, step N (bottom) is largest
     for (let i = 0; i < stepCount; i++) {
-      // Z position: each step goes deeper
       const stepTop = -(i + 1) * stepHeight;
       const thisStepHeight = stepHeight;
-
-      // Size of this step's triangle (grows as we go deeper)
       const treadSize = (i + 1) * stepDepth;
 
       if (treadSize > 0.05) {
@@ -171,8 +554,6 @@ function DiagonalStairs({
           depth: thisStepHeight,
           bevelEnabled: false,
         });
-
-        // Position so top face is at stepTop
         geometry.translate(0, 0, -thisStepHeight);
 
         stepsArr.push(
@@ -192,7 +573,7 @@ function DiagonalStairs({
   return <group>{diagonalSteps}</group>;
 }
 
-interface RegularStairsProps {
+interface LegacyRegularStairsProps {
   placement: string;
   wall: string;
   corner: string;
@@ -208,7 +589,7 @@ interface RegularStairsProps {
   stepFrontMaterial: THREE.Material;
 }
 
-function RegularStairs({
+function LegacyRegularStairs({
   placement,
   wall,
   corner,
@@ -222,8 +603,7 @@ function RegularStairs({
   stepDepth,
   stepTopMaterial,
   stepFrontMaterial,
-}: RegularStairsProps) {
-  // Get position based on placement mode (wall or corner)
+}: LegacyRegularStairsProps) {
   const getPositionConfig = () => {
     if (placement === 'wall') {
       switch (wall) {
@@ -234,7 +614,6 @@ function RegularStairs({
         default: return { baseX: 0, baseY: -halfW, isAlongLength: true, xDir: 0, yDir: 1 };
       }
     } else {
-      // Corner placement
       const isAlongLength = direction === 'along-length';
       const xDir = corner.includes('left') ? 1 : -1;
       const yDir = corner.includes('back') ? 1 : -1;
@@ -258,7 +637,6 @@ function RegularStairs({
     const stepsArr: JSX.Element[] = [];
     
     for (let i = 0; i < stepCount; i++) {
-      // First step starts at -stepHeight (below pool edge), not at 0
       const stepTop = -(i + 1) * stepHeight;
       const stepZ = i * stepDepth;
       
@@ -282,7 +660,6 @@ function RegularStairs({
           sizeY = stairsWidth;
         }
       } else {
-        // Corner placement
         if (isAlongLength) {
           posX = baseX + xDir * (stepZ + stepDepth / 2);
           posY = baseY + yDir * (stairsWidth / 2);
