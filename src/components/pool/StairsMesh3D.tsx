@@ -231,9 +231,6 @@ function DiagonalStairs3D({
       // Inner ratio (end of this step)
       const innerRatio = (i + 1) / stepCount;
       
-      // Skip if step would be too small
-      if (innerRatio > 0.98) continue;
-      
       // Create trapezoid shape for this step (slice between two parallel lines)
       // Outer edge points (at outerRatio distance from hypotenuse toward corner)
       const outer1x = v0.x + dx1 * (1 - outerRatio);

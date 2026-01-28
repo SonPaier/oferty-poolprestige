@@ -1235,8 +1235,9 @@ function CustomStairsMesh({ vertices, depth, poolVertices, rotation = 0, showDim
       }
       
       for (let i = 0; i < stepCount; i++) {
-        const stepTopZ = -i * stepHeight;
-        const stepBodyHeight = depth - (i * stepHeight);
+        // Step tops start one riser below the pool edge (consistent with stepHeight = depth/(stepCount+1))
+        const stepTopZ = -(i + 1) * stepHeight;
+        const stepBodyHeight = depth - ((i + 1) * stepHeight);
         
         // Calculate slice positions along the diagonal
         const startDist = i * stepDepth;
@@ -1280,9 +1281,10 @@ function CustomStairsMesh({ vertices, depth, poolVertices, rotation = 0, showDim
     const stairsExtent = isHorizontal ? sizeX : sizeY;
     const stepDepth = stairsExtent / stepCount;
     
-    for (let i = 0; i < stepCount; i++) {
-      const stepTopZ = -i * stepHeight;
-      const stepBodyHeight = depth - (i * stepHeight);
+     for (let i = 0; i < stepCount; i++) {
+       // Step tops start one riser below the pool edge (consistent with stepHeight = depth/(stepCount+1))
+       const stepTopZ = -(i + 1) * stepHeight;
+       const stepBodyHeight = depth - ((i + 1) * stepHeight);
       
       // Calculate slice ratio for this step
       const startRatio = i / stepCount;
