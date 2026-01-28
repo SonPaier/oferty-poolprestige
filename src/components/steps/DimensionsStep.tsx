@@ -687,18 +687,118 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
               
               {dimensions.stairs?.enabled && (
                 <div className="space-y-4 pt-3 border-t border-border">
-                  {/* For irregular shapes - show simplified controls and link to shape editor */}
+                  {/* For irregular shapes - show simplified read-only controls */}
                   {isCustomShape ? (
                     <>
                       <div className="p-3 rounded-lg bg-primary/10 border border-primary/20 text-sm">
                         <p className="font-medium mb-1">Schody rysowane w edytorze kształtu</p>
                         <p className="text-muted-foreground text-xs">
-                          Pozycja i kształt schodów definiowane są graficznie. Poniżej możesz zmienić parametry (liczba stopni, głębokość, szerokość), a zmiany zostaną naniesione na rysunek.
+                          Pozycja i kształt schodów definiowane są graficznie. Poniżej możesz zmienić liczbę stopni.
                         </p>
                         <Button variant="outline" size="sm" className="mt-2" onClick={() => setShowCustomDrawer(true)}>
                           <Pencil className="w-3 h-3 mr-1" />
                           Edytuj pozycję schodów
                         </Button>
+                      </div>
+                      
+                      {/* Show calculated dimensions from customStairsVertices (read-only) */}
+                      {dimensions.customStairsVertices?.[0] && (() => {
+                        const stairsVerts = dimensions.customStairsVertices[0];
+                        // Calculate dimensions from vertices
+                        let stairsLength = 0;
+                        let stairsWidth = 0;
+                        
+                        if (stairsVerts.length === 3) {
+                          // Triangle: find the two legs from corner vertex (v0)
+                          const v0 = stairsVerts[0], v1 = stairsVerts[1], v2 = stairsVerts[2];
+                          const leg1 = Math.hypot(v1.x - v0.x, v1.y - v0.y);
+                          const leg2 = Math.hypot(v2.x - v0.x, v2.y - v0.y);
+                          stairsLength = Math.max(leg1, leg2);
+                          stairsWidth = Math.min(leg1, leg2);
+                        } else if (stairsVerts.length === 4) {
+                          // Rectangle: calculate edge lengths
+                          const edges = [0, 1, 2, 3].map(i => {
+                            const next = (i + 1) % 4;
+                            return Math.hypot(stairsVerts[next].x - stairsVerts[i].x, stairsVerts[next].y - stairsVerts[i].y);
+                          });
+                          const pair1 = (edges[0] + edges[2]) / 2;
+                          const pair2 = (edges[1] + edges[3]) / 2;
+                          stairsLength = Math.max(pair1, pair2);
+                          stairsWidth = Math.min(pair1, pair2);
+                        }
+                        
+                        const stepCount = dimensions.stairs.stepCount || 4;
+                        const calculatedStepDepth = stairsLength / stepCount;
+                        
+                        return (
+                          <div className="grid grid-cols-2 gap-3">
+                            {/* Read-only width display */}
+                            <div>
+                              <Label className="text-sm font-medium mb-2 block text-muted-foreground">
+                                Szerokość (z rysunku)
+                              </Label>
+                              <div className="input-field bg-muted/50 text-muted-foreground">
+                                {(stairsWidth * 100).toFixed(0)} cm
+                              </div>
+                            </div>
+                            
+                            {/* Read-only length display */}
+                            <div>
+                              <Label className="text-sm font-medium mb-2 block text-muted-foreground">
+                                Długość (z rysunku)
+                              </Label>
+                              <div className="input-field bg-muted/50 text-muted-foreground">
+                                {(stairsLength * 100).toFixed(0)} cm
+                              </div>
+                            </div>
+                            
+                            {/* Editable step count */}
+                            <div>
+                              <Label htmlFor="stepCountIrregular" className="text-sm font-medium mb-2 block">
+                                Liczba stopni
+                              </Label>
+                              <Input
+                                id="stepCountIrregular"
+                                type="number"
+                                step="1"
+                                min="2"
+                                max="15"
+                                value={stepCount}
+                                onChange={(e) => {
+                                  const count = Math.max(2, Math.min(15, parseInt(e.target.value) || 4));
+                                  // Recalculate stepDepth based on stairs length
+                                  const newStepDepth = stairsLength / count;
+                                  updateStairs({ stepCount: count, stepDepth: newStepDepth });
+                                }}
+                                className="input-field"
+                              />
+                              <p className="text-xs text-muted-foreground mt-1">2-15 stopni</p>
+                            </div>
+                            
+                            {/* Read-only calculated step depth */}
+                            <div>
+                              <Label className="text-sm font-medium mb-2 block text-muted-foreground">
+                                Głęb. stopnia (wyliczona)
+                              </Label>
+                              <div className="input-field bg-muted/50 text-muted-foreground">
+                                {(calculatedStepDepth * 100).toFixed(0)} cm
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })()}
+                      
+                      {/* Calculated step info */}
+                      <div className="p-2 rounded bg-muted/50 text-xs text-muted-foreground space-y-1">
+                        <div className="flex items-center gap-2">
+                          <Calculator className="w-3 h-3" />
+                          <span>
+                            Wysokość podstopnia: {Math.round((dimensions.depth / ((dimensions.stairs.stepCount || 4) + 1)) * 100)} cm
+                          </span>
+                        </div>
+                        <div className="text-muted-foreground/70">
+                          Pierwszy stopień zaczyna się {Math.round((dimensions.depth / ((dimensions.stairs.stepCount || 4) + 1)) * 100)} cm poniżej krawędzi basenu
+                        </div>
                       </div>
                     </>
                   ) : (
@@ -755,87 +855,86 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
                         </div>
                       </div>
 
+                      {/* Stairs width - only for rectangular shape */}
+                      {(dimensions.stairs.shapeType || 'rectangular') === 'rectangular' && (
+                        <div>
+                          <Label htmlFor="stairsWidth" className="text-sm font-medium mb-2 block">
+                            Szerokość schodów (m)
+                          </Label>
+                          <Input
+                            id="stairsWidth"
+                            type="number"
+                            step="0.1"
+                            min="0.5"
+                            max={5}
+                            value={typeof dimensions.stairs.width === 'number' ? dimensions.stairs.width : 1.5}
+                            onChange={(e) => updateStairs({ width: parseFloat(e.target.value) || 1.5 })}
+                            className="input-field"
+                          />
+                        </div>
+                      )}
+                      
+                      {/* Step count and depth */}
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <Label htmlFor="stepCount" className="text-sm font-medium mb-2 block">
+                            Liczba stopni
+                          </Label>
+                          <Input
+                            id="stepCount"
+                            type="number"
+                            step="1"
+                            min="2"
+                            max="15"
+                            value={dimensions.stairs.stepCount || 4}
+                            onChange={(e) => {
+                              const count = parseInt(e.target.value) || 4;
+                              updateStairs({ stepCount: Math.max(2, Math.min(15, count)) });
+                            }}
+                            className="input-field"
+                          />
+                          <p className="text-xs text-muted-foreground mt-1">2-15 stopni</p>
+                        </div>
+                        <div>
+                          <Label htmlFor="stepDepth" className="text-sm font-medium mb-2 block">
+                            Głęb. stopnia (cm)
+                          </Label>
+                          <Input
+                            id="stepDepth"
+                            type="number"
+                            step="1"
+                            min="20"
+                            max="60"
+                            value={Math.round((dimensions.stairs.stepDepth || 0.30) * 100)}
+                            onChange={(e) => {
+                              const cm = parseFloat(e.target.value) || 30;
+                              updateStairs({ stepDepth: cm / 100 });
+                            }}
+                            className="input-field"
+                          />
+                          <p className="text-xs text-muted-foreground mt-1">część pozioma stopnia (30-50 cm)</p>
+                        </div>
+                      </div>
+                      
+                      {/* Calculated step info */}
+                      <div className="p-2 rounded bg-muted/50 text-xs text-muted-foreground space-y-1">
+                        <div className="flex items-center gap-2">
+                          <Calculator className="w-3 h-3" />
+                          <span>
+                            Wysokość podstopnia: {Math.round((dimensions.depth / ((dimensions.stairs.stepCount || 4) + 1)) * 100)} cm
+                          </span>
+                        </div>
+                        <div className="text-muted-foreground/70">
+                          Pierwszy stopień zaczyna się {Math.round((dimensions.depth / ((dimensions.stairs.stepCount || 4) + 1)) * 100)} cm poniżej krawędzi basenu
+                        </div>
+                        <div className="text-muted-foreground/70">
+                          Głębokość stopnia: {Math.round((dimensions.stairs.stepDepth || 0.30) * 100)} cm
+                          {' '}•{' '}
+                          Całkowita długość schodów: {Math.round(calculateTotalStairsDepth(dimensions.stairs) * 100)} cm
+                        </div>
+                      </div>
                     </>
                   )}
-                  
-                  {/* Stairs width - only for rectangular shape */}
-                  {(dimensions.stairs.shapeType || 'rectangular') === 'rectangular' && (
-                    <div>
-                      <Label htmlFor="stairsWidth" className="text-sm font-medium mb-2 block">
-                        Szerokość schodów (m)
-                      </Label>
-                      <Input
-                        id="stairsWidth"
-                        type="number"
-                        step="0.1"
-                        min="0.5"
-                        max={5}
-                        value={typeof dimensions.stairs.width === 'number' ? dimensions.stairs.width : 1.5}
-                        onChange={(e) => updateStairs({ width: parseFloat(e.target.value) || 1.5 })}
-                        className="input-field"
-                      />
-                    </div>
-                  )}
-                  
-                  {/* Step count and depth */}
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <Label htmlFor="stepCount" className="text-sm font-medium mb-2 block">
-                        Liczba stopni
-                      </Label>
-                      <Input
-                        id="stepCount"
-                        type="number"
-                        step="1"
-                        min="2"
-                        max="15"
-                        value={dimensions.stairs.stepCount || 4}
-                        onChange={(e) => {
-                          const count = parseInt(e.target.value) || 4;
-                          updateStairs({ stepCount: Math.max(2, Math.min(15, count)) });
-                        }}
-                        className="input-field"
-                      />
-                      <p className="text-xs text-muted-foreground mt-1">2-15 stopni</p>
-                    </div>
-                    <div>
-                      <Label htmlFor="stepDepth" className="text-sm font-medium mb-2 block">
-                        Głęb. stopnia (cm)
-                      </Label>
-                      <Input
-                        id="stepDepth"
-                        type="number"
-                        step="1"
-                        min="20"
-                        max="60"
-                        value={Math.round((dimensions.stairs.stepDepth || 0.30) * 100)}
-                        onChange={(e) => {
-                          const cm = parseFloat(e.target.value) || 30;
-                          updateStairs({ stepDepth: cm / 100 });
-                        }}
-                        className="input-field"
-                      />
-                      <p className="text-xs text-muted-foreground mt-1">część pozioma stopnia (30-50 cm)</p>
-                    </div>
-                  </div>
-                  
-                  {/* Calculated step info */}
-                  <div className="p-2 rounded bg-muted/50 text-xs text-muted-foreground space-y-1">
-                    <div className="flex items-center gap-2">
-                      <Calculator className="w-3 h-3" />
-                      <span>
-                        Wysokość podstopnia: {Math.round((dimensions.depth / ((dimensions.stairs.stepCount || 4) + 1)) * 100)} cm
-                      </span>
-                    </div>
-                    <div className="text-muted-foreground/70">
-                      Pierwszy stopień zaczyna się {Math.round((dimensions.depth / ((dimensions.stairs.stepCount || 4) + 1)) * 100)} cm poniżej krawędzi basenu
-                    </div>
-                    <div className="text-muted-foreground/70">
-                      Głębokość stopnia: {Math.round((dimensions.stairs.stepDepth || 0.30) * 100)} cm
-                      {' '}•{' '}
-                      Całkowita długość schodów: {Math.round(calculateTotalStairsDepth(dimensions.stairs) * 100)} cm
-                    </div>
-                  </div>
                   
                   <div className="text-xs text-muted-foreground">
                     Pozycja: wewnątrz basenu (schody na zewnątrz wyłączone)
