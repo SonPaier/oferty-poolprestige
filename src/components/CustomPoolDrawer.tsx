@@ -3,11 +3,17 @@ import { Canvas as FabricCanvas, Circle, Line, Polygon, Text, FabricObject } fro
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Trash2, RotateCcw, Check, MousePointer, Plus, Grid3X3, Footprints, Baby, Waves, RotateCw, Calculator, Triangle } from 'lucide-react';
+import { Trash2, RotateCcw, Check, MousePointer, Plus, Grid3X3, Footprints, Baby, Waves, RotateCw, Calculator, Triangle, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { getCornerLabel, stairsAngleLabels, StairsConfig } from '@/types/configurator';
 import { analyzeTriangleGeometry, calculatePerpendicularRotation } from '@/lib/scaleneTriangleStairs';
+import { 
+  validateVertexPosition, 
+  validateElementPlacement,
+  constrainPointToPolygon,
+  doPolygonsOverlap 
+} from '@/lib/geometryConstraints';
 
 // Store custom data on fabric objects using a WeakMap
 const objectDataMap = new WeakMap<FabricObject, { type: string; index?: number; layer?: DrawingMode }>();
@@ -358,9 +364,19 @@ export function CustomPoolDrawer({
     // Regenerate stairs shape if we already have stairs drawn (not manually)
     if (stairsVertices.length >= 3) {
       const newVerts = generateStairsFromParams(w, count, depth, type, stairsVertices);
+      
+      // Validate new vertices before applying
+      if (newVerts.length >= 3 && poolVertices.length >= 3) {
+        const validation = validateElementPlacement(newVerts, 'stairs', poolVertices, wadingPoolVertices);
+        if (!validation.valid) {
+          toast.error(validation.error || 'Schody wykraczają poza basen');
+          return;
+        }
+      }
+      
       setStairsVertices(newVerts);
     }
-  }, [stairsWidth, stairsStepCount, stairsStepDepth, stairsType, stairsVertices, generateStairsFromParams, stairsDrawnManually, calculateDimensionsFromVertices]);
+  }, [stairsWidth, stairsStepCount, stairsStepDepth, stairsType, stairsVertices, generateStairsFromParams, stairsDrawnManually, calculateDimensionsFromVertices, poolVertices, wadingPoolVertices]);
 
   // Calculate total stairs depth (how far they extend into the pool)
   const calculateTotalStairsDepth = useCallback(() => {
@@ -811,6 +827,21 @@ export function CustomPoolDrawer({
           Math.pow(snappedY - firstCanvasPoint.y, 2)
         );
         if (dist < 20) {
+          // Validate the complete shape before closing
+          if (currentMode !== 'pool') {
+            const otherVerts = currentMode === 'stairs' ? wadingPoolVertices : stairsVertices;
+            const validation = validateElementPlacement(
+              currentVerts,
+              currentMode === 'stairs' ? 'stairs' : 'wadingPool',
+              poolVertices,
+              otherVerts
+            );
+            if (!validation.valid) {
+              toast.error(validation.error || 'Nieprawidłowa pozycja');
+              return;
+            }
+          }
+          
           setIsDrawing(false);
           
           // For stairs, calculate dimensions from drawn vertices
@@ -821,6 +852,25 @@ export function CustomPoolDrawer({
             toast.success(`${MODE_LABELS[currentMode]} zamknięty! Możesz teraz edytować wierzchołki.`);
           }
           return;
+        }
+      }
+      
+      // For stairs and wading pool, validate that new vertex is inside pool
+      if (currentMode !== 'pool') {
+        const validation = validateVertexPosition(newPoint, poolVertices, currentMode === 'stairs' ? 'stairs' : 'wadingPool');
+        if (!validation.valid) {
+          toast.error(validation.error || 'Punkt poza basenem');
+          return;
+        }
+        
+        // Also check if the new vertex would cause overlap with other element
+        const tempVertices = [...currentVerts, newPoint];
+        if (tempVertices.length >= 3) {
+          const otherVerts = currentMode === 'stairs' ? wadingPoolVertices : stairsVertices;
+          if (otherVerts.length >= 3 && doPolygonsOverlap(tempVertices, otherVerts)) {
+            toast.error('Ten kształt nachodziłby na ' + (currentMode === 'stairs' ? 'brodzik' : 'schody'));
+            return;
+          }
         }
       }
       
@@ -835,7 +885,7 @@ export function CustomPoolDrawer({
     };
   // Include canvasVersion to re-attach handlers after canvas reinitialize
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isDrawing, currentMode, getCurrentVertices, setCurrentVertices, canvasToMeters, metersToCanvas, snapToGrid, canvasVersion, updateStairsFromVertices]);
+  }, [isDrawing, currentMode, getCurrentVertices, setCurrentVertices, canvasToMeters, metersToCanvas, snapToGrid, canvasVersion, updateStairsFromVertices, poolVertices, stairsVertices, wadingPoolVertices]);
 
   // Handle vertex selection and dragging
   useEffect(() => {
@@ -855,8 +905,21 @@ export function CustomPoolDrawer({
       const data = objectDataMap.get(obj);
       if (data?.type === 'vertex' && data.layer === currentMode) {
         const index = data.index!;
-        const snappedX = snapToGrid(obj.left + 8);
-        const snappedY = snapToGrid(obj.top + 8);
+        let snappedX = snapToGrid(obj.left + 8);
+        let snappedY = snapToGrid(obj.top + 8);
+        
+        let newPoint = canvasToMeters({ x: snappedX, y: snappedY });
+        
+        // For stairs and wading pool, constrain to pool boundaries
+        if (currentMode !== 'pool' && poolVertices.length >= 3) {
+          const constrained = constrainPointToPolygon(newPoint, poolVertices);
+          if (constrained.x !== newPoint.x || constrained.y !== newPoint.y) {
+            newPoint = constrained;
+            const canvasPos = metersToCanvas(newPoint);
+            snappedX = canvasPos.x;
+            snappedY = canvasPos.y;
+          }
+        }
         
         // Update visual position only
         obj.set({
@@ -866,7 +929,7 @@ export function CustomPoolDrawer({
         
         // Store the new position for when drag ends
         draggedVertexData = { index, layer: currentMode };
-        draggedNewPoint = canvasToMeters({ x: snappedX, y: snappedY });
+        draggedNewPoint = newPoint;
       }
     };
 
@@ -884,23 +947,55 @@ export function CustomPoolDrawer({
             return newVertices;
           });
         } else if (layer === 'stairs') {
-          setStairsVertices(prev => {
-            const newVertices = [...prev];
-            newVertices[index] = newPoint;
-            
+          // Validate the new stairs position
+          const newStairsVertices = [...stairsVertices];
+          newStairsVertices[index] = newPoint;
+          
+          // Check if inside pool
+          const validation = validateElementPlacement(
+            newStairsVertices,
+            'stairs',
+            poolVertices,
+            wadingPoolVertices
+          );
+          
+          if (!validation.valid) {
+            toast.error(validation.error || 'Nieprawidłowa pozycja');
+            // Force redraw to revert visual position
+            const canvas = fabricRef.current;
+            if (canvas) {
+              setTimeout(() => redrawAllShapes(canvas), 0);
+            }
+          } else {
+            setStairsVertices(newStairsVertices);
             // Recalculate step depth from new geometry
             setTimeout(() => {
-              updateStairsFromVertices(newVertices);
+              updateStairsFromVertices(newStairsVertices);
             }, 0);
-            
-            return newVertices;
-          });
+          }
         } else if (layer === 'wadingPool') {
-          setWadingPoolVertices(prev => {
-            const newVertices = [...prev];
-            newVertices[index] = newPoint;
-            return newVertices;
-          });
+          // Validate the new wading pool position
+          const newWadingVertices = [...wadingPoolVertices];
+          newWadingVertices[index] = newPoint;
+          
+          // Check if inside pool
+          const validation = validateElementPlacement(
+            newWadingVertices,
+            'wadingPool',
+            poolVertices,
+            stairsVertices
+          );
+          
+          if (!validation.valid) {
+            toast.error(validation.error || 'Nieprawidłowa pozycja');
+            // Force redraw to revert visual position
+            const canvas = fabricRef.current;
+            if (canvas) {
+              setTimeout(() => redrawAllShapes(canvas), 0);
+            }
+          } else {
+            setWadingPoolVertices(newWadingVertices);
+          }
         }
         
         draggedVertexData = null;
@@ -939,7 +1034,7 @@ export function CustomPoolDrawer({
     };
   // Include canvasVersion to re-attach handlers after canvas reinitialize
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isDrawing, currentMode, canvasToMeters, snapToGrid, canvasVersion, updateStairsFromVertices]);
+  }, [isDrawing, currentMode, canvasToMeters, snapToGrid, canvasVersion, updateStairsFromVertices, poolVertices, stairsVertices, wadingPoolVertices, metersToCanvas, redrawAllShapes]);
 
   const handleReset = () => {
     setCurrentVertices([]);
@@ -1032,6 +1127,24 @@ export function CustomPoolDrawer({
   const perimeter = calculatePerimeter(poolVertices);
   const colors = MODE_COLORS[currentMode];
 
+  // Calculate validation warnings
+  const validationWarnings: string[] = [];
+  if (stairsVertices.length >= 3 && poolVertices.length >= 3) {
+    const stairsValidation = validateElementPlacement(stairsVertices, 'stairs', poolVertices, wadingPoolVertices);
+    if (!stairsValidation.valid && stairsValidation.error) {
+      validationWarnings.push(stairsValidation.error);
+    }
+  }
+  if (wadingPoolVertices.length >= 3 && poolVertices.length >= 3) {
+    const wadingValidation = validateElementPlacement(wadingPoolVertices, 'wadingPool', poolVertices, stairsVertices);
+    if (!wadingValidation.valid && wadingValidation.error) {
+      // Avoid duplicate overlap warnings
+      if (!validationWarnings.some(w => w.includes('nachodzić'))) {
+        validationWarnings.push(wadingValidation.error);
+      }
+    }
+  }
+
   return (
     <div className="space-y-4">
       {/* Mode Tabs */}
@@ -1054,6 +1167,20 @@ export function CustomPoolDrawer({
           </TabsTrigger>
         </TabsList>
       </Tabs>
+
+      {/* Validation warnings */}
+      {validationWarnings.length > 0 && (
+        <div className="p-3 rounded-lg bg-red-50 border border-red-200">
+          <div className="flex items-start gap-2">
+            <AlertTriangle className="w-4 h-4 text-red-600 mt-0.5 shrink-0" />
+            <div className="text-sm text-red-700">
+              {validationWarnings.map((warning, i) => (
+                <div key={i}>{warning}</div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="flex flex-col gap-2">
         <div className="flex items-center justify-between flex-wrap gap-2">
