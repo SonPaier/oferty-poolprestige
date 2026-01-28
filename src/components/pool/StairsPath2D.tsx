@@ -1,4 +1,12 @@
-import { StairsConfig } from '@/types/configurator';
+import { StairsConfig, StairsShapeType, Point } from '@/types/configurator';
+import { 
+  generateStairsGeometry, 
+  getPoolCornerPosition, 
+  getInwardDirections,
+  calculateLShapeStepLines,
+  calculateTriangleStepLines,
+  StepLine 
+} from '@/lib/stairsShapeGenerator';
 
 interface StairsRenderData {
   outline: { x: number; y: number }[];
@@ -13,7 +21,7 @@ interface StairsPath2DProps {
 
 /**
  * Calculate stairs outline and step lines for 2D SVG rendering.
- * Works for rectangular and oval pools with wall, corner, and diagonal (45°) placement.
+ * Supports all shape types: rectangular, diagonal-45, l-shape, triangle
  */
 export function getStairsRenderData(
   length: number,
@@ -22,12 +30,45 @@ export function getStairsRenderData(
 ): StairsRenderData | null {
   if (!stairs?.enabled) return null;
   
+  // Use new unified generator if shapeType is set
+  if (stairs.shapeType) {
+    return getStairsRenderDataNew(length, width, stairs);
+  }
+  
+  // Legacy support for old placement-based config
+  return getStairsRenderDataLegacy(length, width, stairs);
+}
+
+/**
+ * New unified stair geometry using shapeType
+ */
+function getStairsRenderDataNew(
+  length: number,
+  width: number,
+  stairs: StairsConfig
+): StairsRenderData | null {
+  const geometry = generateStairsGeometry(length, width, stairs);
+  if (!geometry || geometry.vertices.length < 3) return null;
+  
+  return {
+    outline: geometry.vertices,
+    stepLines: geometry.stepLines,
+  };
+}
+
+/**
+ * Legacy support for old placement-based stair configuration
+ */
+function getStairsRenderDataLegacy(
+  length: number,
+  width: number,
+  stairs: StairsConfig
+): StairsRenderData | null {
   const halfL = length / 2;
   const halfW = width / 2;
   const stairsWidth = typeof stairs.width === 'number' ? stairs.width : 1.5;
   const stepDepth = stairs.stepDepth || 0.30;
   const stepCount = stairs.stepCount || 4;
-  // Stairs length = stepCount × stepDepth
   const stairsLength = stepCount * stepDepth;
   
   const placement = stairs.placement || 'wall';
@@ -40,7 +81,6 @@ export function getStairsRenderData(
   
   if (placement === 'diagonal') {
     // Diagonal 45° corner stairs - triangle shape
-    // Size is based on stepCount × stepDepth
     const diagonalSize = stepCount * stepDepth;
     const xDir = corner.includes('left') ? 1 : -1;
     const yDir = corner.includes('back') ? 1 : -1;
@@ -74,7 +114,6 @@ export function getStairsRenderData(
           { x: stairsWidth / 2, y: -halfW + stairsLength },
           { x: -stairsWidth / 2, y: -halfW + stairsLength }
         ];
-        // Step lines - horizontal lines across the stairs
         for (let i = 1; i < stepCount; i++) {
           const stepY = -halfW + i * stepDepth;
           stepLines.push({
@@ -152,7 +191,6 @@ export function getStairsRenderData(
         { x: baseX + xDir * stairsLength, y: baseY + yDir * stairsWidth },
         { x: baseX, y: baseY + yDir * stairsWidth }
       ];
-      // Step lines - vertical lines across the stairs
       for (let i = 1; i < stepCount; i++) {
         const stepX = baseX + xDir * i * stepDepth;
         stepLines.push({
@@ -169,7 +207,6 @@ export function getStairsRenderData(
         { x: baseX + xDir * stairsWidth, y: baseY + yDir * stairsLength },
         { x: baseX, y: baseY + yDir * stairsLength }
       ];
-      // Step lines - horizontal lines across the stairs
       for (let i = 1; i < stepCount; i++) {
         const stepY = baseY + yDir * i * stepDepth;
         stepLines.push({
