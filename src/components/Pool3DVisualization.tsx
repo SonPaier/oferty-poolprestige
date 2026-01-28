@@ -536,23 +536,41 @@ function StairsMesh({ dimensions, stairs }: { dimensions: PoolDimensions; stairs
 
 // Wading pool visualization - always in corner, walls extend to pool floor
 // Uses corner + direction for 8 possible configurations
+// Dimensions are external (including wall thickness)
 function WadingPoolMesh({ dimensions, wadingPool }: { dimensions: PoolDimensions; wadingPool: WadingPoolConfig }) {
   if (!wadingPool.enabled) return null;
   
-  const { shape, length, width, depth } = dimensions;
+  const { shape, length, width, depth, overflowType, stairs } = dimensions;
   // Provide defaults for all wading pool properties to avoid NaN/undefined
   const corner = wadingPool.corner || 'back-left';
   const direction = wadingPool.direction || 'along-width';
   const wpWidth = typeof wadingPool.width === 'number' && !isNaN(wadingPool.width) ? wadingPool.width : 2;
   const wpLength = typeof wadingPool.length === 'number' && !isNaN(wadingPool.length) ? wadingPool.length : 1.5;
   const wpDepth = typeof wadingPool.depth === 'number' && !isNaN(wadingPool.depth) && wadingPool.depth > 0 ? wadingPool.depth : 0.4;
+  const hasDividingWall = wadingPool.hasDividingWall !== false; // Default to true
   
   const halfL = (length || 8) / 2;
   const halfW = (width || 4) / 2;
   
   const poolDepth = depth || 1.5;
-  const internalWallHeight = poolDepth - wpDepth;
   
+  // Calculate dividing wall height based on stairs and pool type
+  let dividingWallHeight: number;
+  if (hasDividingWall) {
+    if (stairs?.enabled) {
+      // Wall height = first step height
+      const stepCount = stairs.stepCount || 4;
+      dividingWallHeight = poolDepth / (stepCount + 1);
+    } else {
+      // No stairs - wall flush with pool edge (overflow) or 15cm below (skimmer)
+      dividingWallHeight = overflowType === 'skimmerowy' ? 0.15 : 0;
+    }
+  } else {
+    dividingWallHeight = 0; // No dividing wall
+  }
+  
+  // Internal wall height from wading pool floor to main pool floor
+  const internalWallHeight = poolDepth - wpDepth;
 
   const wallMaterial = useMemo(() => 
     new THREE.MeshStandardMaterial({
@@ -617,7 +635,28 @@ function WadingPoolMesh({ dimensions, wadingPool }: { dimensions: PoolDimensions
       
       {/* Water in wading pool removed */}
       
-      {/* Internal wall along X axis - extends from wading pool floor to main pool floor */}
+      {/* Dividing wall section (above water line in wading pool) - only if hasDividingWall */}
+      {hasDividingWall && dividingWallHeight > 0 && (
+        <>
+          {/* Top portion of internal wall along X axis (from pool edge down by dividingWallHeight) */}
+          <mesh 
+            position={[0, wallYSide * sizeY / 2, -dividingWallHeight / 2]} 
+            material={concreteMaterial}
+          >
+            <boxGeometry args={[sizeX + WALL_THICKNESS, WALL_THICKNESS, dividingWallHeight]} />
+          </mesh>
+          
+          {/* Top portion of internal wall along Y axis */}
+          <mesh 
+            position={[wallXSide * sizeX / 2, 0, -dividingWallHeight / 2]} 
+            material={concreteMaterial}
+          >
+            <boxGeometry args={[WALL_THICKNESS, sizeY + WALL_THICKNESS, dividingWallHeight]} />
+          </mesh>
+        </>
+      )}
+      
+      {/* Internal wall along X axis - extends from wading pool floor to main pool floor (or to dividing wall) */}
       <mesh 
         position={[0, wallYSide * sizeY / 2, -wpDepth - internalWallHeight / 2]} 
         material={concreteMaterial}
@@ -633,19 +672,19 @@ function WadingPoolMesh({ dimensions, wadingPool }: { dimensions: PoolDimensions
         <boxGeometry args={[WALL_THICKNESS, sizeY + WALL_THICKNESS, internalWallHeight]} />
       </mesh>
       
-      {/* Top portion of internal walls (wading pool depth) */}
+      {/* Top portion of internal walls (wading pool depth) - blue interior */}
       <mesh 
-        position={[0, wallYSide * sizeY / 2, -wpDepth / 2]} 
+        position={[0, wallYSide * sizeY / 2, -(hasDividingWall ? dividingWallHeight : 0) - (wpDepth - (hasDividingWall ? dividingWallHeight : 0)) / 2]} 
         material={wallMaterial}
       >
-        <boxGeometry args={[sizeX + WALL_THICKNESS, WALL_THICKNESS, wpDepth]} />
+        <boxGeometry args={[sizeX + WALL_THICKNESS, WALL_THICKNESS, wpDepth - (hasDividingWall ? dividingWallHeight : 0)]} />
       </mesh>
       
       <mesh 
-        position={[wallXSide * sizeX / 2, 0, -wpDepth / 2]} 
+        position={[wallXSide * sizeX / 2, 0, -(hasDividingWall ? dividingWallHeight : 0) - (wpDepth - (hasDividingWall ? dividingWallHeight : 0)) / 2]} 
         material={wallMaterial}
       >
-        <boxGeometry args={[WALL_THICKNESS, sizeY + WALL_THICKNESS, wpDepth]} />
+        <boxGeometry args={[WALL_THICKNESS, sizeY + WALL_THICKNESS, wpDepth - (hasDividingWall ? dividingWallHeight : 0)]} />
       </mesh>
     </group>
   );

@@ -1528,6 +1528,40 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
                       </div>
                     );
                   })()}
+                  
+                  <p className="text-xs text-muted-foreground -mt-2">
+                    * Wymiary zewnętrzne (łącznie ze ścianą 20cm)
+                  </p>
+                  
+                  {/* Dividing wall toggle */}
+                  <div className="flex items-center justify-between p-3 rounded-lg bg-muted/30 border border-border">
+                    <div className="flex items-center gap-2">
+                      <div>
+                        <Label htmlFor="hasDividingWall" className="font-medium text-sm">Murek oddzielający</Label>
+                        <p className="text-xs text-muted-foreground">
+                          {(() => {
+                            // Calculate wall height based on stairs and pool type
+                            if (dimensions.wadingPool.hasDividingWall !== false) {
+                              if (dimensions.stairs.enabled) {
+                                const stepHeight = dimensions.depth / ((dimensions.stairs.stepCount || 4) + 1);
+                                return `Wysokość: ${Math.round(stepHeight * 100)}cm (wysokość 1. stopnia)`;
+                              } else {
+                                return dimensions.overflowType === 'skimmerowy' 
+                                  ? 'Wysokość: 15cm poniżej ściany basenu'
+                                  : 'Wysokość: równo ze ścianą basenu';
+                              }
+                            }
+                            return 'Bez murku - płynne przejście';
+                          })()}
+                        </p>
+                      </div>
+                    </div>
+                    <Switch
+                      id="hasDividingWall"
+                      checked={dimensions.wadingPool.hasDividingWall !== false}
+                      onCheckedChange={(checked) => updateWadingPool({ hasDividingWall: checked })}
+                    />
+                  </div>
                 </div>
               )}
             </div>

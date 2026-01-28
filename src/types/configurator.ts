@@ -66,10 +66,11 @@ export interface WadingPoolConfig {
   cornerIndex?: number; // indeks narożnika (0=A, 1=B, 2=C...) - nowy sposób
   cornerLabel?: string; // etykieta narożnika (A, B, C, D...)
   direction: WallDirection; // wzdłuż której ściany
-  width: number; // szerokość brodzika (wzdłuż ściany)
-  length: number; // długość brodzika (w głąb basenu)
+  width: number; // szerokość brodzika (wzdłuż ściany) - wymiar zewnętrzny razem ze ścianą
+  length: number; // długość brodzika (w głąb basenu) - wymiar zewnętrzny razem ze ścianą
   depth: number; // głębokość brodzika (zazwyczaj 0.3-0.6m)
   position: StairsPosition; // wewnątrz/zewnątrz basenu
+  hasDividingWall: boolean; // czy jest murek oddzielający brodzik od basenu
 }
 
 export const defaultStairsConfig: StairsConfig = {
@@ -101,6 +102,7 @@ export const defaultWadingPoolConfig: WadingPoolConfig = {
   length: 1.5,
   depth: 0.4,
   position: 'inside',
+  hasDividingWall: true, // domyślnie murek jest włączony
 };
 
 export const stairsPositionLabels: Record<StairsPosition, string> = {
