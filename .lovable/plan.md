@@ -1,13 +1,11 @@
 
-# Plan: Trapezy rozszerzające się dla trójkątnych schodów
+# Plan: Trapezy rozszerzające się dla trójkątnych schodów ✅ ZAIMPLEMENTOWANE
+
+## Status: UKOŃCZONE
+
+Zaimplementowano rozszerzające się trapezy dla trójkątów nierównobocznych z automatycznym wykrywaniem kierunku schodzenia.
 
 ## Cel
-
-Dla trójkątnych schodów o nierównych ramionach:
-1. Kierunek schodzenia automatycznie prostopadły do najdłuższego boku (strzałka ignorowana)
-2. Stopnie jako rozszerzające się trapezy - głębokość rośnie od węższego do szerszego końca
-
-## Koncepcja geometryczna
 
 ```
         Wierzchołek (wąski koniec)

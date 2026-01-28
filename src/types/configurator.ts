@@ -53,6 +53,11 @@ export interface StairsConfig {
   angle?: number; // kąt kierunku schodów (0, 45, 90, 135, 180, 225, 270, 315) - dla custom drawer
   // Future: corner rounding
   cornerRadius?: number; // promień zaokrąglenia narożników (m)
+  
+  // Scalene triangle parameters (expanding trapezoid steps)
+  minStepDepth?: number; // Minimalna głębokość stopnia przy wierzchołku (domyślnie 0.20m)
+  maxStepDepth?: number; // Maksymalna głębokość stopnia przy podstawie (domyślnie 0.30m)
+  autoDirection?: boolean; // Czy automatycznie wykrywać kierunek z geometrii trójkąta
 }
 
 export interface WadingPoolConfig {
@@ -78,6 +83,10 @@ export const defaultStairsConfig: StairsConfig = {
   stepHeight: 0.20, // 20cm max height per step
   stepCount: 4,
   stepDepth: 0.30, // 30cm depth per step
+  // Scalene triangle defaults
+  minStepDepth: 0.20, // 20cm at narrow end
+  maxStepDepth: 0.30, // 30cm at wide end
+  autoDirection: true, // Auto-detect direction for scalene triangles
 };
 
 export const defaultWadingPoolConfig: WadingPoolConfig = {

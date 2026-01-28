@@ -7,6 +7,7 @@ import { Trash2, RotateCcw, Check, MousePointer, Plus, Grid3X3, Footprints, Baby
 import { toast } from 'sonner';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { getCornerLabel, stairsAngleLabels, StairsConfig } from '@/types/configurator';
+import { analyzeTriangleGeometry, calculatePerpendicularRotation } from '@/lib/scaleneTriangleStairs';
 
 // Store custom data on fabric objects using a WeakMap
 const objectDataMap = new WeakMap<FabricObject, { type: string; index?: number; layer?: DrawingMode }>();
@@ -199,6 +200,7 @@ export function CustomPoolDrawer({
 
   /**
    * Update stairs parameters from drawn vertices (after shape closed or vertex moved)
+   * For scalene triangles: also auto-set direction perpendicular to longest edge
    */
   const updateStairsFromVertices = useCallback((vertices: Point[]) => {
     const type = vertices.length === 3 ? 'diagonal' : 'rectangular';
@@ -212,6 +214,21 @@ export function CustomPoolDrawer({
       }
       setStairsType(type === 'diagonal' ? 'diagonal' : 'rectangular');
       setStairsDrawnManually(true);
+      
+      // For triangles, check if scalene and auto-set direction
+      if (vertices.length === 3) {
+        const triangleGeom = analyzeTriangleGeometry(vertices);
+        if (triangleGeom && triangleGeom.isScalene) {
+          // Auto-set rotation perpendicular to longest edge
+          const autoRotation = calculatePerpendicularRotation(triangleGeom);
+          setStairsRotation(autoRotation);
+          toast.success(
+            `Trójkąt nierównoboczny wykryty! Kierunek schodzenia ustawiony automatycznie (prostopadle do podstawy). ` +
+            `Długość: ${(dims.stairsLength * 100).toFixed(0)}cm`
+          );
+          return;
+        }
+      }
       
       toast.success(
         `Obliczone wymiary schodów: długość ${(dims.stairsLength * 100).toFixed(0)}cm, ` +

@@ -4,6 +4,10 @@ import { DimensionDisplay } from '@/components/Pool3DVisualization';
 import { getStairsRenderData, StairsPath2D } from '@/components/pool/StairsPath2D';
 import { ZoomIn, ZoomOut, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { 
+  analyzeTriangleGeometry, 
+  calculateExpandingTrapezoidSteps 
+} from '@/lib/scaleneTriangleStairs';
 
 interface Pool2DPreviewProps {
   dimensions: PoolDimensions;
@@ -238,18 +242,64 @@ export default function Pool2DPreview({ dimensions, height = 300, dimensionDispl
         poolCenterY = (minY + maxY) / 2;
       }
       
+      // Transform stairs vertices
+      const transformedVerts = stairsVerts.map(v => ({
+        x: v.x - poolCenterX,
+        y: v.y - poolCenterY
+      }));
+      
+      // Check for scalene triangle (3 vertices with unequal arms)
+      if (transformedVerts.length === 3) {
+        const triangleGeom = analyzeTriangleGeometry(transformedVerts);
+        
+        if (triangleGeom && triangleGeom.isScalene) {
+          // === SCALENE TRIANGLE: Variable depth step lines ===
+          const minDepth = dimensions.stairs.minStepDepth ?? 0.20;
+          const maxDepth = dimensions.stairs.maxStepDepth ?? 0.30;
+          
+          // Calculate expanding steps to get positions
+          const expandingSteps = calculateExpandingTrapezoidSteps(
+            triangleGeom, 
+            stepCount, 
+            minDepth, 
+            maxDepth
+          );
+          
+          // Generate step lines at variable positions
+          let accumulatedPosition = 0;
+          for (let i = 0; i < expandingSteps.length - 1; i++) {
+            accumulatedPosition += expandingSteps[i].depth;
+            const progress = accumulatedPosition / triangleGeom.height;
+            
+            // Calculate line endpoints by interpolating along legs
+            const leftPoint = {
+              x: triangleGeom.oppositeVertex.x + progress * (triangleGeom.longestEdge.start.x - triangleGeom.oppositeVertex.x),
+              y: triangleGeom.oppositeVertex.y + progress * (triangleGeom.longestEdge.start.y - triangleGeom.oppositeVertex.y),
+            };
+            const rightPoint = {
+              x: triangleGeom.oppositeVertex.x + progress * (triangleGeom.longestEdge.end.x - triangleGeom.oppositeVertex.x),
+              y: triangleGeom.oppositeVertex.y + progress * (triangleGeom.longestEdge.end.y - triangleGeom.oppositeVertex.y),
+            };
+            
+            stepLines.push({
+              x1: leftPoint.x,
+              y1: leftPoint.y,
+              x2: rightPoint.x,
+              y2: rightPoint.y
+            });
+          }
+          
+          return { outline, stepLines };
+        }
+      }
+      
+      // === REGULAR GEOMETRY: Equal spacing ===
       // Get rotation from stairs rotation data (arrow direction)
       const rotation = dimensions.customStairsRotations?.[0] ?? 135; // default diagonal
       const rotRad = (rotation * Math.PI) / 180;
       const descentVec = { x: Math.cos(rotRad), y: Math.sin(rotRad) };
       // Perpendicular vector for step lines
       const perpVec = { x: -descentVec.y, y: descentVec.x };
-      
-      // Transform stairs vertices
-      const transformedVerts = stairsVerts.map(v => ({
-        x: v.x - poolCenterX,
-        y: v.y - poolCenterY
-      }));
       
       // Project all vertices onto descent axis to find extent
       const projections = transformedVerts.map(v => 
