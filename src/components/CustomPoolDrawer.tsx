@@ -141,6 +141,85 @@ export function CustomPoolDrawer({
     }
   }, [currentMode]);
 
+  // Track if stairs were drawn manually (vs generated from params)
+  const [stairsDrawnManually, setStairsDrawnManually] = useState(false);
+  // Track the calculated length from vertices (for manual stairs)
+  const [calculatedStairsLength, setCalculatedStairsLength] = useState<number | null>(null);
+
+  /**
+   * Calculate dimensions from drawn vertices.
+   * For rectangle (4 points): longest edge = length (descent direction), shortest = width
+   * For triangle (3 points): longest leg = length
+   */
+  const calculateDimensionsFromVertices = useCallback((
+    vertices: Point[], 
+    type: 'rectangular' | 'diagonal'
+  ): { stairsLength: number; stairsWidth: number; stepDepth: number } | null => {
+    if (type === 'diagonal' && vertices.length === 3) {
+      // Triangle: calculate two legs from corner (vertex 0)
+      const v0 = vertices[0];
+      const v1 = vertices[1];
+      const v2 = vertices[2];
+      
+      const leg1 = Math.sqrt(Math.pow(v1.x - v0.x, 2) + Math.pow(v1.y - v0.y, 2));
+      const leg2 = Math.sqrt(Math.pow(v2.x - v0.x, 2) + Math.pow(v2.y - v0.y, 2));
+      
+      // Use the longer leg as the "length" (descent direction)
+      const stairsLength = Math.max(leg1, leg2);
+      const stairsWidth = Math.min(leg1, leg2); // The other leg
+      const stepDepth = stairsStepCount > 0 ? stairsLength / stairsStepCount : 0.30;
+      
+      return { stairsLength, stairsWidth, stepDepth };
+    } 
+    
+    if (type === 'rectangular' && vertices.length === 4) {
+      // Rectangle: calculate all 4 edge lengths
+      const edges: number[] = [];
+      for (let i = 0; i < 4; i++) {
+        const next = (i + 1) % 4;
+        const dx = vertices[next].x - vertices[i].x;
+        const dy = vertices[next].y - vertices[i].y;
+        edges.push(Math.sqrt(dx * dx + dy * dy));
+      }
+      
+      // The two pairs of opposite edges
+      const pair1 = (edges[0] + edges[2]) / 2; // average of opposite edges
+      const pair2 = (edges[1] + edges[3]) / 2;
+      
+      // Longer dimension is the "length" (descent direction)
+      const stairsLength = Math.max(pair1, pair2);
+      const stairsWidth = Math.min(pair1, pair2);
+      const stepDepth = stairsStepCount > 0 ? stairsLength / stairsStepCount : 0.30;
+      
+      return { stairsLength, stairsWidth, stepDepth };
+    }
+    
+    return null;
+  }, [stairsStepCount]);
+
+  /**
+   * Update stairs parameters from drawn vertices (after shape closed or vertex moved)
+   */
+  const updateStairsFromVertices = useCallback((vertices: Point[]) => {
+    const type = vertices.length === 3 ? 'diagonal' : 'rectangular';
+    const dims = calculateDimensionsFromVertices(vertices, type);
+    
+    if (dims) {
+      setCalculatedStairsLength(dims.stairsLength);
+      setStairsStepDepth(dims.stepDepth);
+      if (type === 'rectangular') {
+        setStairsWidth(dims.stairsWidth);
+      }
+      setStairsType(type === 'diagonal' ? 'diagonal' : 'rectangular');
+      setStairsDrawnManually(true);
+      
+      toast.success(
+        `Obliczone wymiary schodów: długość ${(dims.stairsLength * 100).toFixed(0)}cm, ` +
+        `głębokość stopnia ${(dims.stepDepth * 100).toFixed(0)}cm`
+      );
+    }
+  }, [calculateDimensionsFromVertices]);
+
   // Generate stairs shape from parameters (width, stepCount, stepDepth)
   // Creates a rectangle or triangle anchored at the first vertex of existing stairs or at pool corner
   const generateStairsFromParams = useCallback((
@@ -236,20 +315,35 @@ export function CustomPoolDrawer({
   ) => {
     const w = newWidth ?? stairsWidth;
     const count = newStepCount ?? stairsStepCount;
-    const depth = newStepDepth ?? stairsStepDepth;
     const type = newType ?? stairsType;
     
     if (newWidth !== undefined) setStairsWidth(w);
     if (newStepCount !== undefined) setStairsStepCount(count);
-    if (newStepDepth !== undefined) setStairsStepDepth(depth);
     if (newType !== undefined) setStairsType(type);
     
-    // Regenerate stairs shape if we already have stairs drawn
+    // If stairs were drawn manually, only recalculate stepDepth (don't change shape)
+    if (stairsDrawnManually && stairsVertices.length >= 3) {
+      // Recalculate step depth from existing geometry with new step count
+      const vType = stairsVertices.length === 3 ? 'diagonal' : 'rectangular';
+      const dims = calculateDimensionsFromVertices(stairsVertices, vType);
+      if (dims) {
+        const newDepth = dims.stairsLength / count;
+        setStairsStepDepth(newDepth);
+        setCalculatedStairsLength(dims.stairsLength);
+      }
+      return;
+    }
+    
+    // For non-manual (generated) stairs, apply stepDepth directly
+    const depth = newStepDepth ?? stairsStepDepth;
+    if (newStepDepth !== undefined) setStairsStepDepth(depth);
+    
+    // Regenerate stairs shape if we already have stairs drawn (not manually)
     if (stairsVertices.length >= 3) {
       const newVerts = generateStairsFromParams(w, count, depth, type, stairsVertices);
       setStairsVertices(newVerts);
     }
-  }, [stairsWidth, stairsStepCount, stairsStepDepth, stairsType, stairsVertices, generateStairsFromParams]);
+  }, [stairsWidth, stairsStepCount, stairsStepDepth, stairsType, stairsVertices, generateStairsFromParams, stairsDrawnManually, calculateDimensionsFromVertices]);
 
   // Calculate total stairs depth (how far they extend into the pool)
   const calculateTotalStairsDepth = useCallback(() => {
@@ -701,7 +795,14 @@ export function CustomPoolDrawer({
         );
         if (dist < 20) {
           setIsDrawing(false);
-          toast.success(`${MODE_LABELS[currentMode]} zamknięty! Możesz teraz edytować wierzchołki.`);
+          
+          // For stairs, calculate dimensions from drawn vertices
+          if (currentMode === 'stairs') {
+            const newVertices = [...currentVerts];
+            updateStairsFromVertices(newVertices);
+          } else {
+            toast.success(`${MODE_LABELS[currentMode]} zamknięty! Możesz teraz edytować wierzchołki.`);
+          }
           return;
         }
       }
@@ -717,7 +818,7 @@ export function CustomPoolDrawer({
     };
   // Include canvasVersion to re-attach handlers after canvas reinitialize
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isDrawing, currentMode, getCurrentVertices, setCurrentVertices, canvasToMeters, metersToCanvas, snapToGrid, canvasVersion]);
+  }, [isDrawing, currentMode, getCurrentVertices, setCurrentVertices, canvasToMeters, metersToCanvas, snapToGrid, canvasVersion, updateStairsFromVertices]);
 
   // Handle vertex selection and dragging
   useEffect(() => {
@@ -769,6 +870,12 @@ export function CustomPoolDrawer({
           setStairsVertices(prev => {
             const newVertices = [...prev];
             newVertices[index] = newPoint;
+            
+            // Recalculate step depth from new geometry
+            setTimeout(() => {
+              updateStairsFromVertices(newVertices);
+            }, 0);
+            
             return newVertices;
           });
         } else if (layer === 'wadingPool') {
@@ -815,12 +922,17 @@ export function CustomPoolDrawer({
     };
   // Include canvasVersion to re-attach handlers after canvas reinitialize
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isDrawing, currentMode, canvasToMeters, snapToGrid, canvasVersion]);
+  }, [isDrawing, currentMode, canvasToMeters, snapToGrid, canvasVersion, updateStairsFromVertices]);
 
   const handleReset = () => {
     setCurrentVertices([]);
     setIsDrawing(true);
     setSelectedVertexIndex(null);
+    // Reset manual drawing flag for stairs
+    if (currentMode === 'stairs') {
+      setStairsDrawnManually(false);
+      setCalculatedStairsLength(null);
+    }
     toast.info(`Zacznij rysować ${MODE_LABELS[currentMode]} od nowa`);
   };
 
@@ -831,6 +943,8 @@ export function CustomPoolDrawer({
     setCurrentMode('pool');
     setIsDrawing(true);
     setSelectedVertexIndex(null);
+    setStairsDrawnManually(false);
+    setCalculatedStairsLength(null);
     const canvas = fabricRef.current;
     if (canvas) {
       canvas.clear();
@@ -1040,16 +1154,19 @@ export function CustomPoolDrawer({
             {/* Width only for rectangular stairs */}
             {stairsType === 'rectangular' && (
               <div>
-                <Label htmlFor="drawerStairsWidth" className="text-xs text-orange-700">Szerokość (m)</Label>
+                <Label htmlFor="drawerStairsWidth" className="text-xs text-orange-700">
+                  Szerokość (m) {stairsDrawnManually && <span className="text-orange-400">(z rysunku)</span>}
+                </Label>
                 <Input
                   id="drawerStairsWidth"
                   type="number"
                   step="0.1"
                   min="0.5"
                   max="10"
-                  value={stairsWidth}
+                  value={stairsWidth.toFixed(2)}
                   onChange={(e) => handleStairsParamsChange(parseFloat(e.target.value) || 1.5, undefined, undefined, undefined)}
                   className="h-8 text-sm"
+                  disabled={stairsDrawnManually}
                 />
               </div>
             )}
@@ -1067,7 +1184,9 @@ export function CustomPoolDrawer({
               />
             </div>
             <div>
-              <Label htmlFor="drawerStepDepth" className="text-xs text-orange-700">Głęb. stopnia (cm)</Label>
+              <Label htmlFor="drawerStepDepth" className="text-xs text-orange-700">
+                Głęb. stopnia (cm) {stairsDrawnManually && <span className="text-orange-400">(obliczona)</span>}
+              </Label>
               <Input
                 id="drawerStepDepth"
                 type="number"
@@ -1077,12 +1196,21 @@ export function CustomPoolDrawer({
                 value={Math.round(stairsStepDepth * 100)}
                 onChange={(e) => handleStairsParamsChange(undefined, undefined, (parseFloat(e.target.value) || 30) / 100, undefined)}
                 className="h-8 text-sm"
+                disabled={stairsDrawnManually}
               />
             </div>
           </div>
           
           <div className="mt-2 text-xs text-orange-600">
-            {stairsType === 'diagonal' ? (
+            {stairsDrawnManually && calculatedStairsLength !== null ? (
+              <>
+                <span className="font-medium">Obliczona długość schodów:</span> {(calculatedStairsLength * 100).toFixed(0)} cm
+                <span className="mx-2">•</span>
+                Głębokość stopnia: {(stairsStepDepth * 100).toFixed(0)} cm
+                <span className="mx-2">•</span>
+                <span className="text-orange-500">Zmień liczbę stopni aby przelić głębokość</span>
+              </>
+            ) : stairsType === 'diagonal' ? (
               <>
                 Rozmiar boku trójkąta: {(calculateTotalStairsDepth() * 100).toFixed(0)} cm
                 {stairsVertices.length < 3 && (
@@ -1109,6 +1237,8 @@ export function CustomPoolDrawer({
                 if (newVerts.length >= 3) {
                   setStairsVertices(newVerts);
                   setIsDrawing(false);
+                  setStairsDrawnManually(false); // Generated, not manually drawn
+                  setCalculatedStairsLength(null);
                   toast.success(stairsType === 'diagonal' 
                     ? 'Schody 45° wygenerowane - możesz je teraz przesuwać'
                     : 'Schody wygenerowane - możesz je teraz przesuwać'
