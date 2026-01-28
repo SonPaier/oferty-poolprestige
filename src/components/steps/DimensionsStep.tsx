@@ -173,22 +173,167 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
     return stepCount * stepDepth;
   };
 
-  // Get available corner labels based on pool vertices
-  const getCornerLabels = () => {
+  // Get base corner labels for rectangular pools (A, B, C, D)
+  const getBaseCornerLabels = () => {
     if (dimensions.customVertices && dimensions.customVertices.length >= 3) {
       return dimensions.customVertices.map((_, index) => ({
-        value: String.fromCharCode(65 + index), // A, B, C, D...
-        label: `Narożnik ${String.fromCharCode(65 + index)}`
+        value: String.fromCharCode(65 + index),
+        label: `Narożnik ${String.fromCharCode(65 + index)}`,
+        index,
+        isWadingIntersection: false,
+        position: { x: 0, y: 0 } // Would need actual vertex positions for custom shapes
       }));
     }
     // For rectangular pools, default to A, B, C, D
+    const halfL = dimensions.length / 2;
+    const halfW = dimensions.width / 2;
     return [
-      { value: 'A', label: 'Narożnik A (tylny lewy)' },
-      { value: 'B', label: 'Narożnik B (tylny prawy)' },
-      { value: 'C', label: 'Narożnik C (przedni prawy)' },
-      { value: 'D', label: 'Narożnik D (przedni lewy)' }
+      { value: 'A', label: 'Narożnik A (tylny lewy)', index: 0, isWadingIntersection: false, position: { x: -halfL, y: -halfW } },
+      { value: 'B', label: 'Narożnik B (tylny prawy)', index: 1, isWadingIntersection: false, position: { x: halfL, y: -halfW } },
+      { value: 'C', label: 'Narożnik C (przedni prawy)', index: 2, isWadingIntersection: false, position: { x: halfL, y: halfW } },
+      { value: 'D', label: 'Narożnik D (przedni lewy)', index: 3, isWadingIntersection: false, position: { x: -halfL, y: halfW } }
     ];
   };
+
+  // Calculate wading pool intersection points with pool walls
+  // These become new corner options (E, F) for stair placement
+  const getWadingPoolIntersections = () => {
+    if (!dimensions.wadingPool?.enabled || dimensions.shape !== 'prostokatny') return [];
+    
+    const wadingCorner = dimensions.wadingPool.cornerIndex ?? 0;
+    const wadingDir = dimensions.wadingPool.direction || 'along-width';
+    const wadingWidth = dimensions.wadingPool.width || 2;
+    const wadingLength = dimensions.wadingPool.length || 1.5;
+    
+    const halfL = dimensions.length / 2;
+    const halfW = dimensions.width / 2;
+    
+    // Calculate intersection points based on wading pool corner and direction
+    // These are points where the wading pool meets the pool walls (not the corner itself)
+    const intersections: { value: string; label: string; index: number; isWadingIntersection: true; position: { x: number; y: number }; adjacentWall: WallDirection }[] = [];
+    
+    // Wading pool creates 2 intersection points (E and F) on the pool walls
+    // E is along the "width" direction from the corner
+    // F is along the "length" direction from the corner
+    switch (wadingCorner) {
+      case 0: // Corner A (back-left)
+        if (wadingDir === 'along-length') {
+          // Width along A-B (horizontal), length into pool (down)
+          intersections.push({
+            value: 'E', label: 'Punkt E (brodzik)', index: 4, isWadingIntersection: true,
+            position: { x: -halfL + wadingWidth, y: -halfW }, // On back wall
+            adjacentWall: 'along-length'
+          });
+          intersections.push({
+            value: 'F', label: 'Punkt F (brodzik)', index: 5, isWadingIntersection: true,
+            position: { x: -halfL, y: -halfW + wadingLength }, // On left wall
+            adjacentWall: 'along-width'
+          });
+        } else {
+          // Width along A-D (vertical), length into pool (right)
+          intersections.push({
+            value: 'E', label: 'Punkt E (brodzik)', index: 4, isWadingIntersection: true,
+            position: { x: -halfL, y: -halfW + wadingWidth }, // On left wall
+            adjacentWall: 'along-width'
+          });
+          intersections.push({
+            value: 'F', label: 'Punkt F (brodzik)', index: 5, isWadingIntersection: true,
+            position: { x: -halfL + wadingLength, y: -halfW }, // On back wall
+            adjacentWall: 'along-length'
+          });
+        }
+        break;
+      case 1: // Corner B (back-right)
+        if (wadingDir === 'along-length') {
+          intersections.push({
+            value: 'E', label: 'Punkt E (brodzik)', index: 4, isWadingIntersection: true,
+            position: { x: halfL - wadingWidth, y: -halfW }, // On back wall
+            adjacentWall: 'along-length'
+          });
+          intersections.push({
+            value: 'F', label: 'Punkt F (brodzik)', index: 5, isWadingIntersection: true,
+            position: { x: halfL, y: -halfW + wadingLength }, // On right wall
+            adjacentWall: 'along-width'
+          });
+        } else {
+          intersections.push({
+            value: 'E', label: 'Punkt E (brodzik)', index: 4, isWadingIntersection: true,
+            position: { x: halfL, y: -halfW + wadingWidth }, // On right wall
+            adjacentWall: 'along-width'
+          });
+          intersections.push({
+            value: 'F', label: 'Punkt F (brodzik)', index: 5, isWadingIntersection: true,
+            position: { x: halfL - wadingLength, y: -halfW }, // On back wall
+            adjacentWall: 'along-length'
+          });
+        }
+        break;
+      case 2: // Corner C (front-right)
+        if (wadingDir === 'along-length') {
+          intersections.push({
+            value: 'E', label: 'Punkt E (brodzik)', index: 4, isWadingIntersection: true,
+            position: { x: halfL - wadingWidth, y: halfW }, // On front wall
+            adjacentWall: 'along-length'
+          });
+          intersections.push({
+            value: 'F', label: 'Punkt F (brodzik)', index: 5, isWadingIntersection: true,
+            position: { x: halfL, y: halfW - wadingLength }, // On right wall
+            adjacentWall: 'along-width'
+          });
+        } else {
+          intersections.push({
+            value: 'E', label: 'Punkt E (brodzik)', index: 4, isWadingIntersection: true,
+            position: { x: halfL, y: halfW - wadingWidth }, // On right wall
+            adjacentWall: 'along-width'
+          });
+          intersections.push({
+            value: 'F', label: 'Punkt F (brodzik)', index: 5, isWadingIntersection: true,
+            position: { x: halfL - wadingLength, y: halfW }, // On front wall
+            adjacentWall: 'along-length'
+          });
+        }
+        break;
+      case 3: // Corner D (front-left)
+        if (wadingDir === 'along-length') {
+          intersections.push({
+            value: 'E', label: 'Punkt E (brodzik)', index: 4, isWadingIntersection: true,
+            position: { x: -halfL + wadingWidth, y: halfW }, // On front wall
+            adjacentWall: 'along-length'
+          });
+          intersections.push({
+            value: 'F', label: 'Punkt F (brodzik)', index: 5, isWadingIntersection: true,
+            position: { x: -halfL, y: halfW - wadingLength }, // On left wall
+            adjacentWall: 'along-width'
+          });
+        } else {
+          intersections.push({
+            value: 'E', label: 'Punkt E (brodzik)', index: 4, isWadingIntersection: true,
+            position: { x: -halfL, y: halfW - wadingWidth }, // On left wall
+            adjacentWall: 'along-width'
+          });
+          intersections.push({
+            value: 'F', label: 'Punkt F (brodzik)', index: 5, isWadingIntersection: true,
+            position: { x: -halfL + wadingLength, y: halfW }, // On front wall
+            adjacentWall: 'along-length'
+          });
+        }
+        break;
+    }
+    
+    return intersections;
+  };
+
+  // Get available corner labels for stairs (including wading pool intersections)
+  const getCornerLabelsForStairs = () => {
+    const baseCorners = getBaseCornerLabels();
+    const wadingIntersections = getWadingPoolIntersections();
+    
+    // Combine base corners with wading pool intersection points
+    return [...baseCorners, ...wadingIntersections];
+  };
+
+  // Get base corner labels only (for wading pool - no dynamic corners needed)
+  const getCornerLabels = getBaseCornerLabels;
 
   // Get occupied corner indices
   const getOccupiedCorners = () => {
@@ -205,14 +350,54 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
     return occupied;
   };
 
-  // Check if a corner is occupied by another element
+  // Check if a corner is occupied by another element (for stairs only)
   const isCornerOccupied = (cornerIndex: number, currentElement: 'stairs' | 'wadingPool') => {
     const occupied = getOccupiedCorners();
+    // For stairs, also consider wading pool corner as occupied
+    if (currentElement === 'stairs') {
+      return occupied.some(o => o.index === cornerIndex && o.by === 'wadingPool');
+    }
+    // For wading pool, stairs corner is occupied
     return occupied.some(o => o.index === cornerIndex && o.by !== currentElement);
   };
 
+  // Check if stairs from a corner would lead into the wading pool (not allowed)
+  const wouldStairsLeadIntoWadingPool = (stairsCornerIndex: number, stairsDirection: WallDirection) => {
+    if (!dimensions.wadingPool?.enabled) return false;
+    
+    const wadingCorner = dimensions.wadingPool.cornerIndex ?? 0;
+    const wadingDir = dimensions.wadingPool.direction || 'along-width';
+    
+    // For wading pool intersection points (E, F), stairs always lead into pool (allowed)
+    if (stairsCornerIndex >= 4) return false;
+    
+    // If stairs start from the same corner as wading pool, check direction
+    if (stairsCornerIndex === wadingCorner) {
+      // Both elements at same corner - stairs would lead into wading pool if same direction
+      return stairsDirection === wadingDir;
+    }
+    
+    return false;
+  };
+
   // Get wall direction labels based on selected corner (for rectangular stairs)
+  // Also filters out directions that would lead into the wading pool
   const getWallDirectionOptions = (cornerIndex: number) => {
+    // For wading pool intersection points (E, F), only one direction is valid
+    // The stairs extend AWAY from the wading pool, into the main pool
+    const wadingIntersections = getWadingPoolIntersections();
+    const intersection = wadingIntersections.find(i => i.index === cornerIndex);
+    
+    if (intersection) {
+      // From a wading pool intersection, stairs go in the direction parallel to the wall
+      return [{
+        value: intersection.adjacentWall,
+        label: intersection.adjacentWall === 'along-length' 
+          ? `Wzdłuż ściany ${intersection.position.y < 0 ? 'tylnej' : 'przedniej'}` 
+          : `Wzdłuż ściany ${intersection.position.x < 0 ? 'lewej' : 'prawej'}`
+      }];
+    }
+    
     // For each corner, we can place stairs along one of two adjacent walls
     // Corner A (0) = back-left: walls A-B (back) or A-D (left)
     // Corner B (1) = back-right: walls A-B (back) or B-C (right)
@@ -236,7 +421,11 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
         { value: 'along-width', label: 'Wzdłuż ściany A-D (lewa)' }
       ]
     };
-    return wallOptions[cornerIndex % 4] || wallOptions[0];
+    
+    const options = wallOptions[cornerIndex % 4] || wallOptions[0];
+    
+    // Filter out directions that would lead stairs into the wading pool
+    return options.filter(opt => !wouldStairsLeadIntoWadingPool(cornerIndex, opt.value));
   };
 
   // Calculate maximum available width for stairs/wading pool based on shared wall
@@ -962,36 +1151,77 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
                         </div>
                       </div>
                       
-                      {/* Corner selection (A, B, C, D) */}
+                      {/* Corner selection (A, B, C, D + E, F from wading pool) */}
                       <div>
-                        <Label className="text-sm font-medium mb-2 block">Narożnik startowy</Label>
-                        <div className="grid grid-cols-4 gap-2">
-                          {getCornerLabels().map((corner, index) => {
-                            const isOccupied = isCornerOccupied(index, 'stairs');
+                        <Label className="text-sm font-medium mb-2 block">
+                          Narożnik startowy
+                          {dimensions.wadingPool?.enabled && (
+                            <span className="text-xs font-normal text-muted-foreground ml-1">
+                              (E, F - punkty przy brodziku)
+                            </span>
+                          )}
+                        </Label>
+                        <div className={`grid gap-2 ${
+                          dimensions.wadingPool?.enabled ? 'grid-cols-3' : 'grid-cols-4'
+                        }`}>
+                          {getCornerLabelsForStairs().map((corner) => {
+                            const isOccupied = isCornerOccupied(corner.index, 'stairs');
+                            const isWadingPoint = corner.isWadingIntersection;
+                            const isSelected = (dimensions.stairs.cornerIndex ?? 0) === corner.index;
+                            
+                            // Get description for base corners
+                            const getCornerDescription = (idx: number, isWading: boolean) => {
+                              if (isWading) return 'przy brodziku';
+                              if (isOccupied) return 'brodzik';
+                              switch (idx) {
+                                case 0: return 'tylny L';
+                                case 1: return 'tylny P';
+                                case 2: return 'przedni P';
+                                case 3: return 'przedni L';
+                                default: return '';
+                              }
+                            };
+                            
                             return (
                               <button
                                 key={corner.value}
-                                onClick={() => !isOccupied && updateStairs({ cornerIndex: index })}
+                                onClick={() => {
+                                  if (!isOccupied) {
+                                    // When selecting a wading pool intersection point, set the correct direction
+                                    if (isWadingPoint && 'adjacentWall' in corner) {
+                                      updateStairs({ 
+                                        cornerIndex: corner.index,
+                                        direction: corner.adjacentWall as WallDirection
+                                      });
+                                    } else {
+                                      updateStairs({ cornerIndex: corner.index });
+                                    }
+                                  }
+                                }}
                                 disabled={isOccupied}
                                 className={`flex flex-col items-center justify-center p-2 rounded-lg border transition-all ${
-                                  (dimensions.stairs.cornerIndex ?? 0) === index
+                                  isSelected
                                     ? 'border-primary bg-primary/10 shadow-md'
                                     : isOccupied
                                       ? 'border-border bg-muted/50 opacity-50 cursor-not-allowed'
-                                      : 'border-border bg-background hover:bg-muted/50 hover:border-primary/30'
+                                      : isWadingPoint
+                                        ? 'border-accent bg-accent/10 hover:bg-accent/20 hover:border-accent'
+                                        : 'border-border bg-background hover:bg-muted/50 hover:border-primary/30'
                                 }`}
                               >
                                 <span className={`text-lg font-bold ${
-                                  (dimensions.stairs.cornerIndex ?? 0) === index 
+                                  isSelected 
                                     ? 'text-primary' 
                                     : isOccupied 
                                       ? 'text-muted-foreground/50' 
-                                      : 'text-muted-foreground'
+                                      : isWadingPoint
+                                        ? 'text-accent-foreground'
+                                        : 'text-muted-foreground'
                                 }`}>
                                   {corner.value}
                                 </span>
                                 <span className="text-[10px] text-muted-foreground mt-0.5">
-                                  {isOccupied ? 'brodzik' : index === 0 ? 'tylny L' : index === 1 ? 'tylny P' : index === 2 ? 'przedni P' : 'przedni L'}
+                                  {getCornerDescription(corner.index, isWadingPoint)}
                                 </span>
                               </button>
                             );

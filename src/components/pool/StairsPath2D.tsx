@@ -15,6 +15,80 @@ interface StairsPath2DProps {
   length: number;
   width: number;
   stairs: StairsConfig;
+  wadingPool?: { 
+    enabled: boolean;
+    cornerIndex?: number; 
+    direction?: 'along-length' | 'along-width';
+    width?: number;
+    length?: number;
+  };
+}
+
+/**
+ * Calculate wading pool intersection position for 2D rendering
+ */
+function getWadingPoolIntersectionPosition2D(
+  cornerIndex: number,
+  length: number,
+  width: number,
+  wadingPool?: StairsPath2DProps['wadingPool']
+): Point | null {
+  if (!wadingPool?.enabled || cornerIndex < 4) return null;
+  
+  const wadingCorner = wadingPool.cornerIndex ?? 0;
+  const wadingDir = wadingPool.direction || 'along-width';
+  const wadingWidth = wadingPool.width || 2;
+  const wadingLength = wadingPool.length || 1.5;
+  
+  const halfL = length / 2;
+  const halfW = width / 2;
+  
+  const isE = cornerIndex === 4;
+  
+  switch (wadingCorner) {
+    case 0: // Corner A (back-left)
+      if (wadingDir === 'along-length') {
+        return isE 
+          ? { x: -halfL + wadingWidth, y: -halfW }
+          : { x: -halfL, y: -halfW + wadingLength };
+      } else {
+        return isE
+          ? { x: -halfL, y: -halfW + wadingWidth }
+          : { x: -halfL + wadingLength, y: -halfW };
+      }
+    case 1: // Corner B (back-right)
+      if (wadingDir === 'along-length') {
+        return isE
+          ? { x: halfL - wadingWidth, y: -halfW }
+          : { x: halfL, y: -halfW + wadingLength };
+      } else {
+        return isE
+          ? { x: halfL, y: -halfW + wadingWidth }
+          : { x: halfL - wadingLength, y: -halfW };
+      }
+    case 2: // Corner C (front-right)
+      if (wadingDir === 'along-length') {
+        return isE
+          ? { x: halfL - wadingWidth, y: halfW }
+          : { x: halfL, y: halfW - wadingLength };
+      } else {
+        return isE
+          ? { x: halfL, y: halfW - wadingWidth }
+          : { x: halfL - wadingLength, y: halfW };
+      }
+    case 3: // Corner D (front-left)
+      if (wadingDir === 'along-length') {
+        return isE
+          ? { x: -halfL + wadingWidth, y: halfW }
+          : { x: -halfL, y: halfW - wadingLength };
+      } else {
+        return isE
+          ? { x: -halfL, y: halfW - wadingWidth }
+          : { x: -halfL + wadingLength, y: halfW };
+      }
+    default:
+      return null;
+  }
 }
 
 /**
@@ -24,13 +98,14 @@ interface StairsPath2DProps {
 export function getStairsRenderData(
   length: number,
   width: number,
-  stairs: StairsConfig
+  stairs: StairsConfig,
+  wadingPool?: StairsPath2DProps['wadingPool']
 ): StairsRenderData | null {
   if (!stairs?.enabled) return null;
   
   // Use new unified generator if shapeType is set
   if (stairs.shapeType) {
-    return getStairsRenderDataNew(length, width, stairs);
+    return getStairsRenderDataNew(length, width, stairs, wadingPool);
   }
   
   // Legacy support for old placement-based config
@@ -43,9 +118,14 @@ export function getStairsRenderData(
 function getStairsRenderDataNew(
   length: number,
   width: number,
-  stairs: StairsConfig
+  stairs: StairsConfig,
+  wadingPool?: StairsPath2DProps['wadingPool']
 ): StairsRenderData | null {
-  const geometry = generateStairsGeometry(length, width, stairs);
+  // Calculate wading pool intersection position if needed
+  const cornerIndex = stairs.cornerIndex ?? 0;
+  const wadingPos = cornerIndex >= 4 ? getWadingPoolIntersectionPosition2D(cornerIndex, length, width, wadingPool) : undefined;
+  
+  const geometry = generateStairsGeometry(length, width, stairs, wadingPos ?? undefined);
   if (!geometry || geometry.vertices.length < 3) return null;
   
   return {
@@ -223,8 +303,8 @@ function getStairsRenderDataLegacy(
 /**
  * SVG component for rendering stairs in 2D preview.
  */
-export function StairsPath2D({ length, width, stairs }: StairsPath2DProps) {
-  const stairsData = getStairsRenderData(length, width, stairs);
+export function StairsPath2D({ length, width, stairs, wadingPool }: StairsPath2DProps) {
+  const stairsData = getStairsRenderData(length, width, stairs, wadingPool);
   if (!stairsData) return null;
 
   const { outline, stepLines } = stairsData;

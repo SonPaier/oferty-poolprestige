@@ -29,6 +29,81 @@ interface StairsMesh3DProps {
   width: number;
   depth: number;
   stairs: StairsConfig;
+  wadingPool?: { 
+    enabled: boolean;
+    cornerIndex?: number; 
+    direction?: 'along-length' | 'along-width';
+    width?: number;
+    length?: number;
+  };
+}
+
+/**
+ * Calculate the position for wading pool intersection points (E=4, F=5)
+ */
+function getWadingPoolIntersectionPosition(
+  cornerIndex: number,
+  length: number,
+  width: number,
+  wadingPool?: StairsMesh3DProps['wadingPool']
+): Point | null {
+  if (!wadingPool?.enabled || cornerIndex < 4) return null;
+  
+  const wadingCorner = wadingPool.cornerIndex ?? 0;
+  const wadingDir = wadingPool.direction || 'along-width';
+  const wadingWidth = wadingPool.width || 2;
+  const wadingLength = wadingPool.length || 1.5;
+  
+  const halfL = length / 2;
+  const halfW = width / 2;
+  
+  // E = index 4, F = index 5
+  const isE = cornerIndex === 4;
+  
+  switch (wadingCorner) {
+    case 0: // Corner A (back-left)
+      if (wadingDir === 'along-length') {
+        return isE 
+          ? { x: -halfL + wadingWidth, y: -halfW } // E on back wall
+          : { x: -halfL, y: -halfW + wadingLength }; // F on left wall
+      } else {
+        return isE
+          ? { x: -halfL, y: -halfW + wadingWidth } // E on left wall
+          : { x: -halfL + wadingLength, y: -halfW }; // F on back wall
+      }
+    case 1: // Corner B (back-right)
+      if (wadingDir === 'along-length') {
+        return isE
+          ? { x: halfL - wadingWidth, y: -halfW } // E on back wall
+          : { x: halfL, y: -halfW + wadingLength }; // F on right wall
+      } else {
+        return isE
+          ? { x: halfL, y: -halfW + wadingWidth } // E on right wall
+          : { x: halfL - wadingLength, y: -halfW }; // F on back wall
+      }
+    case 2: // Corner C (front-right)
+      if (wadingDir === 'along-length') {
+        return isE
+          ? { x: halfL - wadingWidth, y: halfW } // E on front wall
+          : { x: halfL, y: halfW - wadingLength }; // F on right wall
+      } else {
+        return isE
+          ? { x: halfL, y: halfW - wadingWidth } // E on right wall
+          : { x: halfL - wadingLength, y: halfW }; // F on front wall
+      }
+    case 3: // Corner D (front-left)
+      if (wadingDir === 'along-length') {
+        return isE
+          ? { x: -halfL + wadingWidth, y: halfW } // E on front wall
+          : { x: -halfL, y: halfW - wadingLength }; // F on left wall
+      } else {
+        return isE
+          ? { x: -halfL, y: halfW - wadingWidth } // E on left wall
+          : { x: -halfL + wadingLength, y: halfW }; // F on front wall
+      }
+    default:
+      return null;
+  }
 }
 
 /**
@@ -36,10 +111,19 @@ interface StairsMesh3DProps {
  * - Rectangular
  * - Diagonal 45°
  */
-export function StairsMesh3D({ length, width, depth, stairs }: StairsMesh3DProps) {
+export function StairsMesh3D({ length, width, depth, stairs, wadingPool }: StairsMesh3DProps) {
   if (!stairs.enabled) return null;
 
   const { stepTopMaterial, stepFrontMaterial } = useStairsMaterials();
+  
+  // Calculate wading pool intersection position if needed
+  const wadingIntersectionPos = useMemo(() => {
+    const cornerIndex = stairs.cornerIndex ?? 0;
+    if (cornerIndex >= 4) {
+      return getWadingPoolIntersectionPosition(cornerIndex, length, width, wadingPool);
+    }
+    return null;
+  }, [stairs.cornerIndex, length, width, wadingPool]);
   
   // Determine which renderer to use based on shapeType
   const shapeType = stairs.shapeType;
@@ -54,6 +138,7 @@ export function StairsMesh3D({ length, width, depth, stairs }: StairsMesh3DProps
         stairs={stairs}
         stepTopMaterial={stepTopMaterial}
         stepFrontMaterial={stepFrontMaterial}
+        wadingIntersectionPos={wadingIntersectionPos}
       />
     );
   }
@@ -78,6 +163,7 @@ interface UnifiedStairsProps {
   stairs: StairsConfig;
   stepTopMaterial: THREE.Material;
   stepFrontMaterial: THREE.Material;
+  wadingIntersectionPos?: Point | null;
 }
 
 function UnifiedStairs({
@@ -87,8 +173,9 @@ function UnifiedStairs({
   stairs,
   stepTopMaterial,
   stepFrontMaterial,
+  wadingIntersectionPos,
 }: UnifiedStairsProps) {
-  const geometry = generateStairsGeometry(length, width, stairs);
+  const geometry = generateStairsGeometry(length, width, stairs, wadingIntersectionPos ?? undefined);
   if (!geometry || geometry.vertices.length < 3) return null;
   
   const shapeType = stairs.shapeType || 'rectangular';
