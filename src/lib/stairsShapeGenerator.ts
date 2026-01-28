@@ -58,34 +58,59 @@ export function getInwardDirections(cornerIndex: number): { dx1: number; dy1: nu
 
 /**
  * Generate rectangular stairs geometry
+ * Direction parameter determines which wall the stairs run parallel to:
+ * - 'along-width': stairs width along Y axis, steps extend along X
+ * - 'along-length': stairs width along X axis, steps extend along Y
  */
 export function generateRectangularStairs(
   cornerPos: Point,
   cornerIndex: number,
   stairsWidth: number,
   stepCount: number,
-  stepDepth: number
+  stepDepth: number,
+  direction: 'along-length' | 'along-width' = 'along-width'
 ): StairsGeometry {
   const { dx1, dy1, dx2, dy2 } = getInwardDirections(cornerIndex);
   const stairsLength = stepCount * stepDepth;
   
-  // Primary direction is along the wall (dx2, dy2), secondary is into pool (dx1, dy1)
+  // Determine primary and secondary directions based on direction parameter
+  // For corner A (back-left): dx1=right, dy1=0, dx2=0, dy2=down
+  // along-width (default): width goes along dy2 (vertical), length along dx1 (horizontal)
+  // along-length: width goes along dx1 (horizontal), length along dy2 (vertical)
+  
+  let widthDx: number, widthDy: number;  // Direction for stair width
+  let lengthDx: number, lengthDy: number; // Direction for stair length (steps)
+  
+  if (direction === 'along-length') {
+    // Stairs width runs along the X axis (horizontal wall), steps extend along Y
+    widthDx = dx1;
+    widthDy = dy1;
+    lengthDx = dx2;
+    lengthDy = dy2;
+  } else {
+    // Default: Stairs width runs along the Y axis (vertical wall), steps extend along X  
+    widthDx = dx2;
+    widthDy = dy2;
+    lengthDx = dx1;
+    lengthDy = dy1;
+  }
+  
   const vertices: Point[] = [
     { x: cornerPos.x, y: cornerPos.y },
-    { x: cornerPos.x + dx2 * stairsWidth, y: cornerPos.y + dy2 * stairsWidth },
-    { x: cornerPos.x + dx2 * stairsWidth + dx1 * stairsLength, y: cornerPos.y + dy2 * stairsWidth + dy1 * stairsLength },
-    { x: cornerPos.x + dx1 * stairsLength, y: cornerPos.y + dy1 * stairsLength },
+    { x: cornerPos.x + widthDx * stairsWidth, y: cornerPos.y + widthDy * stairsWidth },
+    { x: cornerPos.x + widthDx * stairsWidth + lengthDx * stairsLength, y: cornerPos.y + widthDy * stairsWidth + lengthDy * stairsLength },
+    { x: cornerPos.x + lengthDx * stairsLength, y: cornerPos.y + lengthDy * stairsLength },
   ];
   
-  // Step lines perpendicular to entry direction
+  // Step lines perpendicular to entry direction (parallel to width direction)
   const stepLines: StepLine[] = [];
   for (let i = 1; i < stepCount; i++) {
     const progress = i * stepDepth;
     stepLines.push({
-      x1: cornerPos.x + dx1 * progress,
-      y1: cornerPos.y + dy1 * progress,
-      x2: cornerPos.x + dx2 * stairsWidth + dx1 * progress,
-      y2: cornerPos.y + dy2 * stairsWidth + dy1 * progress,
+      x1: cornerPos.x + lengthDx * progress,
+      y1: cornerPos.y + lengthDy * progress,
+      x2: cornerPos.x + widthDx * stairsWidth + lengthDx * progress,
+      y2: cornerPos.y + widthDy * stairsWidth + lengthDy * progress,
     });
   }
   
@@ -148,15 +173,17 @@ export function generateStairsGeometry(
   const stepDepth = stairs.stepDepth || 0.30;
   const stairsWidth = typeof stairs.width === 'number' ? stairs.width : 1.5;
   
+  const direction = stairs.direction || 'along-width';
+  
   switch (shapeType) {
     case 'rectangular':
-      return generateRectangularStairs(cornerPos, cornerIndex, stairsWidth, stepCount, stepDepth);
+      return generateRectangularStairs(cornerPos, cornerIndex, stairsWidth, stepCount, stepDepth, direction);
     
     case 'diagonal-45':
       return generateDiagonal45Stairs(cornerPos, cornerIndex, stepCount, stepDepth);
     
     default:
-      return generateRectangularStairs(cornerPos, cornerIndex, stairsWidth, stepCount, stepDepth);
+      return generateRectangularStairs(cornerPos, cornerIndex, stairsWidth, stepCount, stepDepth, direction);
   }
 }
 
