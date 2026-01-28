@@ -10,7 +10,7 @@ export type PoolLiningType = 'foliowany' | 'ceramiczny';
 export type StairsAngle = 0 | 45 | 90 | 135 | 180 | 225 | 270 | 315;
 
 // NEW: Unified stair shape types
-export type StairsShapeType = 'rectangular' | 'diagonal-45' | 'l-shape' | 'triangle';
+export type StairsShapeType = 'rectangular' | 'diagonal-45';
 
 export interface CustomPoolVertex {
   x: number;
@@ -51,17 +51,6 @@ export interface StairsConfig {
   stepCount: number; // wyliczane z głębokości / stepHeight
   stepDepth: number; // głębokość stopnia (domyślnie 0.29m)
   angle?: number; // kąt kierunku schodów (0, 45, 90, 135, 180, 225, 270, 315) - dla custom drawer
-  
-  // L-shape specific parameters
-  legA?: number; // długość ramienia A (m)
-  legB?: number; // długość ramienia B (m)
-  legWidth?: number; // szerokość ramion L-kształtu (m)
-  
-  // Triangle (scalene) specific parameters
-  sideA?: number; // długość boku A (m)
-  sideB?: number; // długość boku B (m)
-  sideC?: number; // długość boku C (m)
-  
   // Future: corner rounding
   cornerRadius?: number; // promień zaokrąglenia narożników (m)
 }
@@ -89,14 +78,6 @@ export const defaultStairsConfig: StairsConfig = {
   stepHeight: 0.20, // 20cm max height per step
   stepCount: 4,
   stepDepth: 0.30, // 30cm depth per step
-  // L-shape defaults
-  legA: 1.5,
-  legB: 1.0,
-  legWidth: 0.6,
-  // Triangle defaults
-  sideA: 1.5,
-  sideB: 1.2,
-  sideC: 1.0,
 };
 
 export const defaultWadingPoolConfig: WadingPoolConfig = {
@@ -124,8 +105,6 @@ export const stairsPlacementLabels: Record<StairsPlacement, string> = {
 export const stairsShapeTypeLabels: Record<StairsShapeType, string> = {
   'rectangular': 'Prostokątne',
   'diagonal-45': 'Trójkąt 45°',
-  'l-shape': 'L-kształt',
-  'triangle': 'Trójkąt',
 };
 
 export const poolWallLabels: Record<PoolWall, string> = {

@@ -1,11 +1,9 @@
 /**
  * Stair Shape Generator
  * 
- * Generates vertices and step lines for all stair shape types:
+ * Generates vertices and step lines for stair shape types:
  * - Rectangular: 4 vertices, steps perpendicular to entry direction
  * - Diagonal 45°: 3 vertices (isosceles right triangle)
- * - L-shape: 6 vertices, steps with 45° corner transition
- * - Triangle (scalene): 3 vertices, steps parallel to longest side
  */
 
 import { Point, StairsShapeType, StairsConfig } from '@/types/configurator';
@@ -133,203 +131,6 @@ export function generateDiagonal45Stairs(
 }
 
 /**
- * Generate L-shape stairs geometry
- * 
- * L-shape consists of two perpendicular arms meeting at the pool corner.
- * Both arms lie along the pool walls, extending inward.
- * 
- * For corner C (front-right):
- * - Leg A extends along the top wall (toward D)
- * - Leg B extends along the right wall (toward B)
- */
-export function generateLShapeStairs(
-  cornerPos: Point,
-  cornerIndex: number,
-  legA: number,
-  legB: number,
-  legWidth: number
-): StairsGeometry {
-  const { dx1, dy1, dx2, dy2 } = getInwardDirections(cornerIndex);
-  
-  // L-shape vertices (6 points forming the L)
-  // The L has:
-  // - Leg A extending along direction 1 (dx1, dy1) from the corner
-  // - Leg B extending along direction 2 (dx2, dy2) from the corner
-  // Both legs have width "legWidth" extending INTO the pool
-  const vertices: Point[] = [
-    // Start at pool corner
-    { x: cornerPos.x, y: cornerPos.y },
-    // End of Leg A along the wall
-    { x: cornerPos.x + dx1 * legA, y: cornerPos.y + dy1 * legA },
-    // Inner edge of Leg A (inward by legWidth)
-    { x: cornerPos.x + dx1 * legA + dx2 * legWidth, y: cornerPos.y + dy1 * legA + dy2 * legWidth },
-    // Inner corner junction point
-    { x: cornerPos.x + dx1 * legWidth + dx2 * legWidth, y: cornerPos.y + dy1 * legWidth + dy2 * legWidth },
-    // Inner edge of Leg B
-    { x: cornerPos.x + dx1 * legWidth + dx2 * legB, y: cornerPos.y + dy1 * legWidth + dy2 * legB },
-    // End of Leg B along the wall
-    { x: cornerPos.x + dx2 * legB, y: cornerPos.y + dy2 * legB },
-  ];
-  
-  // Total path length for step distribution
-  const totalPathLength = legA + legB;
-  
-  return { vertices, stepLines: [], totalPathLength };
-}
-
-/**
- * Calculate step lines for L-shape stairs
- * Steps run perpendicular to the direction of travel in each arm
- */
-export function calculateLShapeStepLines(
-  cornerPos: Point,
-  cornerIndex: number,
-  legA: number,
-  legB: number,
-  legWidth: number,
-  stepCount: number
-): StepLine[] {
-  const { dx1, dy1, dx2, dy2 } = getInwardDirections(cornerIndex);
-  const stepLines: StepLine[] = [];
-  
-  // Steps in Leg A - perpendicular to dx1/dy1 direction
-  // Steps go from outer wall edge to inner edge (legWidth deep)
-  const stepsInLegA = Math.ceil(stepCount * (legA / (legA + legB)));
-  const stepsInLegB = stepCount - stepsInLegA;
-  
-  const stepIntervalA = legA / (stepsInLegA + 1);
-  const stepIntervalB = legB / (stepsInLegB + 1);
-  
-  // Generate step lines for Leg A
-  for (let i = 1; i <= stepsInLegA; i++) {
-    const progress = i * stepIntervalA;
-    stepLines.push({
-      x1: cornerPos.x + dx1 * progress,
-      y1: cornerPos.y + dy1 * progress,
-      x2: cornerPos.x + dx1 * progress + dx2 * legWidth,
-      y2: cornerPos.y + dy1 * progress + dy2 * legWidth,
-    });
-  }
-  
-  // Generate step lines for Leg B
-  for (let i = 1; i <= stepsInLegB; i++) {
-    const progress = i * stepIntervalB;
-    stepLines.push({
-      x1: cornerPos.x + dx2 * progress,
-      y1: cornerPos.y + dy2 * progress,
-      x2: cornerPos.x + dx2 * progress + dx1 * legWidth,
-      y2: cornerPos.y + dy2 * progress + dy1 * legWidth,
-    });
-  }
-  
-  return stepLines;
-}
-
-/**
- * Generate scalene triangle stairs geometry
- */
-export function generateTriangleStairs(
-  cornerPos: Point,
-  cornerIndex: number,
-  sideA: number,
-  sideB: number,
-  sideC: number
-): StairsGeometry {
-  const { dx1, dy1, dx2, dy2 } = getInwardDirections(cornerIndex);
-  
-  // Validate triangle inequality
-  if (sideA + sideB <= sideC || sideA + sideC <= sideB || sideB + sideC <= sideA) {
-    // Invalid triangle, return empty
-    return { vertices: [], stepLines: [], totalPathLength: 0 };
-  }
-  
-  // Calculate third vertex using law of cosines
-  // Place sideA along dx1 direction, then calculate angle for sideB
-  const cosAngle = (sideA * sideA + sideB * sideB - sideC * sideC) / (2 * sideA * sideB);
-  const angle = Math.acos(Math.max(-1, Math.min(1, cosAngle)));
-  
-  const vertices: Point[] = [
-    { x: cornerPos.x, y: cornerPos.y },
-    { x: cornerPos.x + dx1 * sideA, y: cornerPos.y + dy1 * sideA },
-    { 
-      x: cornerPos.x + sideB * (dx1 * Math.cos(angle) + dx2 * Math.sin(angle)),
-      y: cornerPos.y + sideB * (dy1 * Math.cos(angle) + dy2 * Math.sin(angle))
-    },
-  ];
-  
-  return { vertices, stepLines: [], totalPathLength: Math.max(sideA, sideB, sideC) };
-}
-
-/**
- * Calculate step lines for scalene triangle
- * Steps are parallel to the longest side
- */
-export function calculateTriangleStepLines(
-  vertices: Point[],
-  stepCount: number
-): StepLine[] {
-  if (vertices.length !== 3) return [];
-  
-  const [v0, v1, v2] = vertices;
-  
-  // Calculate side lengths
-  const sideA = Math.hypot(v1.x - v0.x, v1.y - v0.y); // v0 to v1
-  const sideB = Math.hypot(v2.x - v1.x, v2.y - v1.y); // v1 to v2
-  const sideC = Math.hypot(v0.x - v2.x, v0.y - v2.y); // v2 to v0
-  
-  // Find longest side and opposite vertex
-  let longestStart: Point, longestEnd: Point, oppositeVertex: Point;
-  if (sideA >= sideB && sideA >= sideC) {
-    longestStart = v0; longestEnd = v1; oppositeVertex = v2;
-  } else if (sideB >= sideA && sideB >= sideC) {
-    longestStart = v1; longestEnd = v2; oppositeVertex = v0;
-  } else {
-    longestStart = v2; longestEnd = v0; oppositeVertex = v1;
-  }
-  
-  // Direction along longest side
-  const longestLength = Math.hypot(longestEnd.x - longestStart.x, longestEnd.y - longestStart.y);
-  const ldx = (longestEnd.x - longestStart.x) / longestLength;
-  const ldy = (longestEnd.y - longestStart.y) / longestLength;
-  
-  // Distance from opposite vertex to longest side (height of triangle)
-  // Using cross product for signed distance
-  const height = Math.abs(
-    (longestEnd.x - longestStart.x) * (longestStart.y - oppositeVertex.y) -
-    (longestStart.x - oppositeVertex.x) * (longestEnd.y - longestStart.y)
-  ) / longestLength;
-  
-  const stepLines: StepLine[] = [];
-  
-  for (let i = 1; i < stepCount; i++) {
-    const progress = i / stepCount;
-    const currentHeight = height * (1 - progress);
-    
-    // Calculate line endpoints parallel to longest side at currentHeight
-    // This requires projecting from opposite vertex toward longest side
-    const pdx = -(ldy); // perpendicular direction
-    const pdy = ldx;
-    
-    // Point along height from opposite vertex
-    const midX = oppositeVertex.x + pdx * (height - currentHeight);
-    const midY = oppositeVertex.y + pdy * (height - currentHeight);
-    
-    // Calculate intersection with triangle edges
-    // Simplified: use similar triangles ratio
-    const lineHalfLength = longestLength * progress / 2;
-    
-    stepLines.push({
-      x1: midX - ldx * lineHalfLength,
-      y1: midY - ldy * lineHalfLength,
-      x2: midX + ldx * lineHalfLength,
-      y2: midY + ldy * lineHalfLength,
-    });
-  }
-  
-  return stepLines;
-}
-
-/**
  * Main generator function - dispatches to specific shape generators
  */
 export function generateStairsGeometry(
@@ -354,26 +155,8 @@ export function generateStairsGeometry(
     case 'diagonal-45':
       return generateDiagonal45Stairs(cornerPos, cornerIndex, stepCount, stepDepth);
     
-    case 'l-shape': {
-      const legA = stairs.legA || 1.5;
-      const legB = stairs.legB || 1.0;
-      const legWidth = stairs.legWidth || 0.6;
-      const geometry = generateLShapeStairs(cornerPos, cornerIndex, legA, legB, legWidth);
-      geometry.stepLines = calculateLShapeStepLines(cornerPos, cornerIndex, legA, legB, legWidth, stepCount);
-      return geometry;
-    }
-    
-    case 'triangle': {
-      const sideA = stairs.sideA || 1.5;
-      const sideB = stairs.sideB || 1.2;
-      const sideC = stairs.sideC || 1.0;
-      const geometry = generateTriangleStairs(cornerPos, cornerIndex, sideA, sideB, sideC);
-      geometry.stepLines = calculateTriangleStepLines(geometry.vertices, stepCount);
-      return geometry;
-    }
-    
     default:
-      return null;
+      return generateRectangularStairs(cornerPos, cornerIndex, stairsWidth, stepCount, stepDepth);
   }
 }
 

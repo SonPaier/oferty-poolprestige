@@ -8,8 +8,6 @@ export {
   generateStairsGeometry,
   generateRectangularStairs,
   generateDiagonal45Stairs,
-  generateLShapeStairs,
-  generateTriangleStairs,
   calculateStairsArea,
   isPointInStairs,
   getPoolCornerPosition,

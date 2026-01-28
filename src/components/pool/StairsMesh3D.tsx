@@ -32,11 +32,9 @@ interface StairsMesh3DProps {
 }
 
 /**
- * Reusable 3D stairs mesh component supporting all shape types:
+ * Reusable 3D stairs mesh component supporting shape types:
  * - Rectangular
  * - Diagonal 45°
- * - L-shape
- * - Triangle (scalene)
  */
 export function StairsMesh3D({ length, width, depth, stairs }: StairsMesh3DProps) {
   if (!stairs.enabled) return null;
@@ -114,31 +112,6 @@ function UnifiedStairs({
     case 'diagonal-45':
       return (
         <DiagonalStairs3D
-          vertices={geometry.vertices}
-          stepCount={stepCount}
-          stepHeight={stepHeight}
-          stepTopMaterial={stepTopMaterial}
-          stepFrontMaterial={stepFrontMaterial}
-        />
-      );
-    
-    case 'l-shape':
-      return (
-        <LShapeStairs3D
-          stairs={stairs}
-          length={length}
-          width={width}
-          stepCount={stepCount}
-          stepHeight={stepHeight}
-          poolDepth={poolDepth}
-          stepTopMaterial={stepTopMaterial}
-          stepFrontMaterial={stepFrontMaterial}
-        />
-      );
-    
-    case 'triangle':
-      return (
-        <TriangleStairs3D
           vertices={geometry.vertices}
           stepCount={stepCount}
           stepHeight={stepHeight}
@@ -270,181 +243,6 @@ function DiagonalStairs3D({
       
       stepsArr.push(
         <group key={i} position={[v0.x, v0.y, stepTop]}>
-          <mesh geometry={extrudeGeometry} material={stepFrontMaterial} />
-          <mesh position={[0, 0, 0.01]} material={stepTopMaterial}>
-            <shapeGeometry args={[shape]} />
-          </mesh>
-        </group>
-      );
-    }
-    
-    return stepsArr;
-  }, [vertices, stepCount, stepHeight, stepTopMaterial, stepFrontMaterial]);
-
-  return <group>{steps}</group>;
-}
-
-interface LShapeStairs3DProps {
-  stairs: StairsConfig;
-  length: number;
-  width: number;
-  stepCount: number;
-  stepHeight: number;
-  poolDepth: number;
-  stepTopMaterial: THREE.Material;
-  stepFrontMaterial: THREE.Material;
-}
-
-function LShapeStairs3D({
-  stairs,
-  length,
-  width,
-  stepCount,
-  stepHeight,
-  poolDepth,
-  stepTopMaterial,
-  stepFrontMaterial,
-}: LShapeStairs3DProps) {
-  const steps = useMemo(() => {
-    const cornerIndex = stairs.cornerIndex ?? 0;
-    const legA = stairs.legA || 1.5;
-    const legB = stairs.legB || 1.0;
-    const legWidth = stairs.legWidth || 0.6;
-    
-    const cornerPos = getPoolCornerPosition(length, width, cornerIndex);
-    const { dx1, dy1, dx2, dy2 } = getInwardDirections(cornerIndex);
-    
-    const stepsArr: JSX.Element[] = [];
-    
-    // Split steps between both legs proportionally
-    const stepsInLegA = Math.ceil(stepCount * (legA / (legA + legB)));
-    const stepsInLegB = stepCount - stepsInLegA;
-    
-    // Create L-shaped base that extends full depth
-    const baseLShape = new THREE.Shape();
-    baseLShape.moveTo(0, 0);
-    baseLShape.lineTo(dx1 * legA, dy1 * legA);
-    baseLShape.lineTo(dx1 * legA + dx2 * legWidth, dy1 * legA + dy2 * legWidth);
-    baseLShape.lineTo(dx1 * legWidth + dx2 * legWidth, dy1 * legWidth + dy2 * legWidth);
-    baseLShape.lineTo(dx1 * legWidth + dx2 * legB, dy1 * legWidth + dy2 * legB);
-    baseLShape.lineTo(dx2 * legB, dy2 * legB);
-    baseLShape.closePath();
-    
-    // Full depth L-shaped base
-    stepsArr.push(
-      <group key="base" position={[cornerPos.x, cornerPos.y, -poolDepth / 2]}>
-        <mesh material={stepFrontMaterial}>
-          <extrudeGeometry args={[baseLShape, { depth: poolDepth, bevelEnabled: false }]} />
-        </mesh>
-      </group>
-    );
-    
-    // Step treads for Leg A - rectangular strips perpendicular to leg direction
-    const stepIntervalA = legA / (stepsInLegA + 1);
-    for (let i = 1; i <= stepsInLegA; i++) {
-      const stepTop = -(i / (stepsInLegA + stepsInLegB + 1)) * poolDepth;
-      const progress = i * stepIntervalA;
-      
-      // Create a thin rectangular tread strip
-      const treadShape = new THREE.Shape();
-      treadShape.moveTo(0, 0);
-      treadShape.lineTo(dx1 * stepIntervalA * 0.9, dy1 * stepIntervalA * 0.9);
-      treadShape.lineTo(dx1 * stepIntervalA * 0.9 + dx2 * legWidth, dy1 * stepIntervalA * 0.9 + dy2 * legWidth);
-      treadShape.lineTo(dx2 * legWidth, dy2 * legWidth);
-      treadShape.closePath();
-      
-      const posX = cornerPos.x + dx1 * (progress - stepIntervalA * 0.45);
-      const posY = cornerPos.y + dy1 * (progress - stepIntervalA * 0.45);
-      
-      stepsArr.push(
-        <group key={`legA-${i}`} position={[posX, posY, stepTop]}>
-          <mesh position={[0, 0, 0.01]} material={stepTopMaterial}>
-            <shapeGeometry args={[treadShape]} />
-          </mesh>
-        </group>
-      );
-    }
-    
-    // Step treads for Leg B
-    const stepIntervalB = legB / (stepsInLegB + 1);
-    for (let i = 1; i <= stepsInLegB; i++) {
-      const stepTop = -((stepsInLegA + i) / (stepsInLegA + stepsInLegB + 1)) * poolDepth;
-      const progress = i * stepIntervalB;
-      
-      const treadShape = new THREE.Shape();
-      treadShape.moveTo(0, 0);
-      treadShape.lineTo(dx2 * stepIntervalB * 0.9, dy2 * stepIntervalB * 0.9);
-      treadShape.lineTo(dx2 * stepIntervalB * 0.9 + dx1 * legWidth, dy2 * stepIntervalB * 0.9 + dy1 * legWidth);
-      treadShape.lineTo(dx1 * legWidth, dy1 * legWidth);
-      treadShape.closePath();
-      
-      const posX = cornerPos.x + dx2 * (progress - stepIntervalB * 0.45);
-      const posY = cornerPos.y + dy2 * (progress - stepIntervalB * 0.45);
-      
-      stepsArr.push(
-        <group key={`legB-${i}`} position={[posX, posY, stepTop]}>
-          <mesh position={[0, 0, 0.01]} material={stepTopMaterial}>
-            <shapeGeometry args={[treadShape]} />
-          </mesh>
-        </group>
-      );
-    }
-    
-    return stepsArr;
-  }, [stairs, length, width, stepCount, stepHeight, poolDepth, stepTopMaterial, stepFrontMaterial]);
-
-  return <group>{steps}</group>;
-}
-
-interface TriangleStairs3DProps {
-  vertices: Point[];
-  stepCount: number;
-  stepHeight: number;
-  stepTopMaterial: THREE.Material;
-  stepFrontMaterial: THREE.Material;
-}
-
-function TriangleStairs3D({
-  vertices,
-  stepCount,
-  stepHeight,
-  stepTopMaterial,
-  stepFrontMaterial,
-}: TriangleStairs3DProps) {
-  const steps = useMemo(() => {
-    if (vertices.length !== 3) return [];
-    
-    const [v0, v1, v2] = vertices;
-    const stepsArr: JSX.Element[] = [];
-    
-    // Similar to diagonal but with arbitrary triangle
-    for (let i = 0; i < stepCount; i++) {
-      const stepTop = -(i + 1) * stepHeight;
-      const progress = (i + 1) / stepCount;
-      
-      const shape = new THREE.Shape();
-      
-      // Scale from centroid
-      const cx = (v0.x + v1.x + v2.x) / 3;
-      const cy = (v0.y + v1.y + v2.y) / 3;
-      
-      const sv0 = { x: cx + (v0.x - cx) * progress, y: cy + (v0.y - cy) * progress };
-      const sv1 = { x: cx + (v1.x - cx) * progress, y: cy + (v1.y - cy) * progress };
-      const sv2 = { x: cx + (v2.x - cx) * progress, y: cy + (v2.y - cy) * progress };
-      
-      shape.moveTo(sv0.x - cx, sv0.y - cy);
-      shape.lineTo(sv1.x - cx, sv1.y - cy);
-      shape.lineTo(sv2.x - cx, sv2.y - cy);
-      shape.closePath();
-      
-      const extrudeGeometry = new THREE.ExtrudeGeometry(shape, {
-        depth: stepHeight,
-        bevelEnabled: false,
-      });
-      extrudeGeometry.translate(0, 0, -stepHeight);
-      
-      stepsArr.push(
-        <group key={i} position={[cx, cy, stepTop]}>
           <mesh geometry={extrudeGeometry} material={stepFrontMaterial} />
           <mesh position={[0, 0, 0.01]} material={stepTopMaterial}>
             <shapeGeometry args={[shape]} />
