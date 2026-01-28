@@ -50,8 +50,8 @@ const GRID_SIZE = 30; // pixels per meter (smaller to fit 25m)
 const GRID_OFFSET = GRID_SIZE; // 1m offset for -1 start
 
 // Default grid dimensions in meters
-const DEFAULT_GRID_WIDTH = 25;
-const DEFAULT_GRID_HEIGHT = 25;
+const DEFAULT_GRID_WIDTH = 15;
+const DEFAULT_GRID_HEIGHT = 10;
 
 // Colors for different drawing modes
 const MODE_COLORS = {
