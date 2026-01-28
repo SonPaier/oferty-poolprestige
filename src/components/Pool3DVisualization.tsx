@@ -656,7 +656,7 @@ function WadingPoolMesh({ dimensions, wadingPool }: { dimensions: PoolDimensions
         </>
       )}
       
-      {/* Internal wall along X axis - extends from wading pool floor to main pool floor (or to dividing wall) */}
+      {/* Internal wall along X axis - extends from wading pool floor to main pool floor */}
       <mesh 
         position={[0, wallYSide * sizeY / 2, -wpDepth - internalWallHeight / 2]} 
         material={concreteMaterial}
@@ -672,20 +672,28 @@ function WadingPoolMesh({ dimensions, wadingPool }: { dimensions: PoolDimensions
         <boxGeometry args={[WALL_THICKNESS, sizeY + WALL_THICKNESS, internalWallHeight]} />
       </mesh>
       
-      {/* Top portion of internal walls (wading pool depth) - blue interior */}
-      <mesh 
-        position={[0, wallYSide * sizeY / 2, -(hasDividingWall ? dividingWallHeight : 0) - (wpDepth - (hasDividingWall ? dividingWallHeight : 0)) / 2]} 
-        material={wallMaterial}
-      >
-        <boxGeometry args={[sizeX + WALL_THICKNESS, WALL_THICKNESS, wpDepth - (hasDividingWall ? dividingWallHeight : 0)]} />
-      </mesh>
-      
-      <mesh 
-        position={[wallXSide * sizeX / 2, 0, -(hasDividingWall ? dividingWallHeight : 0) - (wpDepth - (hasDividingWall ? dividingWallHeight : 0)) / 2]} 
-        material={wallMaterial}
-      >
-        <boxGeometry args={[WALL_THICKNESS, sizeY + WALL_THICKNESS, wpDepth - (hasDividingWall ? dividingWallHeight : 0)]} />
-      </mesh>
+      {/* 
+        Blue interior walls of wading pool - only rendered from dividing wall height (or 0) to wading pool floor.
+        When hasDividingWall is false, we DON'T render any blue walls at all (no visible "murek").
+        The white concrete walls below the wading pool floor level are still rendered.
+      */}
+      {hasDividingWall && (
+        <>
+          <mesh 
+            position={[0, wallYSide * sizeY / 2, -dividingWallHeight - (wpDepth - dividingWallHeight) / 2]} 
+            material={wallMaterial}
+          >
+            <boxGeometry args={[sizeX + WALL_THICKNESS, WALL_THICKNESS, wpDepth - dividingWallHeight]} />
+          </mesh>
+          
+          <mesh 
+            position={[wallXSide * sizeX / 2, 0, -dividingWallHeight - (wpDepth - dividingWallHeight) / 2]} 
+            material={wallMaterial}
+          >
+            <boxGeometry args={[WALL_THICKNESS, sizeY + WALL_THICKNESS, wpDepth - dividingWallHeight]} />
+          </mesh>
+        </>
+      )}
     </group>
   );
 }
