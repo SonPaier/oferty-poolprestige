@@ -40,9 +40,11 @@ interface CustomPoolDrawerProps {
 }
 
 const GRID_SIZE = 30; // pixels per meter (smaller to fit 25m)
-const CANVAS_WIDTH = 810; // 27m * 30px = 810 (extra for -1m offset)
-const CANVAS_HEIGHT = 810; // 27m * 30px = 810 (extra for -1m offset)
 const GRID_OFFSET = GRID_SIZE; // 1m offset for -1 start
+
+// Default grid dimensions in meters
+const DEFAULT_GRID_WIDTH = 25;
+const DEFAULT_GRID_HEIGHT = 25;
 
 // Colors for different drawing modes
 const MODE_COLORS = {
@@ -74,6 +76,14 @@ export function CustomPoolDrawer({
 }: CustomPoolDrawerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fabricRef = useRef<FabricCanvas | null>(null);
+  
+  // Grid dimensions state (in meters)
+  const [gridWidth, setGridWidth] = useState<number>(DEFAULT_GRID_WIDTH);
+  const [gridHeight, setGridHeight] = useState<number>(DEFAULT_GRID_HEIGHT);
+  
+  // Calculate canvas dimensions based on grid size
+  const canvasWidth = (gridWidth + 2) * GRID_SIZE; // +2 for -1m offset on each side
+  const canvasHeight = (gridHeight + 2) * GRID_SIZE;
   
   // Stairs parameters state
   const [stairsWidth, setStairsWidth] = useState<number>(initialStairsConfig?.width as number || 1.5);
@@ -295,16 +305,16 @@ export function CustomPoolDrawer({
     return snapped + GRID_OFFSET;
   }, []);
 
-  // Draw grid from -1m to 25m
+  // Draw grid from -1m to gridWidth/gridHeight
   const drawGrid = useCallback((canvas: FabricCanvas) => {
-    // Draw from -1 to 25 meters
-    for (let m = -1; m <= 25; m++) {
+    // Draw from -1 to gridWidth meters (vertical lines)
+    for (let m = -1; m <= gridWidth; m++) {
       const x = m * GRID_SIZE + GRID_OFFSET;
       
       // Vertical lines
       const isMainLine = m % 5 === 0;
       const isOrigin = m === 0;
-      const line = new Line([x, 0, x, CANVAS_HEIGHT], {
+      const line = new Line([x, 0, x, canvasHeight], {
         stroke: isOrigin ? 'hsl(190 50% 50%)' : isMainLine ? 'hsl(190 20% 70%)' : 'hsl(190 10% 85%)',
         strokeWidth: isOrigin ? 2 : isMainLine ? 1 : 0.5,
         selectable: false,
@@ -329,13 +339,13 @@ export function CustomPoolDrawer({
       }
     }
     
-    // Horizontal lines
-    for (let m = -1; m <= 25; m++) {
+    // Horizontal lines from -1 to gridHeight
+    for (let m = -1; m <= gridHeight; m++) {
       const y = m * GRID_SIZE + GRID_OFFSET;
       
       const isMainLine = m % 5 === 0;
       const isOrigin = m === 0;
-      const line = new Line([0, y, CANVAS_WIDTH, y], {
+      const line = new Line([0, y, canvasWidth, y], {
         stroke: isOrigin ? 'hsl(190 50% 50%)' : isMainLine ? 'hsl(190 20% 70%)' : 'hsl(190 10% 85%)',
         strokeWidth: isOrigin ? 2 : isMainLine ? 1 : 0.5,
         selectable: false,
@@ -358,7 +368,7 @@ export function CustomPoolDrawer({
         canvas.add(text);
       }
     }
-  }, []);
+  }, [gridWidth, gridHeight, canvasWidth, canvasHeight]);
 
   // Draw a single polygon layer with corner labels
   const drawPolygonLayer = useCallback((
@@ -578,13 +588,18 @@ export function CustomPoolDrawer({
     canvas.renderAll();
   }, [poolVertices, stairsVertices, wadingPoolVertices, currentMode, drawPolygonLayer, stairsRotation, drawStairsArrow]);
 
-  // Initialize canvas
+  // Initialize canvas and reinitialize when grid size changes
   useEffect(() => {
     if (!canvasRef.current) return;
 
+    // Dispose previous canvas if exists
+    if (fabricRef.current) {
+      fabricRef.current.dispose();
+    }
+
     const canvas = new FabricCanvas(canvasRef.current, {
-      width: CANVAS_WIDTH,
-      height: CANVAS_HEIGHT,
+      width: canvasWidth,
+      height: canvasHeight,
       backgroundColor: 'white',
       selection: false,
     });
@@ -598,7 +613,7 @@ export function CustomPoolDrawer({
     return () => {
       canvas.dispose();
     };
-  }, []);
+  }, [canvasWidth, canvasHeight, drawGrid, redrawAllShapes]);
 
   // Redraw when vertices or mode changes (but NOT during dragging)
   useEffect(() => {
@@ -885,21 +900,35 @@ export function CustomPoolDrawer({
       </Tabs>
 
       <div className="flex flex-col gap-2">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between flex-wrap gap-2">
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Grid3X3 className="w-4 h-4" />
-              <span>Siatka: 25m × 25m (od -1m)</span>
+              <span>Siatka:</span>
             </div>
             <div className="flex items-center gap-1">
-              <Label className="text-xs text-muted-foreground">Skala:</Label>
-              <select
-                className="text-xs border border-border rounded px-2 py-1 bg-background"
-                value={GRID_SIZE}
-                disabled
-              >
-                <option value="30">30 px/m</option>
-              </select>
+              <Input
+                type="number"
+                min="5"
+                max="50"
+                step="5"
+                value={gridWidth}
+                onChange={(e) => setGridWidth(Math.max(5, Math.min(50, parseInt(e.target.value) || 25)))}
+                className="w-16 h-7 text-xs px-2"
+                title="Szerokość siatki (m)"
+              />
+              <span className="text-xs text-muted-foreground">×</span>
+              <Input
+                type="number"
+                min="5"
+                max="50"
+                step="5"
+                value={gridHeight}
+                onChange={(e) => setGridHeight(Math.max(5, Math.min(50, parseInt(e.target.value) || 25)))}
+                className="w-16 h-7 text-xs px-2"
+                title="Wysokość siatki (m)"
+              />
+              <span className="text-xs text-muted-foreground">m (od -1m)</span>
             </div>
           </div>
           <div className="flex gap-2">
