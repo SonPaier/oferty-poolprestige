@@ -6,6 +6,12 @@ import { PoolDimensions, PoolCalculations, StairsConfig, WadingPoolConfig, Custo
 import { planFoilLayout, FoilStrip, ROLL_WIDTH_NARROW, ROLL_WIDTH_WIDE } from '@/lib/foilPlanner';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
+import { 
+  analyzeTriangleGeometry, 
+  calculateExpandingTrapezoidSteps,
+  sliceTriangleForStep,
+  calculatePerpendicularRotation
+} from '@/lib/scaleneTriangleStairs';
 
 // Dimension display options - exported for use in other components
 export type DimensionDisplay = 'all' | 'pool' | 'stairs' | 'wading' | 'none';
@@ -1220,10 +1226,67 @@ function CustomStairsMesh({ vertices, depth, poolVertices, rotation = 0, showDim
 
   // Create stairs using actual polygon shape with ExtrudeGeometry
   // Descent direction is determined by rotation prop (arrow direction from editor)
+  // For scalene triangles: uses expanding trapezoid steps with auto-direction
   const steps = useMemo(() => {
     const stepsArr: JSX.Element[] = [];
     if (transformedVertices.length < 3) return stepsArr;
     
+    // Check for scalene triangle (3 vertices with unequal arms)
+    if (transformedVertices.length === 3) {
+      const triangleGeom = analyzeTriangleGeometry(transformedVertices);
+      
+      if (triangleGeom && triangleGeom.isScalene) {
+        // === SCALENE TRIANGLE: Expanding trapezoid steps ===
+        const minDepth = stairsConfig?.minStepDepth ?? 0.20;
+        const maxDepth = stairsConfig?.maxStepDepth ?? 0.30;
+        
+        // Calculate expanding steps
+        const expandingSteps = calculateExpandingTrapezoidSteps(
+          triangleGeom, 
+          stepCount, 
+          minDepth, 
+          maxDepth
+        );
+        
+        // Render each step as a trapezoid slice
+        for (let i = 0; i < expandingSteps.length; i++) {
+          const step = expandingSteps[i];
+          const posEnd = step.position + step.depth;
+          
+          // Get trapezoid vertices for this step
+          const trapezoidVerts = sliceTriangleForStep(triangleGeom, step.position, posEnd);
+          
+          if (trapezoidVerts.length < 3) continue;
+          
+          // Step tops start one riser below the pool edge
+          const stepTopZ = -(i + 1) * stepHeight;
+          const stepBodyHeight = depth - ((i + 1) * stepHeight);
+          
+          // Create shape from trapezoid vertices
+          const shape2D = trapezoidVerts.map(v => new THREE.Vector2(v.x, v.y));
+          const stepShape = new THREE.Shape(shape2D);
+          
+          const stepBodyGeo = new THREE.ExtrudeGeometry(stepShape, {
+            depth: stepBodyHeight,
+            bevelEnabled: false,
+          });
+          stepBodyGeo.translate(0, 0, stepTopZ - stepBodyHeight);
+          
+          const stepTopGeo = new THREE.ShapeGeometry(stepShape);
+          
+          stepsArr.push(
+            <group key={i}>
+              <mesh geometry={stepBodyGeo} material={stepFrontMaterial} />
+              <mesh position={[0, 0, stepTopZ - 0.01]} geometry={stepTopGeo} material={stepTopMaterial} />
+            </group>
+          );
+        }
+        
+        return stepsArr;
+      }
+    }
+    
+    // === REGULAR GEOMETRY (isosceles triangle or rectangle) ===
     // Calculate descent direction vector from rotation
     const rotRad = (rotation * Math.PI) / 180;
     const descentVec = { x: Math.cos(rotRad), y: Math.sin(rotRad) };
@@ -1284,8 +1347,7 @@ function CustomStairsMesh({ vertices, depth, poolVertices, rotation = 0, showDim
       return stepsArr;
     }
     
-    // For rectangle, use the same rotation-based slicing (variables already calculated above)
-    
+    // For rectangle, use the same rotation-based slicing
     for (let i = 0; i < stepCount; i++) {
       // Step tops start one riser below the pool edge
       const stepTopZ = -(i + 1) * stepHeight;
@@ -1329,7 +1391,7 @@ function CustomStairsMesh({ vertices, depth, poolVertices, rotation = 0, showDim
       );
     }
     return stepsArr;
-  }, [stepCount, stepHeight, depth, bounds, transformedVertices, geometryInfo, rotation, sizeX, sizeY, stepTopMaterial, stepFrontMaterial]);
+  }, [stepCount, stepHeight, depth, bounds, transformedVertices, geometryInfo, rotation, sizeX, sizeY, stepTopMaterial, stepFrontMaterial, stairsConfig]);
 
   return (
     <group>
