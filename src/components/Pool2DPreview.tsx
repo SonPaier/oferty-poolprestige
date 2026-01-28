@@ -222,7 +222,7 @@ export default function Pool2DPreview({ dimensions, height = 300, dimensionDispl
         dimensions.customVertices
       );
       
-      // Generate step lines based on stairs config
+      // Generate step lines based on stairs config and rotation (arrow direction)
       const stepCount = dimensions.stairs.stepCount || 4;
       const stepLines: { x1: number; y1: number; x2: number; y2: number }[] = [];
       
@@ -238,36 +238,68 @@ export default function Pool2DPreview({ dimensions, height = 300, dimensionDispl
         poolCenterY = (minY + maxY) / 2;
       }
       
-      if (stairsVerts.length === 3) {
-        // Diagonal 45° stairs (triangle) - step lines parallel to hypotenuse
-        const v0 = stairsVerts[0];
-        const v1 = stairsVerts[1];
-        const v2 = stairsVerts[2];
+      // Get rotation from stairs rotation data (arrow direction)
+      const rotation = dimensions.customStairsRotations?.[0] ?? 135; // default diagonal
+      const rotRad = (rotation * Math.PI) / 180;
+      const descentVec = { x: Math.cos(rotRad), y: Math.sin(rotRad) };
+      // Perpendicular vector for step lines
+      const perpVec = { x: -descentVec.y, y: descentVec.x };
+      
+      // Transform stairs vertices
+      const transformedVerts = stairsVerts.map(v => ({
+        x: v.x - poolCenterX,
+        y: v.y - poolCenterY
+      }));
+      
+      // Project all vertices onto descent axis to find extent
+      const projections = transformedVerts.map(v => 
+        v.x * descentVec.x + v.y * descentVec.y
+      );
+      const minProj = Math.min(...projections);
+      const maxProj = Math.max(...projections);
+      const totalExtent = maxProj - minProj;
+      
+      // Generate step lines perpendicular to descent direction
+      for (let i = 1; i < stepCount; i++) {
+        const progress = i / stepCount;
+        const sliceProj = minProj + progress * totalExtent;
         
-        for (let i = 1; i < stepCount; i++) {
-          const progress = i / stepCount;
-          const p1x = v0.x + (v1.x - v0.x) * progress - poolCenterX;
-          const p1y = v0.y + (v1.y - v0.y) * progress - poolCenterY;
-          const p2x = v0.x + (v2.x - v0.x) * progress - poolCenterX;
-          const p2y = v0.y + (v2.y - v0.y) * progress - poolCenterY;
+        // Find intersection points of this slice line with polygon edges
+        const intersections: { x: number; y: number }[] = [];
+        const n = transformedVerts.length;
+        
+        for (let j = 0; j < n; j++) {
+          const curr = transformedVerts[j];
+          const next = transformedVerts[(j + 1) % n];
           
-          stepLines.push({ x1: p1x, y1: p1y, x2: p2x, y2: p2y });
+          const currProj = curr.x * descentVec.x + curr.y * descentVec.y;
+          const nextProj = next.x * descentVec.x + next.y * descentVec.y;
+          
+          // Check if slice line crosses this edge
+          if ((currProj <= sliceProj && nextProj >= sliceProj) || 
+              (currProj >= sliceProj && nextProj <= sliceProj)) {
+            if (Math.abs(nextProj - currProj) > 0.001) {
+              const t = (sliceProj - currProj) / (nextProj - currProj);
+              intersections.push({
+                x: curr.x + t * (next.x - curr.x),
+                y: curr.y + t * (next.y - curr.y)
+              });
+            }
+          }
         }
-      } else if (stairsVerts.length === 4) {
-        // Rectangular stairs - step lines perpendicular to entry direction
-        const v0 = stairsVerts[0];
-        const v1 = stairsVerts[1];
-        const v3 = stairsVerts[3];
         
-        // Direction from v0 to v3 is the depth direction (entry direction)
-        for (let i = 1; i < stepCount; i++) {
-          const progress = i / stepCount;
-          const p1x = v0.x + (v3.x - v0.x) * progress - poolCenterX;
-          const p1y = v0.y + (v3.y - v0.y) * progress - poolCenterY;
-          const p2x = v1.x + (stairsVerts[2].x - v1.x) * progress - poolCenterX;
-          const p2y = v1.y + (stairsVerts[2].y - v1.y) * progress - poolCenterY;
-          
-          stepLines.push({ x1: p1x, y1: p1y, x2: p2x, y2: p2y });
+        // If we found 2 intersection points, create the step line
+        if (intersections.length >= 2) {
+          // Sort by perpendicular projection to get correct order
+          intersections.sort((a, b) => 
+            (a.x * perpVec.x + a.y * perpVec.y) - (b.x * perpVec.x + b.y * perpVec.y)
+          );
+          stepLines.push({
+            x1: intersections[0].x,
+            y1: intersections[0].y,
+            x2: intersections[intersections.length - 1].x,
+            y2: intersections[intersections.length - 1].y
+          });
         }
       }
       

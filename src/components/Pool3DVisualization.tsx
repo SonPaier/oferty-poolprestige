@@ -1118,12 +1118,12 @@ function DimensionLines({ dimensions, display }: { dimensions: PoolDimensions; d
 }
 
 // Custom stairs mesh (from drawn vertices) - uses actual polygon shape
-// Direction of descent is derived from geometry, not rotation prop
+// Direction of descent is determined by rotation prop (arrow direction from editor)
 function CustomStairsMesh({ vertices, depth, poolVertices, rotation = 0, showDimensions = true, stairsConfig }: { 
   vertices: CustomPoolVertex[]; 
   depth: number;
   poolVertices: CustomPoolVertex[];
-  rotation?: number; // legacy prop, now ignored - direction derived from geometry
+  rotation?: number; // Arrow direction from editor - determines descent direction
   showDimensions?: boolean;
   stairsConfig?: StairsConfig;
 }) {
@@ -1177,107 +1177,87 @@ function CustomStairsMesh({ vertices, depth, poolVertices, rotation = 0, showDim
   const sizeX = bounds.maxX - bounds.minX;
   const sizeY = bounds.maxY - bounds.minY;
   
-  // Determine geometry type and descent direction from vertices (NOT rotation prop)
+  // Determine descent direction from rotation prop (arrow direction)
+  // Rotation is in degrees: 0=right, 90=down, 180=left, 270=up
+  // For diagonal: 45=down-right, 135=down-left, 225=up-left, 315=up-right
   const geometryInfo = useMemo(() => {
+    const normalizedRotation = ((rotation % 360) + 360) % 360;
+    
     if (transformedVertices.length === 3) {
-      // Triangle (diagonal 45°) - descent from corner vertex (v0) toward hypotenuse
-      // v0 is the corner (right angle), v1 and v2 are on the hypotenuse
-      return { type: 'triangle' as const, descentDirection: 'diagonal' as const };
+      // Triangle (diagonal 45°) - use rotation to determine descent direction
+      return { 
+        type: 'triangle' as const, 
+        descentDirection: 'diagonal' as const,
+        rotationRad: (normalizedRotation * Math.PI) / 180
+      };
     } else if (transformedVertices.length === 4) {
-      // Rectangle - find shorter axis for descent direction
-      // Calculate edge lengths
-      const edge01 = Math.hypot(
-        transformedVertices[1].x - transformedVertices[0].x,
-        transformedVertices[1].y - transformedVertices[0].y
-      );
-      const edge12 = Math.hypot(
-        transformedVertices[2].x - transformedVertices[1].x,
-        transformedVertices[2].y - transformedVertices[1].y
-      );
+      // Rectangle - use rotation to determine descent axis
+      // Map rotation to descent direction:
+      // 0, 180: descent along X axis
+      // 90, 270: descent along Y axis
+      // Diagonal rotations: use closest primary axis
+      let descentDirection: 'x' | 'y';
       
-      // Shorter edge pair determines descent direction
-      // If edge01 (and edge23) is shorter, we descend along that axis
-      // Otherwise we descend along edge12 (and edge30)
-      const descentAlongEdge01 = edge01 <= edge12;
-      
-      // Determine if descent is more X-aligned or Y-aligned
-      const dx01 = Math.abs(transformedVertices[1].x - transformedVertices[0].x);
-      const dy01 = Math.abs(transformedVertices[1].y - transformedVertices[0].y);
-      const dx12 = Math.abs(transformedVertices[2].x - transformedVertices[1].x);
-      const dy12 = Math.abs(transformedVertices[2].y - transformedVertices[1].y);
-      
-      if (descentAlongEdge01) {
-        // Descent along edge 0->1 direction
-        return { 
-          type: 'rectangle' as const, 
-          descentDirection: (dx01 > dy01 ? 'x' : 'y') as 'x' | 'y',
-          stairsLength: edge01,
-          stairsWidth: edge12
-        };
+      if (normalizedRotation >= 315 || normalizedRotation < 45 || 
+          (normalizedRotation >= 135 && normalizedRotation < 225)) {
+        descentDirection = 'x';
       } else {
-        // Descent along edge 1->2 direction
-        return { 
-          type: 'rectangle' as const, 
-          descentDirection: (dx12 > dy12 ? 'x' : 'y') as 'x' | 'y',
-          stairsLength: edge12,
-          stairsWidth: edge01
-        };
+        descentDirection = 'y';
       }
+      
+      // Determine if we go positive or negative along the axis
+      const goPositive = normalizedRotation < 180;
+      
+      return { 
+        type: 'rectangle' as const, 
+        descentDirection,
+        goPositive,
+        rotationRad: (normalizedRotation * Math.PI) / 180
+      };
     }
     return { type: 'unknown' as const, descentDirection: 'y' as const };
-  }, [transformedVertices]);
+  }, [transformedVertices, rotation]);
 
   // Create stairs using actual polygon shape with ExtrudeGeometry
+  // Descent direction is determined by rotation prop (arrow direction from editor)
   const steps = useMemo(() => {
     const stepsArr: JSX.Element[] = [];
     if (transformedVertices.length < 3) return stepsArr;
     
-    // For triangle (diagonal 45°), use trapezoid slicing parallel to hypotenuse
+    // Calculate descent direction vector from rotation
+    const rotRad = (rotation * Math.PI) / 180;
+    const descentVec = { x: Math.cos(rotRad), y: Math.sin(rotRad) };
+    
+    // Project all vertices onto descent axis to find extent
+    const projections = transformedVertices.map(v => 
+      v.x * descentVec.x + v.y * descentVec.y
+    );
+    const minProj = Math.min(...projections);
+    const maxProj = Math.max(...projections);
+    const totalExtent = maxProj - minProj;
+    
+    // For triangle (diagonal 45°), use line slicing perpendicular to descent direction
     if (geometryInfo.type === 'triangle') {
-      const v0 = transformedVertices[0]; // Corner vertex (right angle)
-      const v1 = transformedVertices[1];
-      const v2 = transformedVertices[2];
-      
-      // Calculate legs from corner
-      const leg1 = { x: v1.x - v0.x, y: v1.y - v0.y };
-      const leg2 = { x: v2.x - v0.x, y: v2.y - v0.y };
-      
       for (let i = 0; i < stepCount; i++) {
-        // Progress from corner (0) to hypotenuse (1)
+        // Progress from entry point (0) to exit (1) along descent direction
         const startProgress = i / stepCount;
         const endProgress = (i + 1) / stepCount;
+        
+        // Slice positions along descent axis
+        const sliceStart = minProj + startProgress * totalExtent;
+        const sliceEnd = minProj + endProgress * totalExtent;
         
         // Step tops start one riser below the pool edge
         const stepTopZ = -(i + 1) * stepHeight;
         const stepBodyHeight = depth - ((i + 1) * stepHeight);
         
-        // Create trapezoid slice between two progress levels
-        // Inner edge (closer to corner)
-        const inner1 = { x: v0.x + leg1.x * startProgress, y: v0.y + leg1.y * startProgress };
-        const inner2 = { x: v0.x + leg2.x * startProgress, y: v0.y + leg2.y * startProgress };
-        
-        // Outer edge (closer to hypotenuse)
-        const outer1 = { x: v0.x + leg1.x * endProgress, y: v0.y + leg1.y * endProgress };
-        const outer2 = { x: v0.x + leg2.x * endProgress, y: v0.y + leg2.y * endProgress };
-        
-        // For the first step, the inner edge is just a point (the corner)
-        let slicedVertices: { x: number; y: number }[];
-        if (i === 0) {
-          // First step is a triangle from corner to first slice line
-          slicedVertices = [
-            { x: v0.x, y: v0.y },
-            { x: outer1.x, y: outer1.y },
-            { x: outer2.x, y: outer2.y }
-          ];
-        } else {
-          // Subsequent steps are trapezoids
-          slicedVertices = [
-            { x: inner1.x, y: inner1.y },
-            { x: outer1.x, y: outer1.y },
-            { x: outer2.x, y: outer2.y },
-            { x: inner2.x, y: inner2.y }
-          ];
-        }
+        // Slice the polygon by two lines perpendicular to descent direction
+        const slicedVertices = slicePolygonByDescentLines(
+          transformedVertices, 
+          descentVec, 
+          sliceStart, 
+          sliceEnd
+        );
         
         if (slicedVertices.length < 3) continue;
         
@@ -1304,34 +1284,28 @@ function CustomStairsMesh({ vertices, depth, poolVertices, rotation = 0, showDim
       return stepsArr;
     }
     
-    // For rectangle, slice perpendicular to descent direction (derived from geometry)
-    const isXDescent = geometryInfo.descentDirection === 'x';
-    const stairsExtent = isXDescent ? sizeX : sizeY;
-    const stepDepth = stairsExtent / stepCount;
+    // For rectangle, use the same rotation-based slicing (variables already calculated above)
     
     for (let i = 0; i < stepCount; i++) {
       // Step tops start one riser below the pool edge
       const stepTopZ = -(i + 1) * stepHeight;
       const stepBodyHeight = depth - ((i + 1) * stepHeight);
       
-      // Calculate slice ratio for this step
-      const startRatio = i / stepCount;
-      const endRatio = (i + 1) / stepCount;
+      // Progress from entry point (0) to exit (1) along descent direction
+      const startProgress = i / stepCount;
+      const endProgress = (i + 1) / stepCount;
       
-      // Slice the polygon based on geometry-derived direction
-      let slicedVertices: { x: number; y: number }[];
+      // Slice positions along descent axis
+      const sliceStart = minProj + startProgress * totalExtent;
+      const sliceEnd = minProj + endProgress * totalExtent;
       
-      if (isXDescent) {
-        // Descent along X axis - slice by X ranges
-        const xStart = bounds.minX + startRatio * sizeX;
-        const xEnd = bounds.minX + endRatio * sizeX;
-        slicedVertices = slicePolygonX(transformedVertices, xStart, xEnd);
-      } else {
-        // Descent along Y axis - slice by Y ranges
-        const yStart = bounds.minY + startRatio * sizeY;
-        const yEnd = bounds.minY + endRatio * sizeY;
-        slicedVertices = slicePolygonY(transformedVertices, yStart, yEnd);
-      }
+      // Slice the polygon by two lines perpendicular to descent direction
+      const slicedVertices = slicePolygonByDescentLines(
+        transformedVertices, 
+        descentVec, 
+        sliceStart, 
+        sliceEnd
+      );
       
       if (slicedVertices.length < 3) continue;
       
@@ -1355,7 +1329,7 @@ function CustomStairsMesh({ vertices, depth, poolVertices, rotation = 0, showDim
       );
     }
     return stepsArr;
-  }, [stepCount, stepHeight, depth, bounds, transformedVertices, geometryInfo, sizeX, sizeY, stepTopMaterial, stepFrontMaterial]);
+  }, [stepCount, stepHeight, depth, bounds, transformedVertices, geometryInfo, rotation, sizeX, sizeY, stepTopMaterial, stepFrontMaterial]);
 
   return (
     <group>
@@ -1381,6 +1355,57 @@ function CustomStairsMesh({ vertices, depth, poolVertices, rotation = 0, showDim
       )}
     </group>
   );
+}
+
+// Helper: Slice polygon by two parallel lines perpendicular to descent direction
+// Uses projection onto descent axis to determine slice bounds
+function slicePolygonByDescentLines(
+  vertices: { x: number; y: number }[],
+  descentVec: { x: number; y: number },
+  projMin: number,
+  projMax: number
+): { x: number; y: number }[] {
+  const result: { x: number; y: number }[] = [];
+  const n = vertices.length;
+  
+  for (let i = 0; i < n; i++) {
+    const curr = vertices[i];
+    const next = vertices[(i + 1) % n];
+    
+    // Project points onto descent axis
+    const currProj = curr.x * descentVec.x + curr.y * descentVec.y;
+    const nextProj = next.x * descentVec.x + next.y * descentVec.y;
+    
+    // Check if current point is in range
+    if (currProj >= projMin - 0.001 && currProj <= projMax + 0.001) {
+      result.push(curr);
+    }
+    
+    // Check for intersections with projMin and projMax
+    if ((currProj < projMin && nextProj > projMin) || (currProj > projMin && nextProj < projMin)) {
+      const t = (projMin - currProj) / (nextProj - currProj);
+      result.push({ 
+        x: curr.x + t * (next.x - curr.x), 
+        y: curr.y + t * (next.y - curr.y) 
+      });
+    }
+    if ((currProj < projMax && nextProj > projMax) || (currProj > projMax && nextProj < projMax)) {
+      const t = (projMax - currProj) / (nextProj - currProj);
+      result.push({ 
+        x: curr.x + t * (next.x - curr.x), 
+        y: curr.y + t * (next.y - curr.y) 
+      });
+    }
+  }
+  
+  // Sort points to form a proper polygon (clockwise order)
+  if (result.length < 3) return result;
+  
+  const cx = result.reduce((s, v) => s + v.x, 0) / result.length;
+  const cy = result.reduce((s, v) => s + v.y, 0) / result.length;
+  result.sort((a, b) => Math.atan2(a.y - cy, a.x - cx) - Math.atan2(b.y - cy, b.x - cx));
+  
+  return result;
 }
 
 // Helper: Slice polygon horizontally (by Y range)
@@ -1452,8 +1477,6 @@ function slicePolygonX(vertices: { x: number; y: number }[], xMin: number, xMax:
   
   return result;
 }
-
-// Note: slicePolygonDiagonal removed - triangle stairs now use direct trapezoid generation
 
 // Custom wading pool mesh (from drawn vertices) - uses actual polygon shape
 function CustomWadingPoolMesh({ vertices, wadingDepth, poolDepth, poolVertices, showDimensions = true }: { 
