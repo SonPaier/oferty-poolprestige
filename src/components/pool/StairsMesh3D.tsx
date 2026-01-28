@@ -45,8 +45,10 @@ interface StairsMesh3DProps {
   };
 }
 
-// Wall thickness constant - must match Pool3DVisualization
-const WALL_THICKNESS = 0.2;
+// Wall thickness constants - must match Pool3DVisualization
+const POOL_WALL_THICKNESS = 0.24; // Pool walls = 24cm
+const WADING_WALL_THICKNESS = 0.15; // Wading pool walls = 15cm
+const WALL_THICKNESS = POOL_WALL_THICKNESS; // Alias for backward compatibility
 
 function getIntoPoolAxisSigns(wadingCornerIndex: number): { intoPoolX: number; intoPoolY: number } {
   // Matches the coordinate system used in stairsShapeGenerator:
@@ -134,7 +136,8 @@ function getWadingPoolIntersectionPosition(
   if (!p) return null;
 
   // Shift along the pool wall away from the wading corner to clear the concrete wall endcap.
-  const shift = WALL_THICKNESS / 2;
+  // Use wading pool wall thickness for this offset since we're clearing the wading pool structure.
+  const shift = WADING_WALL_THICKNESS / 2;
   if (isOnHorizontalWall) {
     return { x: p.x + intoPoolX * shift, y: p.y };
   }
