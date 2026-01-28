@@ -232,20 +232,28 @@ function RectangularStairs3D({
   const steps = useMemo(() => {
     if (vertices.length !== 4) return [];
     
+    // Vertices from stairsShapeGenerator:
+    // v0 = corner position (starting point)
+    // v1 = v0 + width direction
+    // v2 = v0 + width + length (depth)
+    // v3 = v0 + length (depth)
+    // The LENGTH (depth) direction is where steps descend into pool
     const [v0, v1, v2, v3] = vertices;
     
-    // Calculate dimensions
+    // Width vector: v0 -> v1 (parallel to pool wall, stair width)
     const widthVec = { x: v1.x - v0.x, y: v1.y - v0.y };
-    const depthVec = { x: v3.x - v0.x, y: v3.y - v0.y };
+    // Length/depth vector: v0 -> v3 (perpendicular to wall, into pool)
+    const lengthVec = { x: v3.x - v0.x, y: v3.y - v0.y };
+    
     const stairsWidth = Math.hypot(widthVec.x, widthVec.y);
-    const stairsDepth = Math.hypot(depthVec.x, depthVec.y);
-    const stepDepth = stairsDepth / stepCount;
+    const stairsLength = Math.hypot(lengthVec.x, lengthVec.y);
+    const stepDepth = stairsLength / stepCount;
     
-    // Center of stairs base
-    const centerX = (v0.x + v1.x + v2.x + v3.x) / 4;
-    const centerY = (v0.y + v1.y + v2.y + v3.y) / 4;
+    // Normalize vectors
+    const widthNorm = { x: widthVec.x / stairsWidth, y: widthVec.y / stairsWidth };
+    const lengthNorm = { x: lengthVec.x / stairsLength, y: lengthVec.y / stairsLength };
     
-    // Rotation angle
+    // Rotation angle based on width direction
     const angle = Math.atan2(widthVec.y, widthVec.x);
     
     const stepsArr: JSX.Element[] = [];
@@ -256,13 +264,13 @@ function RectangularStairs3D({
       const thisStepHeight = Math.abs(stepTop - stepBottom);
       const posZ = (stepTop + stepBottom) / 2;
       
-      // Position along depth direction
-      const progress = (i + 0.5) / stepCount;
-      const offsetX = v0.x + depthVec.x * progress + widthVec.x * 0.5;
-      const offsetY = v0.y + depthVec.y * progress + widthVec.y * 0.5;
+      // Position: start from v0, move along length direction by step progress, center on width
+      const progress = (i + 0.5) * stepDepth;
+      const posX = v0.x + lengthNorm.x * progress + widthNorm.x * stairsWidth * 0.5;
+      const posY = v0.y + lengthNorm.y * progress + widthNorm.y * stairsWidth * 0.5;
       
       stepsArr.push(
-        <group key={i} position={[offsetX, offsetY, posZ]} rotation={[0, 0, angle]}>
+        <group key={i} position={[posX, posY, posZ]} rotation={[0, 0, angle]}>
           <mesh material={stepFrontMaterial}>
             <boxGeometry args={[stairsWidth, stepDepth, thisStepHeight]} />
           </mesh>
