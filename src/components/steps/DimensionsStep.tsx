@@ -1539,20 +1539,9 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
                       <div>
                         <Label htmlFor="hasDividingWall" className="font-medium text-sm">Murek oddzielający</Label>
                         <p className="text-xs text-muted-foreground">
-                          {(() => {
-                            // Calculate wall height based on stairs and pool type
-                            if (dimensions.wadingPool.hasDividingWall !== false) {
-                              if (dimensions.stairs.enabled) {
-                                const stepHeight = dimensions.depth / ((dimensions.stairs.stepCount || 4) + 1);
-                                return `Wysokość: ${Math.round(stepHeight * 100)}cm (wysokość 1. stopnia)`;
-                              } else {
-                                return dimensions.overflowType === 'skimmerowy' 
-                                  ? 'Wysokość: 15cm poniżej ściany basenu'
-                                  : 'Wysokość: równo ze ścianą basenu';
-                              }
-                            }
-                            return 'Bez murku - płynne przejście';
-                          })()}
+                          {dimensions.wadingPool.hasDividingWall !== false 
+                            ? `Góra murka: ${dimensions.wadingPool.dividingWallOffset ?? 0}cm poniżej krawędzi basenu`
+                            : 'Bez murku - płynne przejście'}
                         </p>
                       </div>
                     </div>
@@ -1562,6 +1551,26 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
                       onCheckedChange={(checked) => updateWadingPool({ hasDividingWall: checked })}
                     />
                   </div>
+                  
+                  {/* Wall offset input - only when dividing wall is enabled */}
+                  {dimensions.wadingPool.hasDividingWall !== false && (
+                    <div className="space-y-2 p-3 rounded-lg bg-muted/20 border border-border">
+                      <Label htmlFor="wallOffset" className="text-sm">Góra murka od krawędzi basenu (cm)</Label>
+                      <Input
+                        id="wallOffset"
+                        type="number"
+                        min={0}
+                        max={Math.round(dimensions.depth * 100) - Math.round((dimensions.wadingPool.depth ?? 0.4) * 100)}
+                        step={1}
+                        value={dimensions.wadingPool.dividingWallOffset ?? 0}
+                        onChange={(e) => updateWadingPool({ dividingWallOffset: Number(e.target.value) })}
+                        className="h-9"
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        0 = równo ze ścianą basenu, większa wartość = murek niżej
+                      </p>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

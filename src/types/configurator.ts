@@ -71,6 +71,7 @@ export interface WadingPoolConfig {
   depth: number; // głębokość brodzika (zazwyczaj 0.3-0.6m)
   position: StairsPosition; // wewnątrz/zewnątrz basenu
   hasDividingWall: boolean; // czy jest murek oddzielający brodzik od basenu
+  dividingWallOffset?: number; // odległość góry murka od ściany basenu w cm (domyślnie 0 = równo ze ścianą)
 }
 
 export const defaultStairsConfig: StairsConfig = {
@@ -103,6 +104,7 @@ export const defaultWadingPoolConfig: WadingPoolConfig = {
   depth: 0.4,
   position: 'inside',
   hasDividingWall: true, // domyślnie murek jest włączony
+  dividingWallOffset: 0, // 0cm = równo ze ścianą basenu
 };
 
 export const stairsPositionLabels: Record<StairsPosition, string> = {
