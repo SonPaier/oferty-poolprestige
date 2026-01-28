@@ -304,10 +304,34 @@ export default function Pool2DPreview({ dimensions, height = 300, dimensionDispl
   const showStairsDims = dimensionDisplay === 'all' || dimensionDisplay === 'stairs';
   const showWadingDims = dimensionDisplay === 'all' || dimensionDisplay === 'wading';
   
+  // Calculate scaled viewBox for zoom
+  const scaledViewBox = useMemo(() => {
+    const padding = Math.max(bounds.maxX - bounds.minX, bounds.maxY - bounds.minY) * 0.15;
+    const baseW = (bounds.maxX - bounds.minX) + padding * 2;
+    const baseH = (bounds.maxY - bounds.minY) + padding * 2;
+    
+    // Scale the viewBox dimensions inversely to zoom level
+    const scaledW = baseW / zoom;
+    const scaledH = baseH / zoom;
+    
+    // Center offset adjusted by pan
+    const centerX = (bounds.minX + bounds.maxX) / 2;
+    const centerY = (bounds.minY + bounds.maxY) / 2;
+    
+    // Pan is in pixels, convert to viewBox units
+    // Approximate conversion: viewBox units per pixel
+    const unitsPerPixel = baseW / 400; // Rough estimate based on typical container width
+    
+    const x = centerX - scaledW / 2 - (pan.x * unitsPerPixel / zoom);
+    const y = -centerY - scaledH / 2 + (pan.y * unitsPerPixel / zoom);
+    
+    return `${x} ${y} ${scaledW} ${scaledH}`;
+  }, [bounds, zoom, pan]);
+  
   return (
     <div 
-      className="w-full rounded-lg overflow-hidden bg-[#a8c8a0] relative"
-      style={{ height, cursor: isDragging ? 'grabbing' : 'grab' }}
+      className="w-full rounded-lg overflow-hidden bg-[#a8c8a0] relative select-none"
+      style={{ height, cursor: isDragging ? 'grabbing' : (zoom > 1 ? 'grab' : 'default') }}
       onWheel={handleWheel}
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}
@@ -316,13 +340,9 @@ export default function Pool2DPreview({ dimensions, height = 300, dimensionDispl
     >
       <svg
         ref={svgRef}
-        viewBox={viewBox}
+        viewBox={scaledViewBox}
         className="w-full h-full"
         preserveAspectRatio="xMidYMid meet"
-        style={{ 
-          transform: `scale(${zoom}) translate(${pan.x / zoom}px, ${pan.y / zoom}px)`,
-          transformOrigin: 'center center'
-        }}
       >
         {/* Grid pattern */}
         <defs>
