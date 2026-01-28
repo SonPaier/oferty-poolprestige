@@ -135,13 +135,9 @@ function getWadingPoolIntersectionPosition(
 
   if (!p) return null;
 
-  // Shift along the pool wall away from the wading corner to clear the concrete wall endcap.
-  // Use wading pool wall thickness for this offset since we're clearing the wading pool structure.
-  const shift = WADING_WALL_THICKNESS / 2;
-  if (isOnHorizontalWall) {
-    return { x: p.x + intoPoolX * shift, y: p.y };
-  }
-  return { x: p.x, y: p.y + intoPoolY * shift };
+  // Return the exact intersection point without offset
+  // The stairs should start exactly at the wading pool wall edge
+  return p;
 }
 
 /**
