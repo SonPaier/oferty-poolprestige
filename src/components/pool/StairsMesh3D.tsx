@@ -341,12 +341,18 @@ function DiagonalStairs3D({
       
       const shape = new THREE.Shape();
       
-      // Draw trapezoid (or triangle for last step)
+      // Draw trapezoid (or triangle for first step when outer points converge at corner)
       // Use absolute coordinates for shape - no offset needed
-      shape.moveTo(outer1x, outer1y);
-      shape.lineTo(outer2x, outer2y);
-      shape.lineTo(inner2x, inner2y);
-      if (innerRatio < 0.999) {
+      if (outerRatio < 0.001) {
+        // First step: outer1 and outer2 converge at v0, creating a triangle
+        shape.moveTo(outer1x, outer1y); // = v0
+        shape.lineTo(inner2x, inner2y);
+        shape.lineTo(inner1x, inner1y);
+      } else {
+        // Other steps: full trapezoid with 4 vertices
+        shape.moveTo(outer1x, outer1y);
+        shape.lineTo(outer2x, outer2y);
+        shape.lineTo(inner2x, inner2y);
         shape.lineTo(inner1x, inner1y);
       }
       shape.closePath();
