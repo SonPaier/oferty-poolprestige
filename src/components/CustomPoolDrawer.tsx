@@ -132,7 +132,7 @@ export function CustomPoolDrawer({
   }, [currentMode]);
 
   // Generate stairs shape from parameters (width, stepCount, stepDepth)
-  // Creates a rectangle or triangle at the centroid of existing stairs vertices or at pool corner
+  // Creates a rectangle or triangle anchored at the first vertex of existing stairs or at pool corner
   const generateStairsFromParams = useCallback((
     width: number, 
     stepCount: number, 
@@ -147,15 +147,26 @@ export function CustomPoolDrawer({
     if (type === 'diagonal') {
       const diagonalSize = stairsLength;
       
-      // If we have existing vertices, use their bounding box corner
+      // If we have existing vertices, use the FIRST vertex as anchor (pool corner)
       if (baseVertices && baseVertices.length >= 3) {
-        const minX = Math.min(...baseVertices.map(p => p.x));
-        const minY = Math.min(...baseVertices.map(p => p.y));
+        // First vertex is the corner anchor point
+        const anchor = baseVertices[0];
+        
+        // Determine the direction based on existing shape
+        // The second and third vertices tell us which quadrant we're in
+        const dx1 = baseVertices[1].x - anchor.x;
+        const dy1 = baseVertices[1].y - anchor.y;
+        const dx2 = baseVertices[2].x - anchor.x;
+        const dy2 = baseVertices[2].y - anchor.y;
+        
+        // Determine x and y direction from anchor
+        const xDir = Math.abs(dx1) > Math.abs(dx2) ? Math.sign(dx1) || 1 : Math.sign(dx2) || 1;
+        const yDir = Math.abs(dy1) > Math.abs(dy2) ? Math.sign(dy1) || 1 : Math.sign(dy2) || 1;
         
         return [
-          { x: minX, y: minY },
-          { x: minX + diagonalSize, y: minY },
-          { x: minX, y: minY + diagonalSize }
+          { x: anchor.x, y: anchor.y },
+          { x: anchor.x + xDir * diagonalSize, y: anchor.y },
+          { x: anchor.x, y: anchor.y + yDir * diagonalSize }
         ];
       }
       
@@ -173,17 +184,22 @@ export function CustomPoolDrawer({
     }
     
     // Rectangular stairs
-    // If we have existing vertices, use their centroid as anchor
-    if (baseVertices && baseVertices.length >= 3) {
-      const cx = baseVertices.reduce((sum, p) => sum + p.x, 0) / baseVertices.length;
-      const cy = baseVertices.reduce((sum, p) => sum + p.y, 0) / baseVertices.length;
+    // If we have existing vertices, use the FIRST vertex as anchor
+    if (baseVertices && baseVertices.length >= 4) {
+      // First vertex is the anchor corner
+      const anchor = baseVertices[0];
       
-      // Create rectangle centered on centroid
+      // Determine directions based on existing vertices
+      const dx = baseVertices[1].x - anchor.x;
+      const dy = baseVertices[3].y - anchor.y;
+      const xDir = Math.sign(dx) || 1;
+      const yDir = Math.sign(dy) || 1;
+      
       return [
-        { x: cx - width / 2, y: cy - stairsLength / 2 },
-        { x: cx + width / 2, y: cy - stairsLength / 2 },
-        { x: cx + width / 2, y: cy + stairsLength / 2 },
-        { x: cx - width / 2, y: cy + stairsLength / 2 }
+        { x: anchor.x, y: anchor.y },
+        { x: anchor.x + xDir * width, y: anchor.y },
+        { x: anchor.x + xDir * width, y: anchor.y + yDir * stairsLength },
+        { x: anchor.x, y: anchor.y + yDir * stairsLength }
       ];
     }
     
@@ -868,45 +884,57 @@ export function CustomPoolDrawer({
         </TabsList>
       </Tabs>
 
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Grid3X3 className="w-4 h-4" />
-            <span>Skala: 25m × 25m (od -1m)</span>
+      <div className="flex flex-col gap-2">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Grid3X3 className="w-4 h-4" />
+              <span>Siatka: 25m × 25m (od -1m)</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <Label className="text-xs text-muted-foreground">Skala:</Label>
+              <select
+                className="text-xs border border-border rounded px-2 py-1 bg-background"
+                value={GRID_SIZE}
+                disabled
+              >
+                <option value="30">30 px/m</option>
+              </select>
+            </div>
           </div>
-          {isDrawing ? (
-            <div className="flex items-center gap-2 text-sm" style={{ color: colors.stroke }}>
-              <Plus className="w-4 h-4" />
-              <span>Kliknij, aby dodać punkty {MODE_LABELS[currentMode]}. Kliknij pierwszy punkt, aby zamknąć.</span>
-            </div>
-          ) : (
-            <div className="flex items-center gap-2 text-sm" style={{ color: colors.stroke }}>
-              <MousePointer className="w-4 h-4" />
-              <span>Przeciągnij punkty, aby edytować {MODE_LABELS[currentMode]}.</span>
-            </div>
-          )}
-        </div>
-        <div className="flex gap-2">
-          {currentMode === 'stairs' && stairsVertices.length >= 3 && (
-            <Button variant="secondary" size="sm" onClick={handleRotateStairs}>
-              <RotateCw className="w-4 h-4 mr-1" />
-              {getRotationLabel(stairsRotation)}
+          <div className="flex gap-2">
+            {currentMode === 'stairs' && stairsVertices.length >= 3 && (
+              <Button variant="secondary" size="sm" onClick={handleRotateStairs}>
+                <RotateCw className="w-4 h-4 mr-1" />
+                {getRotationLabel(stairsRotation)}
+              </Button>
+            )}
+            <Button variant="outline" size="sm" onClick={handleReset}>
+              <RotateCcw className="w-4 h-4 mr-1" />
+              Reset {MODE_LABELS[currentMode]}
             </Button>
-          )}
-          <Button variant="outline" size="sm" onClick={handleReset}>
-            <RotateCcw className="w-4 h-4 mr-1" />
-            Reset {MODE_LABELS[currentMode]}
-          </Button>
-          <Button variant="ghost" size="sm" onClick={handleResetAll}>
-            Reset wszystko
-          </Button>
-          {selectedVertexIndex !== null && (
-            <Button variant="destructive" size="sm" onClick={handleDeleteVertex}>
-              <Trash2 className="w-4 h-4 mr-1" />
-              Usuń punkt
+            <Button variant="ghost" size="sm" onClick={handleResetAll}>
+              Reset wszystko
             </Button>
-          )}
+            {selectedVertexIndex !== null && (
+              <Button variant="destructive" size="sm" onClick={handleDeleteVertex}>
+                <Trash2 className="w-4 h-4 mr-1" />
+                Usuń punkt
+              </Button>
+            )}
+          </div>
         </div>
+        {isDrawing ? (
+          <div className="flex items-center gap-2 text-sm" style={{ color: colors.stroke }}>
+            <Plus className="w-4 h-4" />
+            <span>Kliknij, aby dodać punkty {MODE_LABELS[currentMode]}. Kliknij pierwszy punkt, aby zamknąć.</span>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2 text-sm" style={{ color: colors.stroke }}>
+            <MousePointer className="w-4 h-4" />
+            <span>Przeciągnij punkty, aby edytować {MODE_LABELS[currentMode]}.</span>
+          </div>
+        )}
       </div>
 
 

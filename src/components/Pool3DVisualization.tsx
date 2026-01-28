@@ -1119,17 +1119,19 @@ function DimensionLines({ dimensions, display }: { dimensions: PoolDimensions; d
 
 // Custom stairs mesh (from drawn vertices) - uses actual polygon shape
 // Supports 8 rotation angles: 0, 45, 90, 135, 180, 225, 270, 315 degrees
-function CustomStairsMesh({ vertices, depth, poolVertices, rotation = 0, showDimensions = true }: { 
+function CustomStairsMesh({ vertices, depth, poolVertices, rotation = 0, showDimensions = true, stairsConfig }: { 
   vertices: CustomPoolVertex[]; 
   depth: number;
   poolVertices: CustomPoolVertex[];
   rotation?: number; // 0, 45, 90, 135, 180, 225, 270, 315 degrees
   showDimensions?: boolean;
+  stairsConfig?: StairsConfig;
 }) {
-  // Step dimensions: 30cm depth (going into pool), 20cm height (max per building code)
-  const stepHeight = 0.20;
-  const stepDepth = 0.30;
-  const stepCount = Math.ceil(depth / stepHeight);
+  // Use stairs config values if provided, otherwise fall back to defaults
+  // Calculate step height based on formula: riserHeight = poolDepth / (stepCount + 1)
+  const configStepCount = stairsConfig?.stepCount || 4;
+  const stepCount = configStepCount;
+  const stepHeight = depth / (stepCount + 1);
   
   const stepTopMaterial = useMemo(() => 
     new THREE.MeshStandardMaterial({ 
@@ -1768,6 +1770,7 @@ function Scene({ dimensions, calculations: _calculations, showFoilLayout, rollWi
               poolVertices={dimensions.customVertices || []}
               rotation={dimensions.customStairsRotations?.[index] || 0}
               showDimensions={dimensionDisplay === 'all' || dimensionDisplay === 'stairs'}
+              stairsConfig={dimensions.stairs}
             />
           )
         ))}
