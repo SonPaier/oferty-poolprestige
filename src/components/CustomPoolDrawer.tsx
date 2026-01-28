@@ -588,6 +588,9 @@ export function CustomPoolDrawer({
     canvas.renderAll();
   }, [poolVertices, stairsVertices, wadingPoolVertices, currentMode, drawPolygonLayer, stairsRotation, drawStairsArrow]);
 
+  // Track canvas initialization version to force effect re-runs
+  const [canvasVersion, setCanvasVersion] = useState(0);
+
   // Initialize canvas and reinitialize when grid size changes
   useEffect(() => {
     if (!canvasRef.current) return;
@@ -595,6 +598,7 @@ export function CustomPoolDrawer({
     // Dispose previous canvas if exists
     if (fabricRef.current) {
       fabricRef.current.dispose();
+      fabricRef.current = null;
     }
 
     const canvas = new FabricCanvas(canvasRef.current, {
@@ -607,13 +611,30 @@ export function CustomPoolDrawer({
     fabricRef.current = canvas;
     drawGrid(canvas);
     
-    // Draw initial shapes
-    redrawAllShapes(canvas);
+    // Draw initial shapes if we have pool vertices
+    if (poolVertices.length > 0) {
+      drawPolygonLayer(canvas, poolVertices, 'pool', currentMode === 'pool');
+    }
+    if (stairsVertices.length > 0) {
+      drawPolygonLayer(canvas, stairsVertices, 'stairs', currentMode === 'stairs');
+      if (stairsVertices.length >= 3) {
+        drawStairsArrow(canvas, stairsVertices, stairsRotation);
+      }
+    }
+    if (wadingPoolVertices.length > 0) {
+      drawPolygonLayer(canvas, wadingPoolVertices, 'wadingPool', currentMode === 'wadingPool');
+    }
+    canvas.renderAll();
+    
+    // Increment version to force event handler re-attachment
+    setCanvasVersion(v => v + 1);
 
     return () => {
       canvas.dispose();
     };
-  }, [canvasWidth, canvasHeight, drawGrid, redrawAllShapes]);
+  // Only reinitialize on grid dimension changes
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canvasWidth, canvasHeight]);
 
   // Redraw when vertices or mode changes (but NOT during dragging)
   useEffect(() => {
@@ -694,7 +715,9 @@ export function CustomPoolDrawer({
     return () => {
       canvas.off('mouse:down', handleMouseDown);
     };
-  }, [isDrawing, currentMode, getCurrentVertices, setCurrentVertices, canvasToMeters, metersToCanvas, snapToGrid]);
+  // Include canvasVersion to re-attach handlers after canvas reinitialize
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isDrawing, currentMode, getCurrentVertices, setCurrentVertices, canvasToMeters, metersToCanvas, snapToGrid, canvasVersion]);
 
   // Handle vertex selection and dragging
   useEffect(() => {
@@ -790,7 +813,9 @@ export function CustomPoolDrawer({
       canvas.off('selection:updated', handleSelection);
       canvas.off('selection:cleared', handleSelectionCleared);
     };
-  }, [isDrawing, currentMode, canvasToMeters, snapToGrid]);
+  // Include canvasVersion to re-attach handlers after canvas reinitialize
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isDrawing, currentMode, canvasToMeters, snapToGrid, canvasVersion]);
 
   const handleReset = () => {
     setCurrentVertices([]);
