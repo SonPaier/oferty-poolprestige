@@ -1,7 +1,9 @@
-import { useMemo } from 'react';
+import { useMemo, useState, useCallback, useRef, useEffect } from 'react';
 import { PoolDimensions, CustomPoolVertex, getCornerLabel } from '@/types/configurator';
 import { DimensionDisplay } from '@/components/Pool3DVisualization';
 import { getStairsRenderData, StairsPath2D } from '@/components/pool/StairsPath2D';
+import { ZoomIn, ZoomOut, RotateCcw } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 
 interface Pool2DPreviewProps {
   dimensions: PoolDimensions;
@@ -151,6 +153,65 @@ function transformCustomVertices(
 export default function Pool2DPreview({ dimensions, height = 300, dimensionDisplay = 'pool' }: Pool2DPreviewProps) {
   const poolPoints = useMemo(() => getPoolPoints(dimensions), [dimensions]);
   
+  // Zoom state
+  const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  const svgRef = useRef<SVGSVGElement>(null);
+  
+  // Reset zoom/pan when dimensions change significantly
+  useEffect(() => {
+    setZoom(1);
+    setPan({ x: 0, y: 0 });
+  }, [dimensions.shape, dimensions.length, dimensions.width]);
+  
+  const handleZoomIn = useCallback(() => {
+    setZoom(prev => Math.min(prev * 1.3, 5));
+  }, []);
+  
+  const handleZoomOut = useCallback(() => {
+    setZoom(prev => Math.max(prev / 1.3, 0.5));
+  }, []);
+  
+  const handleReset = useCallback(() => {
+    setZoom(1);
+    setPan({ x: 0, y: 0 });
+  }, []);
+  
+  const handleWheel = useCallback((e: React.WheelEvent) => {
+    e.preventDefault();
+    if (e.deltaY < 0) {
+      setZoom(prev => Math.min(prev * 1.1, 5));
+    } else {
+      setZoom(prev => Math.max(prev / 1.1, 0.5));
+    }
+  }, []);
+  
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    if (e.button === 0) { // Left click
+      setIsDragging(true);
+      setDragStart({ x: e.clientX - pan.x, y: e.clientY - pan.y });
+    }
+  }, [pan]);
+  
+  const handleMouseMove = useCallback((e: React.MouseEvent) => {
+    if (isDragging) {
+      setPan({
+        x: e.clientX - dragStart.x,
+        y: e.clientY - dragStart.y
+      });
+    }
+  }, [isDragging, dragStart]);
+  
+  const handleMouseUp = useCallback(() => {
+    setIsDragging(false);
+  }, []);
+  
+  const handleMouseLeave = useCallback(() => {
+    setIsDragging(false);
+  }, []);
+  
   // Get full stairs data including step lines
   const stairsData = useMemo(() => {
     if (dimensions.shape === 'nieregularny' && dimensions.customStairsVertices?.[0]) {
@@ -246,12 +307,22 @@ export default function Pool2DPreview({ dimensions, height = 300, dimensionDispl
   return (
     <div 
       className="w-full rounded-lg overflow-hidden bg-[#a8c8a0] relative"
-      style={{ height }}
+      style={{ height, cursor: isDragging ? 'grabbing' : 'grab' }}
+      onWheel={handleWheel}
+      onMouseDown={handleMouseDown}
+      onMouseMove={handleMouseMove}
+      onMouseUp={handleMouseUp}
+      onMouseLeave={handleMouseLeave}
     >
       <svg
+        ref={svgRef}
         viewBox={viewBox}
         className="w-full h-full"
         preserveAspectRatio="xMidYMid meet"
+        style={{ 
+          transform: `scale(${zoom}) translate(${pan.x / zoom}px, ${pan.y / zoom}px)`,
+          transformOrigin: 'center center'
+        }}
       >
         {/* Grid pattern */}
         <defs>
@@ -517,29 +588,40 @@ export default function Pool2DPreview({ dimensions, height = 300, dimensionDispl
         </defs>
       </svg>
       
-      {/* Legend */}
-      <div className="absolute bottom-2 left-2 bg-white/90 rounded p-2 text-xs space-y-1">
-        <div className="flex items-center gap-2">
-          <div className="w-4 h-3 bg-[#5b9bd5] border border-[#0c4a6e]" />
-          <span>Basen</span>
-        </div>
-        {stairsPath && (
-          <div className="flex items-center gap-2">
-            <div className="w-4 h-3 bg-white border border-[#f97316] border-dashed" />
-            <span>Schody</span>
-          </div>
-        )}
-        {wadingPoolPath && (
-          <div className="flex items-center gap-2">
-            <div className="w-4 h-3 bg-[#7ec8e3] border border-[#10b981] border-dashed" />
-            <span>Brodzik</span>
-          </div>
-        )}
+      {/* Zoom controls */}
+      <div className="absolute bottom-2 right-2 flex gap-1">
+        <Button
+          variant="secondary"
+          size="icon"
+          className="h-7 w-7 bg-white/90 hover:bg-white"
+          onClick={handleZoomIn}
+          title="Powiększ"
+        >
+          <ZoomIn className="h-4 w-4" />
+        </Button>
+        <Button
+          variant="secondary"
+          size="icon"
+          className="h-7 w-7 bg-white/90 hover:bg-white"
+          onClick={handleZoomOut}
+          title="Pomniejsz"
+        >
+          <ZoomOut className="h-4 w-4" />
+        </Button>
+        <Button
+          variant="secondary"
+          size="icon"
+          className="h-7 w-7 bg-white/90 hover:bg-white"
+          onClick={handleReset}
+          title="Reset"
+        >
+          <RotateCcw className="h-4 w-4" />
+        </Button>
       </div>
       
-      {/* Title */}
+      {/* Title & zoom info */}
       <div className="absolute top-2 left-2 bg-white/90 rounded px-2 py-1 text-xs font-medium">
-        Widok z góry (2D)
+        Widok z góry (2D) {zoom !== 1 && `• ${Math.round(zoom * 100)}%`}
       </div>
     </div>
   );

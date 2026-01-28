@@ -909,21 +909,6 @@ export function CustomPoolDrawer({
         </div>
       </div>
 
-      {/* Legend */}
-      <div className="flex gap-4 text-xs">
-        <div className="flex items-center gap-1">
-          <div className="w-3 h-3 rounded" style={{ backgroundColor: MODE_COLORS.pool.stroke }} />
-          <span>Basen (A, B, C...)</span>
-        </div>
-        <div className="flex items-center gap-1">
-          <div className="w-3 h-3 rounded" style={{ backgroundColor: MODE_COLORS.stairs.stroke }} />
-          <span>Schody</span>
-        </div>
-        <div className="flex items-center gap-1">
-          <div className="w-3 h-3 rounded" style={{ backgroundColor: MODE_COLORS.wadingPool.stroke }} />
-          <span>Brodzik</span>
-        </div>
-      </div>
 
       <div className="border border-border rounded-lg overflow-auto bg-white max-h-[500px]">
         <canvas ref={canvasRef} />
