@@ -96,7 +96,7 @@ const PoolShapeIcon = ({ shape, isSelected }: { shape: PoolShape; isSelected: bo
   }
 };
 
-// SVG Stairs Shape Icons for the 4 stair types
+// SVG Stairs Shape Icons for the 2 stair types
 const StairsShapeIcon = ({ shapeType, isSelected }: { shapeType: StairsShapeType; isSelected: boolean }) => {
   const strokeColor = isSelected ? 'hsl(190 80% 42%)' : 'currentColor';
   const fillColor = isSelected ? 'hsl(190 80% 42% / 0.1)' : 'transparent';
@@ -118,22 +118,6 @@ const StairsShapeIcon = ({ shapeType, isSelected }: { shapeType: StairsShapeType
           <line x1="12" y1="4" x2="4" y2="10" stroke={strokeColor} strokeWidth="1" strokeDasharray="2 1"/>
           <line x1="20" y1="4" x2="4" y2="14" stroke={strokeColor} strokeWidth="1" strokeDasharray="2 1"/>
           <line x1="28" y1="4" x2="4" y2="18" stroke={strokeColor} strokeWidth="1" strokeDasharray="2 1"/>
-        </svg>
-      );
-    case 'l-shape':
-      return (
-        <svg viewBox="0 0 40 24" className="w-10 h-6">
-          <path d="M4 4 L20 4 L20 10 L10 10 L10 20 L4 20 Z" fill={fillColor} stroke={strokeColor} strokeWidth="1.5"/>
-          <line x1="4" y1="8" x2="20" y2="8" stroke={strokeColor} strokeWidth="1" strokeDasharray="2 1"/>
-          <line x1="4" y1="14" x2="10" y2="14" stroke={strokeColor} strokeWidth="1" strokeDasharray="2 1"/>
-        </svg>
-      );
-    case 'triangle':
-      return (
-        <svg viewBox="0 0 40 24" className="w-10 h-6">
-          <path d="M4 20 L20 4 L36 16 Z" fill={fillColor} stroke={strokeColor} strokeWidth="1.5"/>
-          <line x1="10" y1="15" x2="26" y2="10" stroke={strokeColor} strokeWidth="1" strokeDasharray="2 1"/>
-          <line x1="13" y1="17" x2="31" y2="13" stroke={strokeColor} strokeWidth="1" strokeDasharray="2 1"/>
         </svg>
       );
     default:
@@ -719,11 +703,11 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
                     </>
                   ) : (
                     <>
-                      {/* Shape type selection - 4 buttons */}
+                      {/* Shape type selection - 2 buttons */}
                       <div>
                         <Label className="text-sm font-medium mb-2 block">Typ schodów</Label>
                         <div className="grid grid-cols-2 gap-2">
-                          {(['rectangular', 'diagonal-45', 'l-shape', 'triangle'] as StairsShapeType[]).map((type) => (
+                          {(['rectangular', 'diagonal-45'] as StairsShapeType[]).map((type) => (
                             <button
                               key={type}
                               onClick={() => updateStairs({ shapeType: type })}
@@ -771,94 +755,6 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
                         </div>
                       </div>
 
-                      {/* Shape-specific parameters */}
-                      {(dimensions.stairs.shapeType || 'rectangular') === 'l-shape' && (
-                        <div className="grid grid-cols-3 gap-2">
-                          <div>
-                            <Label htmlFor="legA" className="text-xs">Ramię A (m)</Label>
-                            <Input
-                              id="legA"
-                              type="number"
-                              step="0.1"
-                              min="0.5"
-                              max="5"
-                              value={dimensions.stairs.legA || 1.5}
-                              onChange={(e) => updateStairs({ legA: parseFloat(e.target.value) || 1.5 })}
-                              className="input-field"
-                            />
-                          </div>
-                          <div>
-                            <Label htmlFor="legB" className="text-xs">Ramię B (m)</Label>
-                            <Input
-                              id="legB"
-                              type="number"
-                              step="0.1"
-                              min="0.5"
-                              max="5"
-                              value={dimensions.stairs.legB || 1.0}
-                              onChange={(e) => updateStairs({ legB: parseFloat(e.target.value) || 1.0 })}
-                              className="input-field"
-                            />
-                          </div>
-                          <div>
-                            <Label htmlFor="legWidth" className="text-xs">Szerokość (m)</Label>
-                            <Input
-                              id="legWidth"
-                              type="number"
-                              step="0.1"
-                              min="0.3"
-                              max="2"
-                              value={dimensions.stairs.legWidth || 0.6}
-                              onChange={(e) => updateStairs({ legWidth: parseFloat(e.target.value) || 0.6 })}
-                              className="input-field"
-                            />
-                          </div>
-                        </div>
-                      )}
-
-                      {(dimensions.stairs.shapeType || 'rectangular') === 'triangle' && (
-                        <div className="grid grid-cols-3 gap-2">
-                          <div>
-                            <Label htmlFor="sideA" className="text-xs">Bok A (m)</Label>
-                            <Input
-                              id="sideA"
-                              type="number"
-                              step="0.1"
-                              min="0.5"
-                              max="5"
-                              value={dimensions.stairs.sideA || 1.5}
-                              onChange={(e) => updateStairs({ sideA: parseFloat(e.target.value) || 1.5 })}
-                              className="input-field"
-                            />
-                          </div>
-                          <div>
-                            <Label htmlFor="sideB" className="text-xs">Bok B (m)</Label>
-                            <Input
-                              id="sideB"
-                              type="number"
-                              step="0.1"
-                              min="0.5"
-                              max="5"
-                              value={dimensions.stairs.sideB || 1.2}
-                              onChange={(e) => updateStairs({ sideB: parseFloat(e.target.value) || 1.2 })}
-                              className="input-field"
-                            />
-                          </div>
-                          <div>
-                            <Label htmlFor="sideC" className="text-xs">Bok C (m)</Label>
-                            <Input
-                              id="sideC"
-                              type="number"
-                              step="0.1"
-                              min="0.5"
-                              max="5"
-                              value={dimensions.stairs.sideC || 1.0}
-                              onChange={(e) => updateStairs({ sideC: parseFloat(e.target.value) || 1.0 })}
-                              className="input-field"
-                            />
-                          </div>
-                        </div>
-                      )}
                     </>
                   )}
                   

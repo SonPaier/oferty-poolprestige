@@ -3,8 +3,6 @@ import {
   generateStairsGeometry, 
   getPoolCornerPosition, 
   getInwardDirections,
-  calculateLShapeStepLines,
-  calculateTriangleStepLines,
   StepLine 
 } from '@/lib/stairsShapeGenerator';
 
