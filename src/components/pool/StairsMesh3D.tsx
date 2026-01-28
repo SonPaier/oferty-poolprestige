@@ -240,16 +240,18 @@ function DiagonalStairs3D({
     const [v0, v1, v2] = vertices;
     const stepsArr: JSX.Element[] = [];
     
-    // Create triangle shape for each step (terrace style)
+    // v0 = pool corner, v1 and v2 = points along pool walls
+    // Steps form concentric triangles, largest at top (near pool edge), smallest at bottom
     for (let i = 0; i < stepCount; i++) {
       const stepTop = -(i + 1) * stepHeight;
-      const progress = (i + 1) / stepCount;
+      // Scale: 1 = full size (first step), decreasing as we go deeper
+      const scale = 1 - (i / stepCount);
       
-      // Scale triangle from corner
-      const scale = progress;
+      if (scale <= 0.05) continue; // Skip tiny steps
+      
       const shape = new THREE.Shape();
       
-      // Relative positions from v0
+      // Triangle from corner, scaled by progress
       const dx1 = (v1.x - v0.x) * scale;
       const dy1 = (v1.y - v0.y) * scale;
       const dx2 = (v2.x - v0.x) * scale;
@@ -314,36 +316,75 @@ function LShapeStairs3D({
     
     const stepsArr: JSX.Element[] = [];
     
-    // Create L-shaped extrusion for each step level
-    for (let i = 0; i < stepCount; i++) {
-      const stepTop = -(i + 1) * stepHeight;
-      const stepBottom = -poolDepth;
-      const thisStepHeight = Math.abs(stepTop - stepBottom);
-      const posZ = (stepTop + stepBottom) / 2;
+    // Split steps between both legs proportionally
+    const stepsInLegA = Math.ceil(stepCount * (legA / (legA + legB)));
+    const stepsInLegB = stepCount - stepsInLegA;
+    
+    // Create L-shaped base that extends full depth
+    const baseLShape = new THREE.Shape();
+    baseLShape.moveTo(0, 0);
+    baseLShape.lineTo(dx1 * legA, dy1 * legA);
+    baseLShape.lineTo(dx1 * legA + dx2 * legWidth, dy1 * legA + dy2 * legWidth);
+    baseLShape.lineTo(dx1 * legWidth + dx2 * legWidth, dy1 * legWidth + dy2 * legWidth);
+    baseLShape.lineTo(dx1 * legWidth + dx2 * legB, dy1 * legWidth + dy2 * legB);
+    baseLShape.lineTo(dx2 * legB, dy2 * legB);
+    baseLShape.closePath();
+    
+    // Full depth L-shaped base
+    stepsArr.push(
+      <group key="base" position={[cornerPos.x, cornerPos.y, -poolDepth / 2]}>
+        <mesh material={stepFrontMaterial}>
+          <extrudeGeometry args={[baseLShape, { depth: poolDepth, bevelEnabled: false }]} />
+        </mesh>
+      </group>
+    );
+    
+    // Step treads for Leg A - rectangular strips perpendicular to leg direction
+    const stepIntervalA = legA / (stepsInLegA + 1);
+    for (let i = 1; i <= stepsInLegA; i++) {
+      const stepTop = -(i / (stepsInLegA + stepsInLegB + 1)) * poolDepth;
+      const progress = i * stepIntervalA;
       
-      // Scale factor for this step
-      const scale = (i + 1) / stepCount;
-      const scaledLegA = legA * scale;
-      const scaledLegB = legB * scale;
-      const scaledWidth = legWidth * scale;
+      // Create a thin rectangular tread strip
+      const treadShape = new THREE.Shape();
+      treadShape.moveTo(0, 0);
+      treadShape.lineTo(dx1 * stepIntervalA * 0.9, dy1 * stepIntervalA * 0.9);
+      treadShape.lineTo(dx1 * stepIntervalA * 0.9 + dx2 * legWidth, dy1 * stepIntervalA * 0.9 + dy2 * legWidth);
+      treadShape.lineTo(dx2 * legWidth, dy2 * legWidth);
+      treadShape.closePath();
       
-      // Create L-shape
-      const shape = new THREE.Shape();
-      shape.moveTo(0, 0);
-      shape.lineTo(dx1 * scaledLegA, dy1 * scaledLegA);
-      shape.lineTo(dx1 * scaledLegA + dx2 * scaledWidth, dy1 * scaledLegA + dy2 * scaledWidth);
-      shape.lineTo(dx1 * scaledWidth + dx2 * scaledWidth, dy1 * scaledWidth + dy2 * scaledWidth);
-      shape.lineTo(dx1 * scaledWidth + dx2 * scaledLegB, dy1 * scaledWidth + dy2 * scaledLegB);
-      shape.lineTo(dx2 * scaledLegB, dy2 * scaledLegB);
-      shape.closePath();
+      const posX = cornerPos.x + dx1 * (progress - stepIntervalA * 0.45);
+      const posY = cornerPos.y + dy1 * (progress - stepIntervalA * 0.45);
       
       stepsArr.push(
-        <group key={i} position={[cornerPos.x, cornerPos.y, posZ]}>
-          <mesh material={stepFrontMaterial}>
-            <extrudeGeometry args={[shape, { depth: thisStepHeight, bevelEnabled: false }]} />
+        <group key={`legA-${i}`} position={[posX, posY, stepTop]}>
+          <mesh position={[0, 0, 0.01]} material={stepTopMaterial}>
+            <shapeGeometry args={[treadShape]} />
           </mesh>
-          <mesh position={[0, 0, thisStepHeight / 2 + 0.01]} material={stepTopMaterial}>
-            <shapeGeometry args={[shape]} />
+        </group>
+      );
+    }
+    
+    // Step treads for Leg B
+    const stepIntervalB = legB / (stepsInLegB + 1);
+    for (let i = 1; i <= stepsInLegB; i++) {
+      const stepTop = -((stepsInLegA + i) / (stepsInLegA + stepsInLegB + 1)) * poolDepth;
+      const progress = i * stepIntervalB;
+      
+      const treadShape = new THREE.Shape();
+      treadShape.moveTo(0, 0);
+      treadShape.lineTo(dx2 * stepIntervalB * 0.9, dy2 * stepIntervalB * 0.9);
+      treadShape.lineTo(dx2 * stepIntervalB * 0.9 + dx1 * legWidth, dy2 * stepIntervalB * 0.9 + dy1 * legWidth);
+      treadShape.lineTo(dx1 * legWidth, dy1 * legWidth);
+      treadShape.closePath();
+      
+      const posX = cornerPos.x + dx2 * (progress - stepIntervalB * 0.45);
+      const posY = cornerPos.y + dy2 * (progress - stepIntervalB * 0.45);
+      
+      stepsArr.push(
+        <group key={`legB-${i}`} position={[posX, posY, stepTop]}>
+          <mesh position={[0, 0, 0.01]} material={stepTopMaterial}>
+            <shapeGeometry args={[treadShape]} />
           </mesh>
         </group>
       );

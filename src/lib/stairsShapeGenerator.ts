@@ -96,6 +96,8 @@ export function generateRectangularStairs(
 
 /**
  * Generate diagonal 45° stairs geometry (isosceles right triangle)
+ * Two sides lie along the pool walls, the hypotenuse faces the pool interior.
+ * Steps run parallel to the hypotenuse (the diagonal line).
  */
 export function generateDiagonal45Stairs(
   cornerPos: Point,
@@ -106,23 +108,25 @@ export function generateDiagonal45Stairs(
   const { dx1, dy1, dx2, dy2 } = getInwardDirections(cornerIndex);
   const diagonalSize = stepCount * stepDepth;
   
+  // Triangle vertices: corner + two points along the pool walls
   const vertices: Point[] = [
-    { x: cornerPos.x, y: cornerPos.y },
-    { x: cornerPos.x + dx1 * diagonalSize, y: cornerPos.y + dy1 * diagonalSize },
-    { x: cornerPos.x + dx2 * diagonalSize, y: cornerPos.y + dy2 * diagonalSize },
+    { x: cornerPos.x, y: cornerPos.y },  // Pool corner
+    { x: cornerPos.x + dx1 * diagonalSize, y: cornerPos.y + dy1 * diagonalSize },  // Along wall 1
+    { x: cornerPos.x + dx2 * diagonalSize, y: cornerPos.y + dy2 * diagonalSize },  // Along wall 2
   ];
   
-  // Diagonal step lines
+  // Step lines parallel to hypotenuse (from wall 1 vertex toward wall 2 vertex)
+  // Each step is at a certain distance from the corner
   const stepLines: StepLine[] = [];
   for (let i = 1; i < stepCount; i++) {
     const progress = i / stepCount;
-    const lineLen = diagonalSize * (1 - progress);
-    stepLines.push({
-      x1: cornerPos.x + dx1 * lineLen,
-      y1: cornerPos.y + dy1 * lineLen,
-      x2: cornerPos.x + dx2 * lineLen,
-      y2: cornerPos.y + dy2 * lineLen,
-    });
+    // Points along each wall edge at progress distance from corner
+    const p1x = cornerPos.x + dx1 * diagonalSize * progress;
+    const p1y = cornerPos.y + dy1 * diagonalSize * progress;
+    const p2x = cornerPos.x + dx2 * diagonalSize * progress;
+    const p2y = cornerPos.y + dy2 * diagonalSize * progress;
+    
+    stepLines.push({ x1: p1x, y1: p1y, x2: p2x, y2: p2y });
   }
   
   return { vertices, stepLines, totalPathLength: diagonalSize * Math.SQRT2 };
@@ -131,12 +135,12 @@ export function generateDiagonal45Stairs(
 /**
  * Generate L-shape stairs geometry
  * 
- * L-shape consists of:
- * - Leg A (first arm from corner)
- * - 45° triangular transition corner
- * - Leg B (second arm perpendicular to A)
+ * L-shape consists of two perpendicular arms meeting at the pool corner.
+ * Both arms lie along the pool walls, extending inward.
  * 
- * Steps run perpendicular to the short side of each arm
+ * For corner C (front-right):
+ * - Leg A extends along the top wall (toward D)
+ * - Leg B extends along the right wall (toward B)
  */
 export function generateLShapeStairs(
   cornerPos: Point,
@@ -148,24 +152,27 @@ export function generateLShapeStairs(
   const { dx1, dy1, dx2, dy2 } = getInwardDirections(cornerIndex);
   
   // L-shape vertices (6 points forming the L)
-  // Starting from corner, going along legA, then corner transition, then legB
+  // The L has:
+  // - Leg A extending along direction 1 (dx1, dy1) from the corner
+  // - Leg B extending along direction 2 (dx2, dy2) from the corner
+  // Both legs have width "legWidth" extending INTO the pool
   const vertices: Point[] = [
     // Start at pool corner
     { x: cornerPos.x, y: cornerPos.y },
-    // Along first wall (legA direction)
+    // End of Leg A along the wall
     { x: cornerPos.x + dx1 * legA, y: cornerPos.y + dy1 * legA },
-    // Inner corner of L (legA end, legWidth deep)
+    // Inner edge of Leg A (inward by legWidth)
     { x: cornerPos.x + dx1 * legA + dx2 * legWidth, y: cornerPos.y + dy1 * legA + dy2 * legWidth },
-    // Transition point (where legB starts)
+    // Inner corner junction point
     { x: cornerPos.x + dx1 * legWidth + dx2 * legWidth, y: cornerPos.y + dy1 * legWidth + dy2 * legWidth },
-    // End of legB (along second wall)
+    // Inner edge of Leg B
     { x: cornerPos.x + dx1 * legWidth + dx2 * legB, y: cornerPos.y + dy1 * legWidth + dy2 * legB },
-    // Back to start along legB outer edge
+    // End of Leg B along the wall
     { x: cornerPos.x + dx2 * legB, y: cornerPos.y + dy2 * legB },
   ];
   
   // Total path length for step distribution
-  const totalPathLength = legA + legWidth + legB; // Approximate path along centerline
+  const totalPathLength = legA + legB;
   
   return { vertices, stepLines: [], totalPathLength };
 }
@@ -185,54 +192,34 @@ export function calculateLShapeStepLines(
   const { dx1, dy1, dx2, dy2 } = getInwardDirections(cornerIndex);
   const stepLines: StepLine[] = [];
   
-  // Total path length (along centerline through both arms and corner)
-  const cornerDiagonal = legWidth * Math.SQRT2;
-  const totalPath = (legA - legWidth) + cornerDiagonal + (legB - legWidth);
-  const stepInterval = totalPath / stepCount;
+  // Steps in Leg A - perpendicular to dx1/dy1 direction
+  // Steps go from outer wall edge to inner edge (legWidth deep)
+  const stepsInLegA = Math.ceil(stepCount * (legA / (legA + legB)));
+  const stepsInLegB = stepCount - stepsInLegA;
   
-  let accumulatedDistance = 0;
+  const stepIntervalA = legA / (stepsInLegA + 1);
+  const stepIntervalB = legB / (stepsInLegB + 1);
   
-  for (let i = 1; i < stepCount; i++) {
-    const targetDistance = i * stepInterval;
-    
-    // Determine which segment we're in
-    const legALength = legA - legWidth;
-    const cornerLength = cornerDiagonal;
-    
-    if (targetDistance <= legALength) {
-      // In Leg A - steps perpendicular to dx1/dy1 direction
-      const progress = targetDistance;
-      stepLines.push({
-        x1: cornerPos.x + dx1 * progress,
-        y1: cornerPos.y + dy1 * progress,
-        x2: cornerPos.x + dx1 * progress + dx2 * legWidth,
-        y2: cornerPos.y + dy1 * progress + dy2 * legWidth,
-      });
-    } else if (targetDistance <= legALength + cornerLength) {
-      // In corner transition - diagonal step line
-      const cornerProgress = (targetDistance - legALength) / cornerLength;
-      const startX = cornerPos.x + dx1 * legALength + dx1 * legWidth * cornerProgress;
-      const startY = cornerPos.y + dy1 * legALength + dy1 * legWidth * cornerProgress;
-      const endX = startX + dx2 * legWidth * (1 - cornerProgress);
-      const endY = startY + dy2 * legWidth * (1 - cornerProgress);
-      
-      // Diagonal line in the corner
-      stepLines.push({
-        x1: startX,
-        y1: startY,
-        x2: endX,
-        y2: endY,
-      });
-    } else {
-      // In Leg B - steps perpendicular to dx2/dy2 direction
-      const progress = legWidth + (targetDistance - legALength - cornerLength);
-      stepLines.push({
-        x1: cornerPos.x + dx1 * legWidth + dx2 * progress,
-        y1: cornerPos.y + dy1 * legWidth + dy2 * progress,
-        x2: cornerPos.x + dx2 * progress,
-        y2: cornerPos.y + dy2 * progress,
-      });
-    }
+  // Generate step lines for Leg A
+  for (let i = 1; i <= stepsInLegA; i++) {
+    const progress = i * stepIntervalA;
+    stepLines.push({
+      x1: cornerPos.x + dx1 * progress,
+      y1: cornerPos.y + dy1 * progress,
+      x2: cornerPos.x + dx1 * progress + dx2 * legWidth,
+      y2: cornerPos.y + dy1 * progress + dy2 * legWidth,
+    });
+  }
+  
+  // Generate step lines for Leg B
+  for (let i = 1; i <= stepsInLegB; i++) {
+    const progress = i * stepIntervalB;
+    stepLines.push({
+      x1: cornerPos.x + dx2 * progress,
+      y1: cornerPos.y + dy2 * progress,
+      x2: cornerPos.x + dx2 * progress + dx1 * legWidth,
+      y2: cornerPos.y + dy2 * progress + dy1 * legWidth,
+    });
   }
   
   return stepLines;
