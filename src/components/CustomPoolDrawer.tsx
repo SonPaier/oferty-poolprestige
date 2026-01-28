@@ -3,7 +3,7 @@ import { Canvas as FabricCanvas, Circle, Line, Polygon, Text, FabricObject } fro
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Trash2, RotateCcw, Check, MousePointer, Plus, Grid3X3, Footprints, Baby, Waves, RotateCw, Calculator } from 'lucide-react';
+import { Trash2, RotateCcw, Check, MousePointer, Plus, Grid3X3, Footprints, Baby, Waves, RotateCw, Calculator, Triangle } from 'lucide-react';
 import { toast } from 'sonner';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { getCornerLabel, stairsAngleLabels, StairsConfig } from '@/types/configurator';
@@ -79,6 +79,9 @@ export function CustomPoolDrawer({
   const [stairsWidth, setStairsWidth] = useState<number>(initialStairsConfig?.width as number || 1.5);
   const [stairsStepCount, setStairsStepCount] = useState<number>(initialStairsConfig?.stepCount || 4);
   const [stairsStepDepth, setStairsStepDepth] = useState<number>(initialStairsConfig?.stepDepth || 0.30);
+  const [stairsType, setStairsType] = useState<'rectangular' | 'diagonal'>(
+    initialStairsConfig?.placement === 'diagonal' ? 'diagonal' : 'rectangular'
+  );
   
   // Generate initial vertices from length/width if provided and no custom vertices
   const generateInitialRectangle = useCallback((): Point[] => {
@@ -128,16 +131,48 @@ export function CustomPoolDrawer({
     }
   }, [currentMode]);
 
-  // Generate stairs rectangle from parameters (width, stepCount, stepDepth)
-  // Creates a rectangle at the centroid of existing stairs vertices or at pool corner
+  // Generate stairs shape from parameters (width, stepCount, stepDepth)
+  // Creates a rectangle or triangle at the centroid of existing stairs vertices or at pool corner
   const generateStairsFromParams = useCallback((
     width: number, 
     stepCount: number, 
     stepDepth: number,
+    type: 'rectangular' | 'diagonal',
     baseVertices?: Point[]
   ): Point[] => {
     const stairsLength = stepCount * stepDepth;
     
+    // For diagonal (45°) stairs, create a right triangle
+    // The legs are equal: size = stepCount * stepDepth
+    if (type === 'diagonal') {
+      const diagonalSize = stairsLength;
+      
+      // If we have existing vertices, use their bounding box corner
+      if (baseVertices && baseVertices.length >= 3) {
+        const minX = Math.min(...baseVertices.map(p => p.x));
+        const minY = Math.min(...baseVertices.map(p => p.y));
+        
+        return [
+          { x: minX, y: minY },
+          { x: minX + diagonalSize, y: minY },
+          { x: minX, y: minY + diagonalSize }
+        ];
+      }
+      
+      // Default: place at corner A of pool
+      if (poolVertices.length >= 3) {
+        const corner = poolVertices[0];
+        return [
+          { x: corner.x, y: corner.y },
+          { x: corner.x + diagonalSize, y: corner.y },
+          { x: corner.x, y: corner.y + diagonalSize }
+        ];
+      }
+      
+      return [];
+    }
+    
+    // Rectangular stairs
     // If we have existing vertices, use their centroid as anchor
     if (baseVertices && baseVertices.length >= 3) {
       const cx = baseVertices.reduce((sum, p) => sum + p.x, 0) / baseVertices.length;
@@ -166,26 +201,29 @@ export function CustomPoolDrawer({
     return [];
   }, [poolVertices]);
 
-  // Update stairs rectangle when parameters change
+  // Update stairs shape when parameters change
   const handleStairsParamsChange = useCallback((
     newWidth?: number,
     newStepCount?: number,
-    newStepDepth?: number
+    newStepDepth?: number,
+    newType?: 'rectangular' | 'diagonal'
   ) => {
     const w = newWidth ?? stairsWidth;
     const count = newStepCount ?? stairsStepCount;
     const depth = newStepDepth ?? stairsStepDepth;
+    const type = newType ?? stairsType;
     
     if (newWidth !== undefined) setStairsWidth(w);
     if (newStepCount !== undefined) setStairsStepCount(count);
     if (newStepDepth !== undefined) setStairsStepDepth(depth);
+    if (newType !== undefined) setStairsType(type);
     
-    // Regenerate stairs rectangle if we already have stairs drawn
+    // Regenerate stairs shape if we already have stairs drawn
     if (stairsVertices.length >= 3) {
-      const newVerts = generateStairsFromParams(w, count, depth, stairsVertices);
+      const newVerts = generateStairsFromParams(w, count, depth, type, stairsVertices);
       setStairsVertices(newVerts);
     }
-  }, [stairsWidth, stairsStepCount, stairsStepDepth, stairsVertices, generateStairsFromParams]);
+  }, [stairsWidth, stairsStepCount, stairsStepDepth, stairsType, stairsVertices, generateStairsFromParams]);
 
   // Calculate total stairs depth (how far they extend into the pool)
   const calculateTotalStairsDepth = useCallback(() => {
@@ -770,6 +808,7 @@ export function CustomPoolDrawer({
       stepCount: stairsStepCount,
       stepDepth: stairsStepDepth,
       angle: stairsRotation,
+      placement: stairsType === 'diagonal' ? 'diagonal' : 'corner',
     };
     
     onComplete(
@@ -893,24 +932,60 @@ export function CustomPoolDrawer({
       {/* Stairs parameters controls - visible when in stairs mode */}
       {currentMode === 'stairs' && (
         <div className="p-4 rounded-lg bg-orange-50 border border-orange-200">
-          <div className="flex items-center gap-2 mb-3">
-            <Calculator className="w-4 h-4 text-orange-600" />
-            <Label className="font-medium text-orange-800">Parametry schodów</Label>
-          </div>
-          <div className="grid grid-cols-3 gap-4">
-            <div>
-              <Label htmlFor="drawerStairsWidth" className="text-xs text-orange-700">Szerokość (m)</Label>
-              <Input
-                id="drawerStairsWidth"
-                type="number"
-                step="0.1"
-                min="0.5"
-                max="10"
-                value={stairsWidth}
-                onChange={(e) => handleStairsParamsChange(parseFloat(e.target.value) || 1.5, undefined, undefined)}
-                className="h-8 text-sm"
-              />
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <Calculator className="w-4 h-4 text-orange-600" />
+              <Label className="font-medium text-orange-800">Parametry schodów</Label>
             </div>
+            {/* Stairs type toggle */}
+            <div className="flex items-center gap-2">
+              <Label className="text-xs text-orange-700">Typ:</Label>
+              <div className="flex rounded-md border border-orange-300 overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => handleStairsParamsChange(undefined, undefined, undefined, 'rectangular')}
+                  className={`px-3 py-1 text-xs flex items-center gap-1 transition-colors ${
+                    stairsType === 'rectangular' 
+                      ? 'bg-orange-500 text-white' 
+                      : 'bg-white text-orange-700 hover:bg-orange-100'
+                  }`}
+                >
+                  <div className="w-3 h-3 border border-current" />
+                  Prostokąt
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleStairsParamsChange(undefined, undefined, undefined, 'diagonal')}
+                  className={`px-3 py-1 text-xs flex items-center gap-1 transition-colors ${
+                    stairsType === 'diagonal' 
+                      ? 'bg-orange-500 text-white' 
+                      : 'bg-white text-orange-700 hover:bg-orange-100'
+                  }`}
+                >
+                  <Triangle className="w-3 h-3" />
+                  45°
+                </button>
+              </div>
+            </div>
+          </div>
+          
+          <div className={`grid gap-4 ${stairsType === 'rectangular' ? 'grid-cols-3' : 'grid-cols-2'}`}>
+            {/* Width only for rectangular stairs */}
+            {stairsType === 'rectangular' && (
+              <div>
+                <Label htmlFor="drawerStairsWidth" className="text-xs text-orange-700">Szerokość (m)</Label>
+                <Input
+                  id="drawerStairsWidth"
+                  type="number"
+                  step="0.1"
+                  min="0.5"
+                  max="10"
+                  value={stairsWidth}
+                  onChange={(e) => handleStairsParamsChange(parseFloat(e.target.value) || 1.5, undefined, undefined, undefined)}
+                  className="h-8 text-sm"
+                />
+              </div>
+            )}
             <div>
               <Label htmlFor="drawerStepCount" className="text-xs text-orange-700">Liczba stopni</Label>
               <Input
@@ -920,7 +995,7 @@ export function CustomPoolDrawer({
                 min="2"
                 max="15"
                 value={stairsStepCount}
-                onChange={(e) => handleStairsParamsChange(undefined, parseInt(e.target.value) || 4, undefined)}
+                onChange={(e) => handleStairsParamsChange(undefined, parseInt(e.target.value) || 4, undefined, undefined)}
                 className="h-8 text-sm"
               />
             </div>
@@ -933,33 +1008,49 @@ export function CustomPoolDrawer({
                 min="20"
                 max="60"
                 value={Math.round(stairsStepDepth * 100)}
-                onChange={(e) => handleStairsParamsChange(undefined, undefined, (parseFloat(e.target.value) || 30) / 100)}
+                onChange={(e) => handleStairsParamsChange(undefined, undefined, (parseFloat(e.target.value) || 30) / 100, undefined)}
                 className="h-8 text-sm"
               />
             </div>
           </div>
+          
           <div className="mt-2 text-xs text-orange-600">
-            Długość schodów: {(calculateTotalStairsDepth() * 100).toFixed(0)} cm
-            {stairsVertices.length < 3 && (
-              <span className="ml-2">• Narysuj 4 punkty prostokąta lub zmień parametry aby wygenerować</span>
+            {stairsType === 'diagonal' ? (
+              <>
+                Rozmiar boku trójkąta: {(calculateTotalStairsDepth() * 100).toFixed(0)} cm
+                {stairsVertices.length < 3 && (
+                  <span className="ml-2">• Narysuj 3 punkty trójkąta lub wygeneruj automatycznie</span>
+                )}
+              </>
+            ) : (
+              <>
+                Długość schodów: {(calculateTotalStairsDepth() * 100).toFixed(0)} cm
+                {stairsVertices.length < 3 && (
+                  <span className="ml-2">• Narysuj 4 punkty prostokąta lub wygeneruj automatycznie</span>
+                )}
+              </>
             )}
           </div>
+          
           {stairsVertices.length < 3 && poolVertices.length >= 3 && (
             <Button 
               variant="outline" 
               size="sm" 
               className="mt-2 border-orange-300 text-orange-700 hover:bg-orange-100"
               onClick={() => {
-                const newVerts = generateStairsFromParams(stairsWidth, stairsStepCount, stairsStepDepth);
+                const newVerts = generateStairsFromParams(stairsWidth, stairsStepCount, stairsStepDepth, stairsType);
                 if (newVerts.length >= 3) {
                   setStairsVertices(newVerts);
                   setIsDrawing(false);
-                  toast.success('Schody wygenerowane - możesz je teraz przesuwać');
+                  toast.success(stairsType === 'diagonal' 
+                    ? 'Schody 45° wygenerowane - możesz je teraz przesuwać'
+                    : 'Schody wygenerowane - możesz je teraz przesuwać'
+                  );
                 }
               }}
             >
               <Plus className="w-3 h-3 mr-1" />
-              Generuj prostokąt schodów
+              {stairsType === 'diagonal' ? 'Generuj trójkąt schodów 45°' : 'Generuj prostokąt schodów'}
             </Button>
           )}
         </div>
