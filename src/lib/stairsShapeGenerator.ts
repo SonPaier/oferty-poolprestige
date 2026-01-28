@@ -176,7 +176,7 @@ export function generateStairsGeometry(
   width: number,
   stairs: StairsConfig,
   wadingPoolPosition?: Point,  // Optional: custom position for wading pool intersection points
-  wadingPoolConfig?: { cornerIndex: number; direction: 'along-length' | 'along-width' } // Wading pool configuration
+  wadingPoolConfig?: { cornerIndex: number; direction: 'along-length' | 'along-width'; isOnHorizontalWall?: boolean } // Wading pool configuration
 ): StairsGeometry | null {
   if (!stairs.enabled) return null;
   
@@ -201,11 +201,18 @@ export function generateStairsGeometry(
   // For wading pool intersection points (E/F), use special direction calculation
   if (cornerIndex >= 4 && wadingPoolConfig) {
     const isPointE = cornerIndex === 4;
+    // Determine if the intersection point is on a horizontal wall (back/front) based on wading pool config
+    // If isOnHorizontalWall is explicitly provided, use it; otherwise derive from E/F and wading direction
+    const isOnHorizontalWall = wadingPoolConfig.isOnHorizontalWall ?? 
+      ((isPointE && wadingPoolConfig.direction === 'along-length') || 
+       (!isPointE && wadingPoolConfig.direction === 'along-width'));
+    
     const inwardDirs = getInwardDirectionsForWadingIntersection(
       wadingPoolConfig.cornerIndex,
       isPointE,
       wadingPoolConfig.direction,
-      direction
+      direction,
+      isOnHorizontalWall
     );
     
     switch (shapeType) {
@@ -245,130 +252,103 @@ export function generateStairsGeometry(
  * 1. Go INTO the main pool (not into the wading pool or outside)
  * 2. For rectangular stairs: allow choosing parallel to wading pool edge or pool wall
  * 3. For diagonal 45° stairs: always face the pool interior
+ * 
+ * @param wadingCornerIndex - The corner where wading pool is placed (0-3)
+ * @param isPointE - true for E (index 4), false for F (index 5)
+ * @param wadingDirection - Direction of wading pool from its corner
+ * @param stairsDirection - User's chosen stair orientation ('along-length' or 'along-width')
+ * @param isOnHorizontalWall - Whether the intersection point is on a horizontal wall (back/front)
  */
 function getInwardDirectionsForWadingIntersection(
-  wadingCornerIndex: number,  // The corner where wading pool is placed (0-3)
-  isPointE: boolean,          // true for E (index 4), false for F (index 5)
+  wadingCornerIndex: number,
+  isPointE: boolean,
   wadingDirection: 'along-length' | 'along-width',
-  stairsDirection: 'along-length' | 'along-width'
+  stairsDirection: 'along-length' | 'along-width',
+  isOnHorizontalWall: boolean
 ): { dx1: number; dy1: number; dx2: number; dy2: number } {
-  // E and F are on different walls depending on wading pool configuration
-  // For each point, determine which direction goes INTO the main pool
+  // Determine which direction goes INTO the pool based on wading pool corner
+  // Corner A (0): pool interior is in +X and +Y direction
+  // Corner B (1): pool interior is in -X and +Y direction
+  // Corner C (2): pool interior is in -X and -Y direction
+  // Corner D (3): pool interior is in +X and -Y direction
   
-  // The key insight:
-  // - Point E is at the end of wading pool's "width" axis
-  // - Point F is at the end of wading pool's "length" axis (depth into pool)
-  
-  // We need to return inward directions such that:
-  // - dx1/dy1 is along the pool wall (for stair width)
-  // - dx2/dy2 is perpendicular into the pool (for stair depth/descent)
+  let intoPoolX: number;
+  let intoPoolY: number;
   
   switch (wadingCornerIndex) {
-    case 0: // Wading at Corner A (back-left)
-      if (wadingDirection === 'along-length') {
-        // E on back wall (x = -halfL + wadingWidth, y = -halfW)
-        // F on left wall (x = -halfL, y = -halfW + wadingLength)
-        if (isPointE) {
-          // E: stairs go into pool (positive Y) or along back wall (positive X)
-          return stairsDirection === 'along-length'
-            ? { dx1: 1, dy1: 0, dx2: 0, dy2: 1 }  // Width along X+, depth along Y+
-            : { dx1: 0, dy1: 1, dx2: 1, dy2: 0 }; // Width along Y+, depth along X+
-        } else {
-          // F: stairs go into pool (positive X) or along left wall (positive Y)
-          return stairsDirection === 'along-width'
-            ? { dx1: 0, dy1: 1, dx2: 1, dy2: 0 }  // Width along Y+, depth along X+
-            : { dx1: 1, dy1: 0, dx2: 0, dy2: 1 }; // Width along X+, depth along Y+
-        }
-      } else {
-        // E on left wall, F on back wall
-        if (isPointE) {
-          return stairsDirection === 'along-width'
-            ? { dx1: 0, dy1: 1, dx2: 1, dy2: 0 }
-            : { dx1: 1, dy1: 0, dx2: 0, dy2: 1 };
-        } else {
-          return stairsDirection === 'along-length'
-            ? { dx1: 1, dy1: 0, dx2: 0, dy2: 1 }
-            : { dx1: 0, dy1: 1, dx2: 1, dy2: 0 };
-        }
-      }
-      
-    case 1: // Wading at Corner B (back-right)
-      if (wadingDirection === 'along-length') {
-        if (isPointE) {
-          // E on back wall: go into pool (Y+) or along wall (X-)
-          return stairsDirection === 'along-length'
-            ? { dx1: -1, dy1: 0, dx2: 0, dy2: 1 }
-            : { dx1: 0, dy1: 1, dx2: -1, dy2: 0 };
-        } else {
-          // F on right wall: go into pool (X-) or along wall (Y+)
-          return stairsDirection === 'along-width'
-            ? { dx1: 0, dy1: 1, dx2: -1, dy2: 0 }
-            : { dx1: -1, dy1: 0, dx2: 0, dy2: 1 };
-        }
-      } else {
-        if (isPointE) {
-          return stairsDirection === 'along-width'
-            ? { dx1: 0, dy1: 1, dx2: -1, dy2: 0 }
-            : { dx1: -1, dy1: 0, dx2: 0, dy2: 1 };
-        } else {
-          return stairsDirection === 'along-length'
-            ? { dx1: -1, dy1: 0, dx2: 0, dy2: 1 }
-            : { dx1: 0, dy1: 1, dx2: -1, dy2: 0 };
-        }
-      }
-      
-    case 2: // Wading at Corner C (front-right)
-      if (wadingDirection === 'along-length') {
-        if (isPointE) {
-          // E on front wall: go into pool (Y-) or along wall (X-)
-          return stairsDirection === 'along-length'
-            ? { dx1: -1, dy1: 0, dx2: 0, dy2: -1 }
-            : { dx1: 0, dy1: -1, dx2: -1, dy2: 0 };
-        } else {
-          // F on right wall: go into pool (X-) or along wall (Y-)
-          return stairsDirection === 'along-width'
-            ? { dx1: 0, dy1: -1, dx2: -1, dy2: 0 }
-            : { dx1: -1, dy1: 0, dx2: 0, dy2: -1 };
-        }
-      } else {
-        if (isPointE) {
-          return stairsDirection === 'along-width'
-            ? { dx1: 0, dy1: -1, dx2: -1, dy2: 0 }
-            : { dx1: -1, dy1: 0, dx2: 0, dy2: -1 };
-        } else {
-          return stairsDirection === 'along-length'
-            ? { dx1: -1, dy1: 0, dx2: 0, dy2: -1 }
-            : { dx1: 0, dy1: -1, dx2: -1, dy2: 0 };
-        }
-      }
-      
-    case 3: // Wading at Corner D (front-left)
-      if (wadingDirection === 'along-length') {
-        if (isPointE) {
-          // E on front wall: go into pool (Y-) or along wall (X+)
-          return stairsDirection === 'along-length'
-            ? { dx1: 1, dy1: 0, dx2: 0, dy2: -1 }
-            : { dx1: 0, dy1: -1, dx2: 1, dy2: 0 };
-        } else {
-          // F on left wall: go into pool (X+) or along wall (Y-)
-          return stairsDirection === 'along-width'
-            ? { dx1: 0, dy1: -1, dx2: 1, dy2: 0 }
-            : { dx1: 1, dy1: 0, dx2: 0, dy2: -1 };
-        }
-      } else {
-        if (isPointE) {
-          return stairsDirection === 'along-width'
-            ? { dx1: 0, dy1: -1, dx2: 1, dy2: 0 }
-            : { dx1: 1, dy1: 0, dx2: 0, dy2: -1 };
-        } else {
-          return stairsDirection === 'along-length'
-            ? { dx1: 1, dy1: 0, dx2: 0, dy2: -1 }
-            : { dx1: 0, dy1: -1, dx2: 1, dy2: 0 };
-        }
-      }
-      
+    case 0: // Corner A (back-left)
+      intoPoolX = 1;  // Pool is to the right
+      intoPoolY = 1;  // Pool is downward
+      break;
+    case 1: // Corner B (back-right)
+      intoPoolX = -1; // Pool is to the left
+      intoPoolY = 1;  // Pool is downward
+      break;
+    case 2: // Corner C (front-right)
+      intoPoolX = -1; // Pool is to the left
+      intoPoolY = -1; // Pool is upward
+      break;
+    case 3: // Corner D (front-left)
+      intoPoolX = 1;  // Pool is to the right
+      intoPoolY = -1; // Pool is upward
+      break;
     default:
-      return { dx1: 1, dy1: 0, dx2: 0, dy2: 1 };
+      intoPoolX = 1;
+      intoPoolY = 1;
+  }
+  
+  // Point E/F is on a pool wall. We need to determine two direction vectors:
+  // - dx1/dy1: direction along the pool wall
+  // - dx2/dy2: direction into the pool (perpendicular to wall)
+  
+  let alongWallX: number, alongWallY: number;
+  let intoPoolDirX: number, intoPoolDirY: number;
+  
+  if (isOnHorizontalWall) {
+    // Point is on back wall (y = -halfW) or front wall (y = +halfW)
+    // Wall runs horizontally (along X axis)
+    alongWallX = intoPoolX;  // Along the wall in direction away from wading pool corner
+    alongWallY = 0;
+    intoPoolDirX = 0;
+    intoPoolDirY = intoPoolY;  // Into pool is vertical (Y direction)
+  } else {
+    // Point is on left wall (x = -halfL) or right wall (x = +halfL)
+    // Wall runs vertically (along Y axis)
+    alongWallX = 0;
+    alongWallY = intoPoolY;  // Along the wall in direction away from wading pool corner
+    intoPoolDirX = intoPoolX;  // Into pool is horizontal (X direction)
+    intoPoolDirY = 0;
+  }
+  
+  // Now apply the user's stairsDirection choice:
+  // - 'along-length' with isOnHorizontalWall=true means: stairs WIDTH parallel to wall (horizontal)
+  // - 'along-width' with isOnHorizontalWall=true means: stairs WIDTH perpendicular (going into pool)
+  // - 'along-length' with isOnHorizontalWall=false means: stairs WIDTH perpendicular (going into pool)
+  // - 'along-width' with isOnHorizontalWall=false means: stairs WIDTH parallel to wall (vertical)
+  
+  // The key insight: 
+  // When on horizontal wall (along-length wall), 'along-length' = width parallel to wall
+  // When on vertical wall (along-width wall), 'along-width' = width parallel to wall
+  
+  const wantParallelToWall = (isOnHorizontalWall && stairsDirection === 'along-length') ||
+                              (!isOnHorizontalWall && stairsDirection === 'along-width');
+  
+  if (wantParallelToWall) {
+    // Width runs along the wall, depth/length goes into the pool
+    return {
+      dx1: alongWallX,
+      dy1: alongWallY,
+      dx2: intoPoolDirX,
+      dy2: intoPoolDirY
+    };
+  } else {
+    // Width goes into the pool, depth/length runs along the wall
+    return {
+      dx1: intoPoolDirX,
+      dy1: intoPoolDirY,
+      dx2: alongWallX,
+      dy2: alongWallY
+    };
   }
 }
 

@@ -180,9 +180,20 @@ function UnifiedStairs({
 }: UnifiedStairsProps) {
   // Build wading pool config for the geometry generator
   const cornerIndex = stairs.cornerIndex ?? 0;
-  const wadingPoolConfig = (cornerIndex >= 4 && wadingPool?.enabled) 
-    ? { cornerIndex: wadingPool.cornerIndex ?? 0, direction: wadingPool.direction || 'along-width' as const }
-    : undefined;
+  
+  let wadingPoolConfig: { cornerIndex: number; direction: 'along-length' | 'along-width'; isOnHorizontalWall: boolean } | undefined;
+  
+  if (cornerIndex >= 4 && wadingPool?.enabled) {
+    const wadingCorner = wadingPool.cornerIndex ?? 0;
+    const wadingDir = wadingPool.direction || 'along-width';
+    const isE = cornerIndex === 4;
+    
+    // Determine if the point is on a horizontal wall (back/front) or vertical wall (left/right)
+    // E is along the wading pool's "width" direction, F is along its "length" direction
+    const isOnHorizontalWall = (isE && wadingDir === 'along-length') || (!isE && wadingDir === 'along-width');
+    
+    wadingPoolConfig = { cornerIndex: wadingCorner, direction: wadingDir, isOnHorizontalWall };
+  }
   
   const geometry = generateStairsGeometry(length, width, stairs, wadingIntersectionPos ?? undefined, wadingPoolConfig);
   if (!geometry || geometry.vertices.length < 3) return null;
