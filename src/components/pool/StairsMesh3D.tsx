@@ -214,25 +214,48 @@ function DiagonalStairs3D({
     const stepsArr: JSX.Element[] = [];
     
     // v0 = pool corner, v1 and v2 = points along pool walls
-    // Steps form concentric triangles, largest at top (near pool edge), smallest at bottom
+    // Vector from corner to each wall point
+    const dx1 = v1.x - v0.x;
+    const dy1 = v1.y - v0.y;
+    const dx2 = v2.x - v0.x;
+    const dy2 = v2.y - v0.y;
+    
+    // Steps are sliced parallel to the hypotenuse (line from v1 to v2)
+    // Each step takes up 1/stepCount of the triangle
+    // First step (i=0) is at the outer edge (full size), last step is smallest
     for (let i = 0; i < stepCount; i++) {
       const stepTop = -(i + 1) * stepHeight;
-      // Scale: 1 = full size (first step), decreasing as we go deeper
-      const scale = 1 - (i / stepCount);
       
-      if (scale <= 0.05) continue; // Skip tiny steps
+      // Outer ratio (start of this step) - step 0 starts at ratio 0 (outer edge)
+      const outerRatio = i / stepCount;
+      // Inner ratio (end of this step)
+      const innerRatio = (i + 1) / stepCount;
+      
+      // Skip if step would be too small
+      if (innerRatio > 0.98) continue;
+      
+      // Create trapezoid shape for this step (slice between two parallel lines)
+      // Outer edge points (at outerRatio distance from hypotenuse toward corner)
+      const outer1x = v0.x + dx1 * (1 - outerRatio);
+      const outer1y = v0.y + dy1 * (1 - outerRatio);
+      const outer2x = v0.x + dx2 * (1 - outerRatio);
+      const outer2y = v0.y + dy2 * (1 - outerRatio);
+      
+      // Inner edge points (at innerRatio distance from hypotenuse toward corner)
+      const inner1x = v0.x + dx1 * (1 - innerRatio);
+      const inner1y = v0.y + dy1 * (1 - innerRatio);
+      const inner2x = v0.x + dx2 * (1 - innerRatio);
+      const inner2y = v0.y + dy2 * (1 - innerRatio);
       
       const shape = new THREE.Shape();
       
-      // Triangle from corner, scaled by progress
-      const dx1 = (v1.x - v0.x) * scale;
-      const dy1 = (v1.y - v0.y) * scale;
-      const dx2 = (v2.x - v0.x) * scale;
-      const dy2 = (v2.y - v0.y) * scale;
-      
-      shape.moveTo(0, 0);
-      shape.lineTo(dx1, dy1);
-      shape.lineTo(dx2, dy2);
+      // Draw trapezoid (or triangle for last step)
+      shape.moveTo(outer1x - v0.x, outer1y - v0.y);
+      shape.lineTo(outer2x - v0.x, outer2y - v0.y);
+      shape.lineTo(inner2x - v0.x, inner2y - v0.y);
+      if (innerRatio < 0.999) {
+        shape.lineTo(inner1x - v0.x, inner1y - v0.y);
+      }
       shape.closePath();
       
       const extrudeGeometry = new THREE.ExtrudeGeometry(shape, {
