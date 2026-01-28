@@ -1118,12 +1118,12 @@ function DimensionLines({ dimensions, display }: { dimensions: PoolDimensions; d
 }
 
 // Custom stairs mesh (from drawn vertices) - uses actual polygon shape
-// Supports 8 rotation angles: 0, 45, 90, 135, 180, 225, 270, 315 degrees
+// Direction of descent is derived from geometry, not rotation prop
 function CustomStairsMesh({ vertices, depth, poolVertices, rotation = 0, showDimensions = true, stairsConfig }: { 
   vertices: CustomPoolVertex[]; 
   depth: number;
   poolVertices: CustomPoolVertex[];
-  rotation?: number; // 0, 45, 90, 135, 180, 225, 270, 315 degrees
+  rotation?: number; // legacy prop, now ignored - direction derived from geometry
   showDimensions?: boolean;
   stairsConfig?: StairsConfig;
 }) {
@@ -1177,79 +1177,107 @@ function CustomStairsMesh({ vertices, depth, poolVertices, rotation = 0, showDim
   const sizeX = bounds.maxX - bounds.minX;
   const sizeY = bounds.maxY - bounds.minY;
   
-  // Check if rotation is diagonal (45, 135, 225, 315)
-  const isDiagonal = rotation === 45 || rotation === 135 || rotation === 225 || rotation === 315;
+  // Determine geometry type and descent direction from vertices (NOT rotation prop)
+  const geometryInfo = useMemo(() => {
+    if (transformedVertices.length === 3) {
+      // Triangle (diagonal 45°) - descent from corner vertex (v0) toward hypotenuse
+      // v0 is the corner (right angle), v1 and v2 are on the hypotenuse
+      return { type: 'triangle' as const, descentDirection: 'diagonal' as const };
+    } else if (transformedVertices.length === 4) {
+      // Rectangle - find shorter axis for descent direction
+      // Calculate edge lengths
+      const edge01 = Math.hypot(
+        transformedVertices[1].x - transformedVertices[0].x,
+        transformedVertices[1].y - transformedVertices[0].y
+      );
+      const edge12 = Math.hypot(
+        transformedVertices[2].x - transformedVertices[1].x,
+        transformedVertices[2].y - transformedVertices[1].y
+      );
+      
+      // Shorter edge pair determines descent direction
+      // If edge01 (and edge23) is shorter, we descend along that axis
+      // Otherwise we descend along edge12 (and edge30)
+      const descentAlongEdge01 = edge01 <= edge12;
+      
+      // Determine if descent is more X-aligned or Y-aligned
+      const dx01 = Math.abs(transformedVertices[1].x - transformedVertices[0].x);
+      const dy01 = Math.abs(transformedVertices[1].y - transformedVertices[0].y);
+      const dx12 = Math.abs(transformedVertices[2].x - transformedVertices[1].x);
+      const dy12 = Math.abs(transformedVertices[2].y - transformedVertices[1].y);
+      
+      if (descentAlongEdge01) {
+        // Descent along edge 0->1 direction
+        return { 
+          type: 'rectangle' as const, 
+          descentDirection: (dx01 > dy01 ? 'x' : 'y') as 'x' | 'y',
+          stairsLength: edge01,
+          stairsWidth: edge12
+        };
+      } else {
+        // Descent along edge 1->2 direction
+        return { 
+          type: 'rectangle' as const, 
+          descentDirection: (dx12 > dy12 ? 'x' : 'y') as 'x' | 'y',
+          stairsLength: edge12,
+          stairsWidth: edge01
+        };
+      }
+    }
+    return { type: 'unknown' as const, descentDirection: 'y' as const };
+  }, [transformedVertices]);
 
   // Create stairs using actual polygon shape with ExtrudeGeometry
   const steps = useMemo(() => {
     const stepsArr: JSX.Element[] = [];
     if (transformedVertices.length < 3) return stepsArr;
     
-    // For diagonal angles, use diagonal slicing approach
-    if (isDiagonal) {
-      // Calculate the diagonal extent - the polygon will be sliced diagonally
-      const diagonalExtent = Math.sqrt(sizeX * sizeX + sizeY * sizeY);
-      const stepDepth = diagonalExtent / stepCount;
+    // For triangle (diagonal 45°), use trapezoid slicing parallel to hypotenuse
+    if (geometryInfo.type === 'triangle') {
+      const v0 = transformedVertices[0]; // Corner vertex (right angle)
+      const v1 = transformedVertices[1];
+      const v2 = transformedVertices[2];
       
-      // Determine direction vector based on rotation angle
-      // The arrow shows the direction you WALK when entering (where you're going TO)
-      // Steps should be sliced so first step is at ENTRY point, last step at bottom
-      // Canvas: Y grows DOWN, X grows RIGHT
-      // Arrow drawn using: dx = sin(rotation), dy = cos(rotation)
-      // 
-      // 0°: Arrow points DOWN (0, +1 in canvas), entry from top, steps toward bottom
-      // 90°: Arrow points RIGHT (+1, 0), entry from left, steps toward right
-      // 180°: Arrow points UP (0, -1), entry from bottom, steps toward top
-      // 270°: Arrow points LEFT (-1, 0), entry from right, steps toward left
-      // 315°: Arrow points DOWN-LEFT (-0.707, +0.707), entry from top-right, steps toward bottom-left
-      
-      let dirX: number, dirY: number;
-      let startCornerX: number, startCornerY: number;
-      
-      switch (rotation) {
-        case 45: // Arrow points DOWN-RIGHT (+0.707, +0.707), steps go toward maxX, maxY
-          dirX = 1 / Math.SQRT2;
-          dirY = 1 / Math.SQRT2;
-          startCornerX = bounds.minX;
-          startCornerY = bounds.minY;
-          break;
-        case 135: // Arrow points UP-RIGHT (+0.707, -0.707), steps go toward maxX, minY
-          dirX = 1 / Math.SQRT2;
-          dirY = -1 / Math.SQRT2;
-          startCornerX = bounds.minX;
-          startCornerY = bounds.maxY;
-          break;
-        case 225: // Arrow points UP-LEFT (-0.707, -0.707), steps go toward minX, minY
-          dirX = -1 / Math.SQRT2;
-          dirY = -1 / Math.SQRT2;
-          startCornerX = bounds.maxX;
-          startCornerY = bounds.maxY;
-          break;
-        case 315: // Arrow points DOWN-LEFT (-0.707, +0.707), steps go toward minX, maxY
-        default:
-          dirX = -1 / Math.SQRT2;
-          dirY = 1 / Math.SQRT2;
-          startCornerX = bounds.maxX;
-          startCornerY = bounds.minY;
-          break;
-      }
+      // Calculate legs from corner
+      const leg1 = { x: v1.x - v0.x, y: v1.y - v0.y };
+      const leg2 = { x: v2.x - v0.x, y: v2.y - v0.y };
       
       for (let i = 0; i < stepCount; i++) {
-        // Step tops start one riser below the pool edge (consistent with stepHeight = depth/(stepCount+1))
+        // Progress from corner (0) to hypotenuse (1)
+        const startProgress = i / stepCount;
+        const endProgress = (i + 1) / stepCount;
+        
+        // Step tops start one riser below the pool edge
         const stepTopZ = -(i + 1) * stepHeight;
         const stepBodyHeight = depth - ((i + 1) * stepHeight);
         
-        // Calculate slice positions along the diagonal
-        const startDist = i * stepDepth;
-        const endDist = (i + 1) * stepDepth;
+        // Create trapezoid slice between two progress levels
+        // Inner edge (closer to corner)
+        const inner1 = { x: v0.x + leg1.x * startProgress, y: v0.y + leg1.y * startProgress };
+        const inner2 = { x: v0.x + leg2.x * startProgress, y: v0.y + leg2.y * startProgress };
         
-        // Slice the polygon diagonally
-        const slicedVertices = slicePolygonDiagonal(
-          transformedVertices,
-          startCornerX, startCornerY,
-          dirX, dirY,
-          startDist, endDist
-        );
+        // Outer edge (closer to hypotenuse)
+        const outer1 = { x: v0.x + leg1.x * endProgress, y: v0.y + leg1.y * endProgress };
+        const outer2 = { x: v0.x + leg2.x * endProgress, y: v0.y + leg2.y * endProgress };
+        
+        // For the first step, the inner edge is just a point (the corner)
+        let slicedVertices: { x: number; y: number }[];
+        if (i === 0) {
+          // First step is a triangle from corner to first slice line
+          slicedVertices = [
+            { x: v0.x, y: v0.y },
+            { x: outer1.x, y: outer1.y },
+            { x: outer2.x, y: outer2.y }
+          ];
+        } else {
+          // Subsequent steps are trapezoids
+          slicedVertices = [
+            { x: inner1.x, y: inner1.y },
+            { x: outer1.x, y: outer1.y },
+            { x: outer2.x, y: outer2.y },
+            { x: inner2.x, y: inner2.y }
+          ];
+        }
         
         if (slicedVertices.length < 3) continue;
         
@@ -1276,45 +1304,33 @@ function CustomStairsMesh({ vertices, depth, poolVertices, rotation = 0, showDim
       return stepsArr;
     }
     
-    // For orthogonal angles (0, 90, 180, 270), use existing axis-aligned slicing
-    const isHorizontal = rotation === 90 || rotation === 270;
-    const stairsExtent = isHorizontal ? sizeX : sizeY;
+    // For rectangle, slice perpendicular to descent direction (derived from geometry)
+    const isXDescent = geometryInfo.descentDirection === 'x';
+    const stairsExtent = isXDescent ? sizeX : sizeY;
     const stepDepth = stairsExtent / stepCount;
     
-     for (let i = 0; i < stepCount; i++) {
-       // Step tops start one riser below the pool edge (consistent with stepHeight = depth/(stepCount+1))
-       const stepTopZ = -(i + 1) * stepHeight;
-       const stepBodyHeight = depth - ((i + 1) * stepHeight);
+    for (let i = 0; i < stepCount; i++) {
+      // Step tops start one riser below the pool edge
+      const stepTopZ = -(i + 1) * stepHeight;
+      const stepBodyHeight = depth - ((i + 1) * stepHeight);
       
       // Calculate slice ratio for this step
       const startRatio = i / stepCount;
       const endRatio = (i + 1) / stepCount;
       
-      // Slice the polygon based on rotation direction
-      // NOTE: Canvas Y axis is inverted (Y grows downward), so rotation 0/180 are swapped
+      // Slice the polygon based on geometry-derived direction
       let slicedVertices: { x: number; y: number }[];
       
-      if (rotation === 0) {
-        // Entry from top in canvas (Y grows down), so in 3D we slice from minY to maxY
-        // First step at minY (top in 3D), last step at maxY (bottom in 3D)
-        const yStart = bounds.minY + startRatio * sizeY;
-        const yEnd = bounds.minY + endRatio * sizeY;
-        slicedVertices = slicePolygonY(transformedVertices, yStart, yEnd);
-      } else if (rotation === 180) {
-        // Entry from bottom in canvas, so in 3D we slice from maxY to minY
-        const yStart = bounds.maxY - startRatio * sizeY;
-        const yEnd = bounds.maxY - endRatio * sizeY;
-        slicedVertices = slicePolygonY(transformedVertices, yEnd, yStart);
-      } else if (rotation === 90) {
-        // Entry from right (X+), steps slice along X axis from max to min
-        const xStart = bounds.maxX - startRatio * sizeX;
-        const xEnd = bounds.maxX - endRatio * sizeX;
-        slicedVertices = slicePolygonX(transformedVertices, xEnd, xStart);
-      } else {
-        // rotation === 270: Entry from left (X-), steps slice along X axis from min to max
+      if (isXDescent) {
+        // Descent along X axis - slice by X ranges
         const xStart = bounds.minX + startRatio * sizeX;
         const xEnd = bounds.minX + endRatio * sizeX;
         slicedVertices = slicePolygonX(transformedVertices, xStart, xEnd);
+      } else {
+        // Descent along Y axis - slice by Y ranges
+        const yStart = bounds.minY + startRatio * sizeY;
+        const yEnd = bounds.minY + endRatio * sizeY;
+        slicedVertices = slicePolygonY(transformedVertices, yStart, yEnd);
       }
       
       if (slicedVertices.length < 3) continue;
@@ -1323,30 +1339,23 @@ function CustomStairsMesh({ vertices, depth, poolVertices, rotation = 0, showDim
       const shape2D = slicedVertices.map(v => new THREE.Vector2(v.x, v.y));
       const stepShape = new THREE.Shape(shape2D);
       
-      // Create extruded geometry for step body
-      // IMPORTANT: all pool geometry uses Z as depth (down). The whole scene is rotated later,
-      // so we must NOT rotate extrusions here (it caused skewed/empty spaces).
       const stepBodyGeo = new THREE.ExtrudeGeometry(stepShape, {
         depth: stepBodyHeight,
         bevelEnabled: false,
       });
-      // ExtrudeGeometry extrudes along +Z from 0..depth; move it so the top is at stepTopZ.
       stepBodyGeo.translate(0, 0, stepTopZ - stepBodyHeight);
       
-      // Create thin surface for step top
       const stepTopGeo = new THREE.ShapeGeometry(stepShape);
       
       stepsArr.push(
         <group key={i}>
-          {/* Step body (blue) */}
           <mesh geometry={stepBodyGeo} material={stepFrontMaterial} />
-          {/* Step top surface (white) */}
           <mesh position={[0, 0, stepTopZ - 0.01]} geometry={stepTopGeo} material={stepTopMaterial} />
         </group>
       );
     }
     return stepsArr;
-  }, [stepCount, stepHeight, depth, bounds, transformedVertices, rotation, sizeX, sizeY, stepTopMaterial, stepFrontMaterial]);
+  }, [stepCount, stepHeight, depth, bounds, transformedVertices, geometryInfo, sizeX, sizeY, stepTopMaterial, stepFrontMaterial]);
 
   return (
     <group>
@@ -1444,61 +1453,7 @@ function slicePolygonX(vertices: { x: number; y: number }[], xMin: number, xMax:
   return result;
 }
 
-// Helper: Slice polygon diagonally using two parallel lines perpendicular to direction
-function slicePolygonDiagonal(
-  vertices: { x: number; y: number }[],
-  startX: number, startY: number,
-  dirX: number, dirY: number,
-  distStart: number, distEnd: number
-): { x: number; y: number }[] {
-  const result: { x: number; y: number }[] = [];
-  const n = vertices.length;
-  
-  // For each vertex, calculate its distance along the slice direction from start point
-  const getDistance = (v: { x: number; y: number }) => {
-    return (v.x - startX) * dirX + (v.y - startY) * dirY;
-  };
-  
-  for (let i = 0; i < n; i++) {
-    const curr = vertices[i];
-    const next = vertices[(i + 1) % n];
-    
-    const currDist = getDistance(curr);
-    const nextDist = getDistance(next);
-    
-    // Check if current point is in range
-    if (currDist >= distStart && currDist <= distEnd) {
-      result.push(curr);
-    }
-    
-    // Check for intersections with start line
-    if ((currDist < distStart && nextDist > distStart) || (currDist > distStart && nextDist < distStart)) {
-      const t = (distStart - currDist) / (nextDist - currDist);
-      result.push({ 
-        x: curr.x + t * (next.x - curr.x), 
-        y: curr.y + t * (next.y - curr.y) 
-      });
-    }
-    
-    // Check for intersections with end line
-    if ((currDist < distEnd && nextDist > distEnd) || (currDist > distEnd && nextDist < distEnd)) {
-      const t = (distEnd - currDist) / (nextDist - currDist);
-      result.push({ 
-        x: curr.x + t * (next.x - curr.x), 
-        y: curr.y + t * (next.y - curr.y) 
-      });
-    }
-  }
-  
-  // Sort points to form a proper polygon (clockwise order around centroid)
-  if (result.length < 3) return result;
-  
-  const cx = result.reduce((s, v) => s + v.x, 0) / result.length;
-  const cy = result.reduce((s, v) => s + v.y, 0) / result.length;
-  result.sort((a, b) => Math.atan2(a.y - cy, a.x - cx) - Math.atan2(b.y - cy, b.x - cx));
-  
-  return result;
-}
+// Note: slicePolygonDiagonal removed - triangle stairs now use direct trapezoid generation
 
 // Custom wading pool mesh (from drawn vertices) - uses actual polygon shape
 function CustomWadingPoolMesh({ vertices, wadingDepth, poolDepth, poolVertices, showDimensions = true }: { 
