@@ -175,7 +175,8 @@ export function generateStairsGeometry(
   length: number,
   width: number,
   stairs: StairsConfig,
-  wadingPoolPosition?: Point  // Optional: custom position for wading pool intersection points
+  wadingPoolPosition?: Point,  // Optional: custom position for wading pool intersection points
+  wadingPoolConfig?: { cornerIndex: number; direction: 'along-length' | 'along-width' } // Wading pool configuration
 ): StairsGeometry | null {
   if (!stairs.enabled) return null;
   
@@ -197,38 +198,264 @@ export function generateStairsGeometry(
   
   const direction = stairs.direction || 'along-width';
   
-  // For wading pool intersection points, we need to use a modified corner index
-  // to get the correct inward directions. Map E/F to the appropriate wall direction.
-  const effectiveCornerIndex = cornerIndex >= 4 ? getEffectiveCornerIndex(cornerIndex, direction) : cornerIndex;
+  // For wading pool intersection points (E/F), use special direction calculation
+  if (cornerIndex >= 4 && wadingPoolConfig) {
+    const isPointE = cornerIndex === 4;
+    const inwardDirs = getInwardDirectionsForWadingIntersection(
+      wadingPoolConfig.cornerIndex,
+      isPointE,
+      wadingPoolConfig.direction,
+      direction
+    );
+    
+    switch (shapeType) {
+      case 'rectangular':
+        return generateRectangularStairsWithDirections(
+          cornerPos, inwardDirs, stairsWidth, stepCount, stepDepth, direction
+        );
+      
+      case 'diagonal-45':
+        return generateDiagonal45StairsWithDirections(
+          cornerPos, inwardDirs, stepCount, stepDepth
+        );
+      
+      default:
+        return generateRectangularStairsWithDirections(
+          cornerPos, inwardDirs, stairsWidth, stepCount, stepDepth, direction
+        );
+    }
+  }
   
+  // For standard corners (A, B, C, D), use original logic
   switch (shapeType) {
     case 'rectangular':
-      return generateRectangularStairsFromPosition(cornerPos, effectiveCornerIndex, stairsWidth, stepCount, stepDepth, direction);
+      return generateRectangularStairs(cornerPos, cornerIndex, stairsWidth, stepCount, stepDepth, direction);
     
     case 'diagonal-45':
-      return generateDiagonal45Stairs(cornerPos, effectiveCornerIndex, stepCount, stepDepth);
+      return generateDiagonal45Stairs(cornerPos, cornerIndex, stepCount, stepDepth);
     
     default:
-      return generateRectangularStairsFromPosition(cornerPos, effectiveCornerIndex, stairsWidth, stepCount, stepDepth, direction);
+      return generateRectangularStairs(cornerPos, cornerIndex, stairsWidth, stepCount, stepDepth, direction);
   }
 }
 
 /**
- * Get effective corner index for wading pool intersection points
- * This determines which inward directions to use for stair geometry
+ * Get inward directions for wading pool intersection points (E=4, F=5)
+ * These points are on the pool walls, so we need directions that:
+ * 1. Go INTO the main pool (not into the wading pool or outside)
+ * 2. For rectangular stairs: allow choosing parallel to wading pool edge or pool wall
+ * 3. For diagonal 45° stairs: always face the pool interior
  */
-function getEffectiveCornerIndex(wadingCornerIndex: number, direction: 'along-length' | 'along-width'): number {
-  // Wading pool intersection points (E=4, F=5) use directions based on which wall they're on
-  // For now, we'll use a simple mapping that assumes the stairs extend into the pool
-  // The direction parameter tells us which wall the stairs are parallel to
+function getInwardDirectionsForWadingIntersection(
+  wadingCornerIndex: number,  // The corner where wading pool is placed (0-3)
+  isPointE: boolean,          // true for E (index 4), false for F (index 5)
+  wadingDirection: 'along-length' | 'along-width',
+  stairsDirection: 'along-length' | 'along-width'
+): { dx1: number; dy1: number; dx2: number; dy2: number } {
+  // E and F are on different walls depending on wading pool configuration
+  // For each point, determine which direction goes INTO the main pool
   
-  // For along-length (horizontal walls), use corners that face inward along Y
-  // For along-width (vertical walls), use corners that face inward along X
-  if (direction === 'along-length') {
-    return 0; // Use corner A's directions (right + down)
-  } else {
-    return 0; // Use corner A's directions (right + down)
+  // The key insight:
+  // - Point E is at the end of wading pool's "width" axis
+  // - Point F is at the end of wading pool's "length" axis (depth into pool)
+  
+  // We need to return inward directions such that:
+  // - dx1/dy1 is along the pool wall (for stair width)
+  // - dx2/dy2 is perpendicular into the pool (for stair depth/descent)
+  
+  switch (wadingCornerIndex) {
+    case 0: // Wading at Corner A (back-left)
+      if (wadingDirection === 'along-length') {
+        // E on back wall (x = -halfL + wadingWidth, y = -halfW)
+        // F on left wall (x = -halfL, y = -halfW + wadingLength)
+        if (isPointE) {
+          // E: stairs go into pool (positive Y) or along back wall (positive X)
+          return stairsDirection === 'along-length'
+            ? { dx1: 1, dy1: 0, dx2: 0, dy2: 1 }  // Width along X+, depth along Y+
+            : { dx1: 0, dy1: 1, dx2: 1, dy2: 0 }; // Width along Y+, depth along X+
+        } else {
+          // F: stairs go into pool (positive X) or along left wall (positive Y)
+          return stairsDirection === 'along-width'
+            ? { dx1: 0, dy1: 1, dx2: 1, dy2: 0 }  // Width along Y+, depth along X+
+            : { dx1: 1, dy1: 0, dx2: 0, dy2: 1 }; // Width along X+, depth along Y+
+        }
+      } else {
+        // E on left wall, F on back wall
+        if (isPointE) {
+          return stairsDirection === 'along-width'
+            ? { dx1: 0, dy1: 1, dx2: 1, dy2: 0 }
+            : { dx1: 1, dy1: 0, dx2: 0, dy2: 1 };
+        } else {
+          return stairsDirection === 'along-length'
+            ? { dx1: 1, dy1: 0, dx2: 0, dy2: 1 }
+            : { dx1: 0, dy1: 1, dx2: 1, dy2: 0 };
+        }
+      }
+      
+    case 1: // Wading at Corner B (back-right)
+      if (wadingDirection === 'along-length') {
+        if (isPointE) {
+          // E on back wall: go into pool (Y+) or along wall (X-)
+          return stairsDirection === 'along-length'
+            ? { dx1: -1, dy1: 0, dx2: 0, dy2: 1 }
+            : { dx1: 0, dy1: 1, dx2: -1, dy2: 0 };
+        } else {
+          // F on right wall: go into pool (X-) or along wall (Y+)
+          return stairsDirection === 'along-width'
+            ? { dx1: 0, dy1: 1, dx2: -1, dy2: 0 }
+            : { dx1: -1, dy1: 0, dx2: 0, dy2: 1 };
+        }
+      } else {
+        if (isPointE) {
+          return stairsDirection === 'along-width'
+            ? { dx1: 0, dy1: 1, dx2: -1, dy2: 0 }
+            : { dx1: -1, dy1: 0, dx2: 0, dy2: 1 };
+        } else {
+          return stairsDirection === 'along-length'
+            ? { dx1: -1, dy1: 0, dx2: 0, dy2: 1 }
+            : { dx1: 0, dy1: 1, dx2: -1, dy2: 0 };
+        }
+      }
+      
+    case 2: // Wading at Corner C (front-right)
+      if (wadingDirection === 'along-length') {
+        if (isPointE) {
+          // E on front wall: go into pool (Y-) or along wall (X-)
+          return stairsDirection === 'along-length'
+            ? { dx1: -1, dy1: 0, dx2: 0, dy2: -1 }
+            : { dx1: 0, dy1: -1, dx2: -1, dy2: 0 };
+        } else {
+          // F on right wall: go into pool (X-) or along wall (Y-)
+          return stairsDirection === 'along-width'
+            ? { dx1: 0, dy1: -1, dx2: -1, dy2: 0 }
+            : { dx1: -1, dy1: 0, dx2: 0, dy2: -1 };
+        }
+      } else {
+        if (isPointE) {
+          return stairsDirection === 'along-width'
+            ? { dx1: 0, dy1: -1, dx2: -1, dy2: 0 }
+            : { dx1: -1, dy1: 0, dx2: 0, dy2: -1 };
+        } else {
+          return stairsDirection === 'along-length'
+            ? { dx1: -1, dy1: 0, dx2: 0, dy2: -1 }
+            : { dx1: 0, dy1: -1, dx2: -1, dy2: 0 };
+        }
+      }
+      
+    case 3: // Wading at Corner D (front-left)
+      if (wadingDirection === 'along-length') {
+        if (isPointE) {
+          // E on front wall: go into pool (Y-) or along wall (X+)
+          return stairsDirection === 'along-length'
+            ? { dx1: 1, dy1: 0, dx2: 0, dy2: -1 }
+            : { dx1: 0, dy1: -1, dx2: 1, dy2: 0 };
+        } else {
+          // F on left wall: go into pool (X+) or along wall (Y-)
+          return stairsDirection === 'along-width'
+            ? { dx1: 0, dy1: -1, dx2: 1, dy2: 0 }
+            : { dx1: 1, dy1: 0, dx2: 0, dy2: -1 };
+        }
+      } else {
+        if (isPointE) {
+          return stairsDirection === 'along-width'
+            ? { dx1: 0, dy1: -1, dx2: 1, dy2: 0 }
+            : { dx1: 1, dy1: 0, dx2: 0, dy2: -1 };
+        } else {
+          return stairsDirection === 'along-length'
+            ? { dx1: 1, dy1: 0, dx2: 0, dy2: -1 }
+            : { dx1: 0, dy1: -1, dx2: 1, dy2: 0 };
+        }
+      }
+      
+    default:
+      return { dx1: 1, dy1: 0, dx2: 0, dy2: 1 };
   }
+}
+
+/**
+ * Generate rectangular stairs with explicit direction vectors (for wading pool intersection points)
+ */
+function generateRectangularStairsWithDirections(
+  cornerPos: Point,
+  directions: { dx1: number; dy1: number; dx2: number; dy2: number },
+  stairsWidth: number,
+  stepCount: number,
+  stepDepth: number,
+  stairsDirection: 'along-length' | 'along-width'
+): StairsGeometry {
+  const { dx1, dy1, dx2, dy2 } = directions;
+  const stairsLength = stepCount * stepDepth;
+  
+  // For wading pool intersection points, dx1/dy1 is width direction, dx2/dy2 is depth direction
+  // The stairsDirection affects how we interpret the directions from the wading intersection function
+  let widthDx: number, widthDy: number;
+  let lengthDx: number, lengthDy: number;
+  
+  if (stairsDirection === 'along-length') {
+    widthDx = dx1;
+    widthDy = dy1;
+    lengthDx = dx2;
+    lengthDy = dy2;
+  } else {
+    widthDx = dx2;
+    widthDy = dy2;
+    lengthDx = dx1;
+    lengthDy = dy1;
+  }
+  
+  const vertices: Point[] = [
+    { x: cornerPos.x, y: cornerPos.y },
+    { x: cornerPos.x + widthDx * stairsWidth, y: cornerPos.y + widthDy * stairsWidth },
+    { x: cornerPos.x + widthDx * stairsWidth + lengthDx * stairsLength, y: cornerPos.y + widthDy * stairsWidth + lengthDy * stairsLength },
+    { x: cornerPos.x + lengthDx * stairsLength, y: cornerPos.y + lengthDy * stairsLength },
+  ];
+  
+  const stepLines: StepLine[] = [];
+  for (let i = 1; i < stepCount; i++) {
+    const progress = i * stepDepth;
+    stepLines.push({
+      x1: cornerPos.x + lengthDx * progress,
+      y1: cornerPos.y + lengthDy * progress,
+      x2: cornerPos.x + widthDx * stairsWidth + lengthDx * progress,
+      y2: cornerPos.y + widthDy * stairsWidth + lengthDy * progress,
+    });
+  }
+  
+  return { vertices, stepLines, totalPathLength: stairsLength };
+}
+
+/**
+ * Generate diagonal 45° stairs with explicit direction vectors (for wading pool intersection points)
+ */
+function generateDiagonal45StairsWithDirections(
+  cornerPos: Point,
+  directions: { dx1: number; dy1: number; dx2: number; dy2: number },
+  stepCount: number,
+  stepDepth: number
+): StairsGeometry {
+  const { dx1, dy1, dx2, dy2 } = directions;
+  const diagonalSize = stepCount * stepDepth;
+  
+  // Triangle vertices: corner + two points along the inward directions
+  const vertices: Point[] = [
+    { x: cornerPos.x, y: cornerPos.y },  // Intersection point
+    { x: cornerPos.x + dx1 * diagonalSize, y: cornerPos.y + dy1 * diagonalSize },  // Along direction 1
+    { x: cornerPos.x + dx2 * diagonalSize, y: cornerPos.y + dy2 * diagonalSize },  // Along direction 2
+  ];
+  
+  // Step lines parallel to hypotenuse
+  const stepLines: StepLine[] = [];
+  for (let i = 1; i < stepCount; i++) {
+    const progress = i / stepCount;
+    const p1x = cornerPos.x + dx1 * diagonalSize * progress;
+    const p1y = cornerPos.y + dy1 * diagonalSize * progress;
+    const p2x = cornerPos.x + dx2 * diagonalSize * progress;
+    const p2y = cornerPos.y + dy2 * diagonalSize * progress;
+    
+    stepLines.push({ x1: p1x, y1: p1y, x2: p2x, y2: p2y });
+  }
+  
+  return { vertices, stepLines, totalPathLength: diagonalSize * Math.SQRT2 };
 }
 
 /**

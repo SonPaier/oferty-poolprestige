@@ -382,20 +382,41 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
 
   // Get wall direction labels based on selected corner (for rectangular stairs)
   // Also filters out directions that would lead into the wading pool
-  const getWallDirectionOptions = (cornerIndex: number) => {
-    // For wading pool intersection points (E, F), only one direction is valid
-    // The stairs extend AWAY from the wading pool, into the main pool
+  const getWallDirectionOptions = (cornerIndex: number, shapeType?: StairsShapeType) => {
+    // For wading pool intersection points (E, F), special handling
     const wadingIntersections = getWadingPoolIntersections();
     const intersection = wadingIntersections.find(i => i.index === cornerIndex);
     
     if (intersection) {
-      // From a wading pool intersection, stairs go in the direction parallel to the wall
-      return [{
-        value: intersection.adjacentWall,
-        label: intersection.adjacentWall === 'along-length' 
-          ? `Wzdłuż ściany ${intersection.position.y < 0 ? 'tylnej' : 'przedniej'}` 
-          : `Wzdłuż ściany ${intersection.position.x < 0 ? 'lewej' : 'prawej'}`
-      }];
+      // For diagonal 45° stairs, only one direction (into the pool) - no choice needed
+      // For rectangular stairs, user can choose: parallel to wading pool edge OR parallel to pool wall
+      if (shapeType === 'diagonal-45') {
+        // Diagonal 45° always faces pool interior - direction not relevant for rendering
+        return [{
+          value: intersection.adjacentWall,
+          label: 'Do wnętrza basenu'
+        }];
+      }
+      
+      // For rectangular stairs from E/F, provide two options:
+      // 1. Along the pool wall (where the intersection point is located)
+      // 2. Into the main pool (perpendicular to the wall)
+      const isOnHorizontalWall = intersection.adjacentWall === 'along-length';
+      
+      return [
+        {
+          value: 'along-length' as WallDirection,
+          label: isOnHorizontalWall 
+            ? `Równolegle do ściany basenu` 
+            : `Prostopadle do brodzika (w głąb basenu)`
+        },
+        {
+          value: 'along-width' as WallDirection,
+          label: isOnHorizontalWall 
+            ? `Prostopadle do brodzika (w głąb basenu)` 
+            : `Równolegle do ściany basenu`
+        }
+      ];
     }
     
     // For each corner, we can place stairs along one of two adjacent walls
@@ -1234,7 +1255,7 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
                         <div>
                           <Label className="text-sm font-medium mb-2 block">Równolegle do ściany</Label>
                           <div className="grid grid-cols-1 gap-2">
-                            {getWallDirectionOptions(dimensions.stairs.cornerIndex ?? 0).map((option) => (
+                            {getWallDirectionOptions(dimensions.stairs.cornerIndex ?? 0, dimensions.stairs.shapeType).map((option) => (
                               <button
                                 key={option.value}
                                 onClick={() => updateStairs({ direction: option.value })}
