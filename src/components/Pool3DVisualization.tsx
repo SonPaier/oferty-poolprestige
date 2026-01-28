@@ -510,9 +510,18 @@ function PoolMesh({ dimensions, solid = false }: { dimensions: PoolDimensions; s
 // Stairs visualization - import from reusable component
 import { StairsMesh3D } from '@/components/pool/StairsMesh3D';
 
-// Legacy wrapper for backwards compatibility
+// Legacy wrapper for backwards compatibility - now includes wading pool for position calculation
 function StairsMesh({ dimensions, stairs }: { dimensions: PoolDimensions; stairs: StairsConfig }) {
   if (!stairs.enabled) return null;
+  
+  // Pass wading pool config for calculating intersection positions (E, F points)
+  const wadingPoolData = dimensions.wadingPool?.enabled ? {
+    enabled: dimensions.wadingPool.enabled,
+    cornerIndex: dimensions.wadingPool.cornerIndex,
+    direction: dimensions.wadingPool.direction,
+    width: dimensions.wadingPool.width,
+    length: dimensions.wadingPool.length,
+  } : undefined;
   
   return (
     <StairsMesh3D
@@ -520,6 +529,7 @@ function StairsMesh({ dimensions, stairs }: { dimensions: PoolDimensions; stairs
       width={dimensions.width}
       depth={dimensions.depth}
       stairs={stairs}
+      wadingPool={wadingPoolData}
     />
   );
 }

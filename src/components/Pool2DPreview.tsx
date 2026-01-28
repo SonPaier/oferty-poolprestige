@@ -77,7 +77,17 @@ function getPoolPoints(dimensions: PoolDimensions): { x: number; y: number }[] {
 function getRegularStairsData(dimensions: PoolDimensions) {
   const stairs = dimensions.stairs;
   if (!stairs?.enabled || dimensions.shape === 'nieregularny') return null;
-  return getStairsRenderData(dimensions.length, dimensions.width, stairs);
+  
+  // Pass wading pool config for calculating intersection positions (E, F points)
+  const wadingPoolData = dimensions.wadingPool?.enabled ? {
+    enabled: dimensions.wadingPool.enabled,
+    cornerIndex: dimensions.wadingPool.cornerIndex,
+    direction: dimensions.wadingPool.direction,
+    width: dimensions.wadingPool.width,
+    length: dimensions.wadingPool.length,
+  } : undefined;
+  
+  return getStairsRenderData(dimensions.length, dimensions.width, stairs, wadingPoolData);
 }
 
 // Legacy wrapper for places that just need points
