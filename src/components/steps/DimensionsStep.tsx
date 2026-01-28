@@ -633,7 +633,8 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
     stairsVertices?: CustomPoolVertex[],
     wadingPoolVertices?: CustomPoolVertex[],
     stairsRotation?: number,
-    stairsConfig?: Partial<StairsConfig>
+    stairsConfig?: Partial<StairsConfig>,
+    wadingPoolConfig?: Partial<WadingPoolConfig>
   ) => {
     // Convert single vertices to arrays for the new format
     const stairsArray = stairsVertices && stairsVertices.length >= 3 ? [stairsVertices] : dimensions.customStairsVertices || [];
@@ -645,6 +646,13 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
       ...dimensions.stairs,
       enabled: stairsArray.length > 0 ? true : dimensions.stairs?.enabled || false,
       ...(stairsConfig || {}),
+    };
+    
+    // Merge wading pool config from drawer with existing config
+    const updatedWadingPoolConfig: WadingPoolConfig = {
+      ...dimensions.wadingPool,
+      enabled: wadingArray.length > 0 ? true : dimensions.wadingPool?.enabled || false,
+      ...(wadingPoolConfig || {}),
     };
 
     dispatch({
@@ -660,9 +668,7 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
         customWadingPoolVertices: wadingArray,
         // Update stairs config with parameters from drawer
         stairs: updatedStairsConfig,
-        wadingPool: wadingArray.length > 0
-          ? { ...dimensions.wadingPool, enabled: true }
-          : dimensions.wadingPool,
+        wadingPool: updatedWadingPoolConfig,
       },
     });
     setShowCustomDrawer(false);
@@ -690,6 +696,7 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
             initialWidth={dimensions.width}
             shape={dimensions.shape === 'nieregularny' ? 'nieregularny' : 'prostokatny'}
             initialStairsConfig={dimensions.stairs}
+            initialWadingPoolConfig={dimensions.wadingPool}
           />
         </DialogContent>
       </Dialog>
