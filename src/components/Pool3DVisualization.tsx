@@ -1577,6 +1577,7 @@ function slicePolygonX(vertices: { x: number; y: number }[], xMin: number, xMax:
 // Custom wading pool mesh (from drawn vertices) - uses actual polygon shape
 // Aligned with WadingPoolMesh rendering: blue floor (#0369a1), grey concrete walls
 // NO platform - only floor box + internal walls (matching rectangular pool structure)
+// Accepts stairsVertices to exclude walls where stairs overlap
 function CustomWadingPoolMesh({ 
   vertices, 
   wadingDepth, 
@@ -1584,7 +1585,8 @@ function CustomWadingPoolMesh({
   poolVertices, 
   showDimensions = true,
   hasDividingWall = true,
-  dividingWallOffset = 0
+  dividingWallOffset = 0,
+  stairsVerticesArrays = []
 }: { 
   vertices: CustomPoolVertex[]; 
   wadingDepth: number;
@@ -1593,6 +1595,7 @@ function CustomWadingPoolMesh({
   showDimensions?: boolean;
   hasDividingWall?: boolean;
   dividingWallOffset?: number;
+  stairsVerticesArrays?: CustomPoolVertex[][];
 }) {
   // Use concrete material for wall surfaces (uniform grey)
   const concreteMaterial = useMemo(() => 
@@ -1680,6 +1683,55 @@ function CustomWadingPoolMesh({
     };
   }, [transformedPoolVertices]);
 
+  // Transform stairs vertices to be relative to pool center (for overlap detection)
+  const transformedStairsArrays = useMemo(() => 
+    stairsVerticesArrays.map(stairsVerts => 
+      stairsVerts.map(v => ({ x: v.x - poolCenter.x, y: v.y - poolCenter.y }))
+    ),
+  [stairsVerticesArrays, poolCenter]);
+
+  // Helper: Check if a point is inside any stair polygon
+  const isPointInAnyStairs = (px: number, py: number): boolean => {
+    for (const stairsVerts of transformedStairsArrays) {
+      if (stairsVerts.length < 3) continue;
+      // Ray casting algorithm
+      let inside = false;
+      for (let i = 0, j = stairsVerts.length - 1; i < stairsVerts.length; j = i++) {
+        const xi = stairsVerts[i].x, yi = stairsVerts[i].y;
+        const xj = stairsVerts[j].x, yj = stairsVerts[j].y;
+        if (((yi > py) !== (yj > py)) && (px < (xj - xi) * (py - yi) / (yj - yi) + xi)) {
+          inside = !inside;
+        }
+      }
+      if (inside) return true;
+    }
+    return false;
+  };
+
+  // Helper: Check if edge overlaps with any stair polygon
+  const doesEdgeOverlapStairs = (curr: { x: number; y: number }, next: { x: number; y: number }): boolean => {
+    const midX = (curr.x + next.x) / 2;
+    const midY = (curr.y + next.y) / 2;
+    
+    // Check if edge midpoint is near any stair edge
+    for (const stairsVerts of transformedStairsArrays) {
+      if (stairsVerts.length < 3) continue;
+      
+      // Check if any stair vertex is very close to this edge
+      for (const sv of stairsVerts) {
+        const dist = pointToSegmentDistance({ x: sv.x, y: sv.y }, curr, next);
+        if (dist < 0.2) return true; // Within 20cm
+      }
+      
+      // Check if edge midpoint is inside stair polygon (expanded by wall thickness)
+      if (isPointInAnyStairs(midX, midY)) return true;
+      
+      // Check if edge endpoints are inside stair polygon
+      if (isPointInAnyStairs(curr.x, curr.y) || isPointInAnyStairs(next.x, next.y)) return true;
+    }
+    return false;
+  };
+
   // Determine which edges are internal (facing inside pool)
   const { walls, cornerWalls, rims } = useMemo(() => {
     const wallElements: JSX.Element[] = [];
@@ -1688,7 +1740,7 @@ function CustomWadingPoolMesh({
     const threshold = 0.3;
     
     // Find internal edges (not on pool boundary)
-    const internalEdges: { curr: typeof transformedVertices[0]; next: typeof transformedVertices[0]; index: number }[] = [];
+    const internalEdges: { curr: typeof transformedVertices[0]; next: typeof transformedVertices[0]; index: number; overlapsStairs: boolean }[] = [];
     
     for (let i = 0; i < transformedVertices.length; i++) {
       const curr = transformedVertices[i];
@@ -1706,13 +1758,19 @@ function CustomWadingPoolMesh({
       const distToPoolEdge = pointToLineDistance({ x: midX, y: midY }, transformedPoolVertices);
       
       if (!isOnPoolBoundary && distToPoolEdge >= threshold) {
-        internalEdges.push({ curr, next, index: i });
+        // Check if this edge overlaps with stairs
+        const overlapsStairs = doesEdgeOverlapStairs(curr, next);
+        internalEdges.push({ curr, next, index: i, overlapsStairs });
       }
     }
     
-    // Create walls for each internal edge
+    // Create walls for each internal edge (skip edges that overlap with stairs)
     for (const edge of internalEdges) {
-      const { curr, next, index: i } = edge;
+      const { curr, next, index: i, overlapsStairs } = edge;
+      
+      // Skip rendering walls for edges that overlap with stairs
+      if (overlapsStairs) continue;
+      
       const dx = next.x - curr.x;
       const dy = next.y - curr.y;
       const length = Math.sqrt(dx * dx + dy * dy);
@@ -1802,7 +1860,7 @@ function CustomWadingPoolMesh({
     }
     
     return { walls: wallElements, cornerWalls: cornerElements, rims: rimElements };
-  }, [transformedVertices, transformedPoolVertices, poolBounds, wadingDepth, concreteMaterial, hasDividingWall, dividingWallHeight, wallOffsetFromEdge, internalWallHeight]);
+  }, [transformedVertices, transformedPoolVertices, poolBounds, wadingDepth, concreteMaterial, hasDividingWall, dividingWallHeight, wallOffsetFromEdge, internalWallHeight, transformedStairsArrays]);
 
   const { minX, maxX, minY, maxY, sizeX, sizeY } = bounds;
 
@@ -1939,6 +1997,7 @@ function Scene({ dimensions, calculations: _calculations, showFoilLayout, rollWi
         )}
         
         {/* Custom wading pools from drawn vertices - render all */}
+        {/* Pass stairs vertices to exclude walls where they overlap */}
         {hasCustomWadingPool && customWadingArrays.map((wadingVerts, index) => (
           wadingVerts.length >= 3 && (
             <CustomWadingPoolMesh 
@@ -1950,6 +2009,7 @@ function Scene({ dimensions, calculations: _calculations, showFoilLayout, rollWi
               showDimensions={dimensionDisplay === 'all' || dimensionDisplay === 'wading'}
               hasDividingWall={dimensions.wadingPool?.hasDividingWall !== false}
               dividingWallOffset={dimensions.wadingPool?.dividingWallOffset ?? 0}
+              stairsVerticesArrays={customStairsArrays}
             />
           )
         ))}
