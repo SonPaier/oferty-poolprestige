@@ -634,6 +634,9 @@ export function CustomPoolDrawer({
   }, [metersToCanvas]);
 
   // Draw direction arrow for stairs with 8 directions
+  // Rotation 0° = entry from top (arrow pointing down, +Y)
+  // Rotation 90° = entry from left (arrow pointing right, +X)
+  // etc.
   const drawStairsArrow = useCallback((canvas: FabricCanvas, points: Point[], rotation: number) => {
     if (points.length < 3) return;
     
@@ -647,9 +650,11 @@ export function CustomPoolDrawer({
     const arrowHead = 12;
     
     // Calculate arrow direction based on rotation (8 directions)
-    const radians = (rotation * Math.PI) / 180;
+    // Convert rotation to radians - rotation 0° means arrow points down (+Y in canvas)
+    // We need to convert the "entry from" direction to "descent towards" direction
+    const radians = ((rotation - 180) * Math.PI) / 180;
     const dx = Math.sin(radians);
-    const dy = Math.cos(radians);
+    const dy = -Math.cos(radians); // Negative because canvas Y is flipped
     
     const endX = cx + dx * arrowLen;
     const endY = cy + dy * arrowLen;
