@@ -73,6 +73,128 @@ function getPoolPoints(dimensions: PoolDimensions): { x: number; y: number }[] {
   return points;
 }
 
+// Wall thickness for 2D visualization (same as 3D: 24cm)
+const POOL_WALL_THICKNESS_2D = 0.24;
+
+// Generate outer shell points (pool + wall thickness) for 2D view
+function getOuterShellPoints(dimensions: PoolDimensions): { x: number; y: number }[] {
+  const { shape, length, width, customVertices } = dimensions;
+  const points: { x: number; y: number }[] = [];
+  const offset = POOL_WALL_THICKNESS_2D;
+
+  switch (shape) {
+    case 'prostokatny': {
+      const outerHalfL = length / 2 + offset;
+      const outerHalfW = width / 2 + offset;
+      points.push(
+        { x: -outerHalfL, y: -outerHalfW },
+        { x: outerHalfL, y: -outerHalfW },
+        { x: outerHalfL, y: outerHalfW },
+        { x: -outerHalfL, y: outerHalfW }
+      );
+      break;
+    }
+    case 'owalny': {
+      const segments = 32;
+      for (let i = 0; i <= segments; i++) {
+        const angle = (i / segments) * Math.PI * 2;
+        points.push({
+          x: Math.cos(angle) * (length / 2 + offset),
+          y: Math.sin(angle) * (width / 2 + offset)
+        });
+      }
+      break;
+    }
+    case 'nieregularny': {
+      if (customVertices && customVertices.length >= 3) {
+        const minX = Math.min(...customVertices.map(v => v.x));
+        const maxX = Math.max(...customVertices.map(v => v.x));
+        const minY = Math.min(...customVertices.map(v => v.y));
+        const maxY = Math.max(...customVertices.map(v => v.y));
+        const centerX = (minX + maxX) / 2;
+        const centerY = (minY + maxY) / 2;
+        
+        // Offset each vertex outward
+        const numPoints = customVertices.length;
+        for (let i = 0; i < numPoints; i++) {
+          const prev = customVertices[(i - 1 + numPoints) % numPoints];
+          const curr = customVertices[i];
+          const next = customVertices[(i + 1) % numPoints];
+          
+          // Calculate edge vectors
+          const edge1 = { x: curr.x - prev.x, y: curr.y - prev.y };
+          const edge2 = { x: next.x - curr.x, y: next.y - curr.y };
+          const len1 = Math.hypot(edge1.x, edge1.y);
+          const len2 = Math.hypot(edge2.x, edge2.y);
+          
+          if (len1 < 0.001 || len2 < 0.001) {
+            points.push({ x: curr.x - centerX, y: curr.y - centerY });
+            continue;
+          }
+          
+          // Normalize
+          const e1 = { x: edge1.x / len1, y: edge1.y / len1 };
+          const e2 = { x: edge2.x / len2, y: edge2.y / len2 };
+          
+          // Calculate signed area to determine winding
+          let signedArea = 0;
+          for (let j = 0; j < numPoints; j++) {
+            const a = customVertices[j];
+            const b = customVertices[(j + 1) % numPoints];
+            signedArea += a.x * b.y - b.x * a.y;
+          }
+          signedArea /= 2;
+          
+          // Outward normals (perpendicular to edges)
+          const outward = signedArea > 0;
+          const n1 = outward ? { x: e1.y, y: -e1.x } : { x: -e1.y, y: e1.x };
+          const n2 = outward ? { x: e2.y, y: -e2.x } : { x: -e2.y, y: e2.x };
+          
+          // Average normal
+          let avgX = (n1.x + n2.x) / 2;
+          let avgY = (n1.y + n2.y) / 2;
+          const avgLen = Math.hypot(avgX, avgY);
+          if (avgLen > 0.001) {
+            avgX /= avgLen;
+            avgY /= avgLen;
+          }
+          
+          // Offset multiplier for sharp corners
+          const dot = n1.x * n2.x + n1.y * n2.y;
+          const mult = dot > 0.1 ? 1 / Math.max(0.5, Math.sqrt((1 + dot) / 2)) : 1.5;
+          
+          points.push({
+            x: curr.x - centerX + avgX * offset * mult,
+            y: curr.y - centerY + avgY * offset * mult
+          });
+        }
+      } else {
+        // Placeholder
+        const outerSize = 1 + offset;
+        points.push(
+          { x: -outerSize, y: -outerSize },
+          { x: outerSize, y: -outerSize },
+          { x: outerSize, y: outerSize },
+          { x: -outerSize, y: outerSize }
+        );
+      }
+      break;
+    }
+    default: {
+      const outerHalfL = length / 2 + offset;
+      const outerHalfW = width / 2 + offset;
+      points.push(
+        { x: -outerHalfL, y: -outerHalfW },
+        { x: outerHalfL, y: -outerHalfW },
+        { x: outerHalfL, y: outerHalfW },
+        { x: -outerHalfL, y: outerHalfW }
+      );
+    }
+  }
+
+  return points;
+}
+
 // Use shared stair render data from reusable component
 function getRegularStairsData(dimensions: PoolDimensions) {
   const stairs = dimensions.stairs;
@@ -166,7 +288,7 @@ function transformCustomVertices(
 
 export default function Pool2DPreview({ dimensions, height = 300, dimensionDisplay = 'pool' }: Pool2DPreviewProps) {
   const poolPoints = useMemo(() => getPoolPoints(dimensions), [dimensions]);
-  
+  const outerShellPoints = useMemo(() => getOuterShellPoints(dimensions), [dimensions]);
   // Zoom state
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
@@ -384,9 +506,9 @@ export default function Pool2DPreview({ dimensions, height = 300, dimensionDispl
     return getRegularWadingPoolPoints(dimensions);
   }, [dimensions]);
   
-  // Calculate bounding box for all elements
+  // Calculate bounding box for all elements (including outer shell)
   const bounds = useMemo(() => {
-    const allPoints = [...poolPoints];
+    const allPoints = [...outerShellPoints]; // Start with outer shell for proper bounding
     if (stairsPoints) allPoints.push(...stairsPoints);
     if (wadingPoolPoints) allPoints.push(...wadingPoolPoints);
     
@@ -396,7 +518,7 @@ export default function Pool2DPreview({ dimensions, height = 300, dimensionDispl
     const maxY = Math.max(...allPoints.map(p => p.y));
     
     return { minX, maxX, minY, maxY };
-  }, [poolPoints, stairsPoints, wadingPoolPoints]);
+  }, [outerShellPoints, stairsPoints, wadingPoolPoints]);
   
   // Calculate bounds for stairs and wading pool individually
   const stairsBounds = useMemo(() => {
@@ -434,6 +556,7 @@ export default function Pool2DPreview({ dimensions, height = 300, dimensionDispl
     return points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${-p.y}`).join(' ') + ' Z';
   };
   
+  const outerShellPath = pointsToPath(outerShellPoints);
   const poolPath = pointsToPath(poolPoints);
   const stairsPath = stairsPoints ? pointsToPath(stairsPoints) : '';
   const wadingPoolPath = wadingPoolPoints ? pointsToPath(wadingPoolPoints) : '';
@@ -509,7 +632,15 @@ export default function Pool2DPreview({ dimensions, height = 300, dimensionDispl
           fill="url(#grid2d)" 
         />
         
-        {/* Pool outline */}
+        {/* Outer shell (concrete wall thickness) - render first (below pool) */}
+        <path
+          d={outerShellPath}
+          fill="#d1d5db"
+          stroke="#9ca3af"
+          strokeWidth="0.03"
+        />
+        
+        {/* Pool outline (inner, blue water area) */}
         <path
           d={poolPath}
           fill="#5b9bd5"
