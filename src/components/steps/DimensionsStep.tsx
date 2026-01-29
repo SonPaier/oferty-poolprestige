@@ -1794,6 +1794,37 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
                       <span className="text-muted-foreground">Typ przelewu</span>
                       <span className="font-medium">{overflowTypeLabels[dimensions.overflowType]}</span>
                     </div>
+                    
+                    {/* Stairs area - show only if stairs enabled */}
+                    {(dimensions.stairs?.enabled || (dimensions.customStairsVertices && dimensions.customStairsVertices.some(v => v.length >= 3))) && (
+                      <>
+                        <div className="flex justify-between p-3 rounded-lg bg-amber-500/10 border border-amber-500/20">
+                          <span className="text-muted-foreground flex items-center gap-1">
+                            <Footprints className="w-3 h-3" />
+                            Pow. schodów (rzut)
+                          </span>
+                          <span className="font-medium">{calculations.stairsArea.toFixed(2)} m²</span>
+                        </div>
+                        <div className="flex justify-between p-3 rounded-lg bg-amber-500/10 border border-amber-500/20">
+                          <span className="text-muted-foreground flex items-center gap-1">
+                            <Footprints className="w-3 h-3" />
+                            Pow. stopni (pozioma)
+                          </span>
+                          <span className="font-medium">{calculations.stairsStepArea.toFixed(2)} m²</span>
+                        </div>
+                      </>
+                    )}
+                    
+                    {/* Wading pool area - show only if wading pool enabled */}
+                    {(dimensions.wadingPool?.enabled || (dimensions.customWadingPoolVertices && dimensions.customWadingPoolVertices.some(v => v.length >= 3))) && (
+                      <div className="flex justify-between p-3 rounded-lg bg-cyan-500/10 border border-cyan-500/20 col-span-2">
+                        <span className="text-muted-foreground flex items-center gap-1">
+                          <Baby className="w-3 h-3" />
+                          Powierzchnia brodzika
+                        </span>
+                        <span className="font-medium">{calculations.wadingPoolArea.toFixed(2)} m²</span>
+                      </div>
+                    )}
                   </div>
 
                   <div className="p-4 rounded-lg bg-accent/10 border border-accent/20">

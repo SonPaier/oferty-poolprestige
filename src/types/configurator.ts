@@ -190,6 +190,10 @@ export interface PoolCalculations {
   bottomArea: number;
   requiredFlow: number; // m3/h - wydajność filtracji wg DIN
   waterDepth: number; // głębokość wody (depth - 10cm for skimmer, = depth for gutter)
+  // Stair and wading pool areas
+  stairsArea: number; // Łączna powierzchnia schodów (m²)
+  stairsStepArea: number; // Łączna powierzchnia stopni (poziomych) (m²)
+  wadingPoolArea: number; // Powierzchnia brodzika (m²)
 }
 
 export interface FoilCalculation {
