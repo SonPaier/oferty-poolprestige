@@ -1575,7 +1575,8 @@ function slicePolygonX(vertices: { x: number; y: number }[], xMin: number, xMax:
 }
 
 // Custom wading pool mesh (from drawn vertices) - uses actual polygon shape
-// Aligned with WadingPoolMesh rendering: blue floor (#0369a1), grey concrete walls, corners meet properly
+// Aligned with WadingPoolMesh rendering: blue floor (#0369a1), grey concrete walls
+// NO platform - only floor box + internal walls (matching rectangular pool structure)
 function CustomWadingPoolMesh({ 
   vertices, 
   wadingDepth, 
@@ -1593,19 +1594,6 @@ function CustomWadingPoolMesh({
   hasDividingWall?: boolean;
   dividingWallOffset?: number;
 }) {
-  // Floor material - same blue as WadingPoolMesh (#0369a1)
-  const floorMaterial = useMemo(() => 
-    new THREE.MeshStandardMaterial({ color: '#0369a1' }), []);
-  
-  // Platform material - BLUE for the platform body (same as floor)
-  const platformMaterial = useMemo(() => 
-    new THREE.MeshStandardMaterial({ 
-      color: '#0369a1',
-      polygonOffset: true,
-      polygonOffsetFactor: -1,
-      polygonOffsetUnits: -1,
-    }), []);
-  
   // Use concrete material for wall surfaces (uniform grey)
   const concreteMaterial = useMemo(() => 
     new THREE.MeshStandardMaterial({ 
@@ -1615,8 +1603,6 @@ function CustomWadingPoolMesh({
       polygonOffsetFactor: -1,
       polygonOffsetUnits: -1,
     }), []);
-  const rimMaterial = useMemo(() => 
-    new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.6 }), []);
 
   const RIM_WIDTH = WADING_WALL_THICKNESS; // Use 15cm wall thickness
   
@@ -1654,19 +1640,18 @@ function CustomWadingPoolMesh({
   // Create shape from actual polygon vertices
   const shape2D = useMemo(() => transformedVertices.map(v => new THREE.Vector2(v.x, v.y)), [transformedVertices]);
   const shapeObj = useMemo(() => new THREE.Shape(shape2D), [shape2D]);
-  const floorGeo = useMemo(() => new THREE.ShapeGeometry(shapeObj), [shapeObj]);
 
-  // Create extruded platform geometry using actual shape - BLUE platform
-  const platformHeight = poolDepth - wadingDepth;
-  const platformGeo = useMemo(() => {
+  // Create floor geometry as ExtrudeGeometry with WADING_WALL_THICKNESS depth (like WadingPoolMesh)
+  const floorGeo = useMemo(() => {
     const geo = new THREE.ExtrudeGeometry(shapeObj, {
-      depth: platformHeight,
+      depth: WADING_WALL_THICKNESS,
       bevelEnabled: false,
     });
-    // Place platform from z=-poolDepth up to z=-wadingDepth
-    geo.translate(0, 0, -poolDepth);
+    // Position: the floor's TOP surface should be at -wadingDepth
+    // ExtrudeGeometry goes in +Z direction, so we place it at -wadingDepth and it extends down
+    geo.translate(0, 0, -wadingDepth - WADING_WALL_THICKNESS);
     return geo;
-  }, [shapeObj, platformHeight, poolDepth]);
+  }, [shapeObj, wadingDepth]);
 
   const bounds = useMemo(() => {
     const xs = transformedVertices.map(v => v.x);
@@ -1696,7 +1681,6 @@ function CustomWadingPoolMesh({
   }, [transformedPoolVertices]);
 
   // Determine which edges are internal (facing inside pool)
-  // Create corner walls that meet properly
   const { walls, cornerWalls, rims } = useMemo(() => {
     const wallElements: JSX.Element[] = [];
     const cornerElements: JSX.Element[] = [];
@@ -1736,7 +1720,7 @@ function CustomWadingPoolMesh({
       const midX = (curr.x + next.x) / 2;
       const midY = (curr.y + next.y) / 2;
       
-      // Dividing wall (from pool edge down to wading depth)
+      // Dividing wall (from pool edge down to wading depth) - ONLY if enabled
       if (hasDividingWall && dividingWallHeight > 0.01) {
         wallElements.push(
           <mesh 
@@ -1745,12 +1729,12 @@ function CustomWadingPoolMesh({
             rotation={[0, 0, angle]}
             material={concreteMaterial}
           >
-            <boxGeometry args={[length + RIM_WIDTH, RIM_WIDTH, dividingWallHeight]} />
+            <boxGeometry args={[length, RIM_WIDTH, dividingWallHeight]} />
           </mesh>
         );
       }
       
-      // Internal structural wall below wading pool floor
+      // Internal structural wall below wading pool floor (always rendered)
       wallElements.push(
         <mesh 
           key={`internal-wall-${i}`}
@@ -1758,25 +1742,26 @@ function CustomWadingPoolMesh({
           rotation={[0, 0, angle]}
           material={concreteMaterial}
         >
-          <boxGeometry args={[length + RIM_WIDTH, RIM_WIDTH, internalWallHeight]} />
+          <boxGeometry args={[length, RIM_WIDTH, internalWallHeight]} />
         </mesh>
       );
       
-      // White rim on top
-      rimElements.push(
-        <mesh 
-          key={`rim-${i}`}
-          position={[midX, midY, 0]}
-          rotation={[0, 0, angle]}
-          material={rimMaterial}
-        >
-          <boxGeometry args={[length + RIM_WIDTH * 2, RIM_WIDTH, RIM_WIDTH]} />
-        </mesh>
-      );
+      // White rim on top (only if dividing wall enabled)
+      if (hasDividingWall) {
+        rimElements.push(
+          <mesh 
+            key={`rim-${i}`}
+            position={[midX, midY, 0]}
+            rotation={[0, 0, angle]}
+            material={concreteMaterial}
+          >
+            <boxGeometry args={[length + RIM_WIDTH, RIM_WIDTH, RIM_WIDTH]} />
+          </mesh>
+        );
+      }
     }
     
-    // Create corner walls where internal edges meet
-    // Find vertices that are at the intersection of two internal edges
+    // Create corner pillars where internal edges meet
     for (let i = 0; i < internalEdges.length; i++) {
       for (let j = i + 1; j < internalEdges.length; j++) {
         const edge1 = internalEdges[i];
@@ -1789,7 +1774,7 @@ function CustomWadingPoolMesh({
           null;
           
         if (sharedVertex) {
-          // Add corner pillar at intersection
+          // Corner pillar for dividing wall
           if (hasDividingWall && dividingWallHeight > 0.01) {
             cornerElements.push(
               <mesh
@@ -1802,7 +1787,7 @@ function CustomWadingPoolMesh({
             );
           }
           
-          // Corner for internal wall
+          // Corner pillar for internal wall
           cornerElements.push(
             <mesh
               key={`corner-internal-${i}-${j}`}
@@ -1817,19 +1802,18 @@ function CustomWadingPoolMesh({
     }
     
     return { walls: wallElements, cornerWalls: cornerElements, rims: rimElements };
-  }, [transformedVertices, transformedPoolVertices, poolBounds, wadingDepth, concreteMaterial, rimMaterial, hasDividingWall, dividingWallHeight, wallOffsetFromEdge, internalWallHeight]);
+  }, [transformedVertices, transformedPoolVertices, poolBounds, wadingDepth, concreteMaterial, hasDividingWall, dividingWallHeight, wallOffsetFromEdge, internalWallHeight]);
 
   const { minX, maxX, minY, maxY, sizeX, sizeY } = bounds;
 
   return (
     <group>
-      {/* Platform using actual polygon shape - BLUE (not concrete grey) */}
-      <mesh geometry={platformGeo} material={platformMaterial} />
+      {/* Floor box - BLUE (same as WadingPoolMesh: #0369a1) */}
+      <mesh geometry={floorGeo}>
+        <meshStandardMaterial color="#0369a1" />
+      </mesh>
       
-      {/* Floor surface - BLUE */}
-      <mesh position={[0, 0, floorZ]} geometry={floorGeo} material={floorMaterial} />
-      
-      {/* Internal walls */}
+      {/* Internal walls and corner pillars */}
       {walls}
       {cornerWalls}
       {rims}
