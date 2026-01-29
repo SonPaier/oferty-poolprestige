@@ -1699,6 +1699,10 @@ function CustomWadingPoolMesh({
 
   // Determine which edges are internal (facing inside pool)
   const { walls, cornerWalls, rims } = useMemo(() => {
+    // Tiny epsilon to avoid z-fighting where the (white) wall top coincides with the (blue) floor top.
+    // This is what was making the top plane look non-blue when the dividing wall is disabled.
+    const TOP_EPS = 0.002; // 2mm
+
     // Ray casting point-in-polygon test
     const isPointInPolygon = (pt: { x: number; y: number }, poly: { x: number; y: number }[]) => {
       let inside = false;
@@ -1727,6 +1731,25 @@ function CustomWadingPoolMesh({
       const eps = 0.02; // 2cm
       const p1 = { x: mid.x + n1.nx * eps, y: mid.y + n1.ny * eps };
       return isPointInPolygon(p1, transformedVertices) ? n1 : n2;
+    };
+
+    const lineIntersection = (
+      p1: { x: number; y: number },
+      d1: { x: number; y: number },
+      p2: { x: number; y: number },
+      d2: { x: number; y: number }
+    ): { x: number; y: number } | null => {
+      const denom = d1.x * d2.y - d1.y * d2.x;
+      if (Math.abs(denom) < 1e-8) return null;
+      const dx = p2.x - p1.x;
+      const dy = p2.y - p1.y;
+      const t = (dx * d2.y - dy * d2.x) / denom;
+      return { x: p1.x + t * d1.x, y: p1.y + t * d1.y };
+    };
+
+    const normalize2 = (v: { x: number; y: number }) => {
+      const len = Math.hypot(v.x, v.y);
+      return len < 1e-8 ? { x: 1, y: 0 } : { x: v.x / len, y: v.y / len };
     };
 
     const wallElements: JSX.Element[] = [];
@@ -1801,11 +1824,11 @@ function CustomWadingPoolMesh({
       wallElements.push(
         <mesh 
           key={`internal-wall-${i}`}
-          position={[wallMidX, wallMidY, -wadingDepth - internalWallHeight / 2]}
+          position={[wallMidX, wallMidY, -wadingDepth - internalWallHeight / 2 - TOP_EPS / 2]}
           rotation={[0, 0, angle]}
           material={concreteMaterial}
         >
-          <boxGeometry args={[length, RIM_WIDTH, internalWallHeight]} />
+          <boxGeometry args={[length, RIM_WIDTH, Math.max(0.001, internalWallHeight - TOP_EPS)]} />
         </mesh>
       );
       
@@ -1822,7 +1845,8 @@ function CustomWadingPoolMesh({
             rotation={[0, 0, angle]}
             material={concreteMaterial}
           >
-            <boxGeometry args={[length + RIM_WIDTH, RIM_WIDTH, RIM_WIDTH]} />
+            {/* Don't over-extend in corners; corner pillars fill the joints. */}
+            <boxGeometry args={[length, RIM_WIDTH, RIM_WIDTH]} />
           </mesh>
         );
       }
@@ -1841,23 +1865,30 @@ function CustomWadingPoolMesh({
           null;
           
         if (sharedVertex) {
-          // Shift corner pillars inward as well (average of adjacent edge inward normals)
-          const n1 = { x: edge1.nx, y: edge1.ny };
-          const n2 = { x: edge2.nx, y: edge2.ny };
-          let ax = n1.x + n2.x;
-          let ay = n1.y + n2.y;
-          const alen = Math.hypot(ax, ay);
-          if (alen > 1e-6) {
-            ax /= alen;
-            ay /= alen;
-          } else {
-            // fallback: use edge1 normal
-            ax = n1.x;
-            ay = n1.y;
-          }
+          // Corner pillars: place them at the INTERSECTION of the two inset wall centerlines.
+          // This prevents the corner element from sticking outside the wading pool outline.
           const inset = RIM_WIDTH / 2;
-          const pillarX = sharedVertex.x + ax * inset;
-          const pillarY = sharedVertex.y + ay * inset;
+
+          const d1 = normalize2({ x: edge1.next.x - edge1.curr.x, y: edge1.next.y - edge1.curr.y });
+          const d2 = normalize2({ x: edge2.next.x - edge2.curr.x, y: edge2.next.y - edge2.curr.y });
+          const p1 = { x: sharedVertex.x + edge1.nx * inset, y: sharedVertex.y + edge1.ny * inset };
+          const p2 = { x: sharedVertex.x + edge2.nx * inset, y: sharedVertex.y + edge2.ny * inset };
+          const inter = lineIntersection(p1, d1, p2, d2);
+
+          let pillarX = inter?.x;
+          let pillarY = inter?.y;
+
+          if (pillarX == null || pillarY == null || !Number.isFinite(pillarX) || !Number.isFinite(pillarY)) {
+            // Fallback: average inward normals
+            const n1 = { x: edge1.nx, y: edge1.ny };
+            const n2 = { x: edge2.nx, y: edge2.ny };
+            const avg = normalize2({ x: n1.x + n2.x, y: n1.y + n2.y });
+            pillarX = sharedVertex.x + avg.x * inset;
+            pillarY = sharedVertex.y + avg.y * inset;
+          }
+
+          const radius = RIM_WIDTH / 2;
+          const radialSegments = 16;
 
           // Corner pillar for dividing wall
           if (hasDividingWall && dividingWallHeight > 0.01) {
@@ -1866,8 +1897,9 @@ function CustomWadingPoolMesh({
                 key={`corner-dividing-${i}-${j}`}
                 position={[pillarX, pillarY, -wallOffsetFromEdge - dividingWallHeight / 2]}
                 material={concreteMaterial}
+                rotation={[Math.PI / 2, 0, 0]}
               >
-                <boxGeometry args={[RIM_WIDTH, RIM_WIDTH, dividingWallHeight]} />
+                <cylinderGeometry args={[radius, radius, dividingWallHeight, radialSegments]} />
               </mesh>
             );
           }
@@ -1876,10 +1908,11 @@ function CustomWadingPoolMesh({
           cornerElements.push(
             <mesh
               key={`corner-internal-${i}-${j}`}
-              position={[pillarX, pillarY, -wadingDepth - internalWallHeight / 2]}
+              position={[pillarX, pillarY, -wadingDepth - internalWallHeight / 2 - TOP_EPS / 2]}
               material={concreteMaterial}
+              rotation={[Math.PI / 2, 0, 0]}
             >
-              <boxGeometry args={[RIM_WIDTH, RIM_WIDTH, internalWallHeight]} />
+              <cylinderGeometry args={[radius, radius, Math.max(0.001, internalWallHeight - TOP_EPS), radialSegments]} />
             </mesh>
           );
         }
