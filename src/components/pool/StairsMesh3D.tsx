@@ -16,8 +16,9 @@ const useStairsMaterials = () => {
       roughness: 0.6,
       // Prevent z-fighting with step body (blue bleeding through white)
       polygonOffset: true,
-      polygonOffsetFactor: -1,
-      polygonOffsetUnits: -1,
+      polygonOffsetFactor: -2,
+      polygonOffsetUnits: -2,
+      side: THREE.DoubleSide,
     }), []);
   
   const stepFrontMaterial = useMemo(() => 
@@ -26,6 +27,7 @@ const useStairsMaterials = () => {
       polygonOffset: true,
       polygonOffsetFactor: 1,
       polygonOffsetUnits: 1,
+      side: THREE.DoubleSide,
     }), []);
 
   return { stepTopMaterial, stepFrontMaterial };
@@ -325,11 +327,12 @@ function RectangularStairs3D({
       
       stepsArr.push(
         <group key={i} position={[posX, posY, posZ]} rotation={[0, 0, angle]}>
-          <mesh material={stepFrontMaterial}>
+          <mesh material={stepFrontMaterial} renderOrder={1}>
             <boxGeometry args={[stairsWidth, stepDepth, thisStepHeight]} />
           </mesh>
-          <mesh position={[0, 0, thisStepHeight / 2 - 0.01]} material={stepTopMaterial}>
-            <boxGeometry args={[stairsWidth, stepDepth, 0.02]} />
+          {/* Lift the top slightly ABOVE the body to avoid angle-dependent z-fighting */}
+          <mesh position={[0, 0, thisStepHeight / 2 + 0.003]} material={stepTopMaterial} renderOrder={2}>
+            <boxGeometry args={[stairsWidth, stepDepth, 0.01]} />
           </mesh>
         </group>
       );
@@ -420,8 +423,8 @@ function DiagonalStairs3D({
       // Position at Z level only - shape already has correct XY coordinates
       stepsArr.push(
         <group key={i} position={[0, 0, stepTop]}>
-          <mesh geometry={extrudeGeometry} material={stepFrontMaterial} />
-          <mesh position={[0, 0, 0.01]} material={stepTopMaterial}>
+          <mesh geometry={extrudeGeometry} material={stepFrontMaterial} renderOrder={1} />
+          <mesh position={[0, 0, 0.02]} material={stepTopMaterial} renderOrder={2}>
             <shapeGeometry args={[shape]} />
           </mesh>
         </group>
@@ -574,8 +577,8 @@ function LegacyDiagonalStairs({
 
         stepsArr.push(
           <group key={i} position={[baseX, baseY, stepTop]}>
-            <mesh geometry={geometry} material={stepFrontMaterial} />
-            <mesh position={[0, 0, 0.01]} material={stepTopMaterial}>
+            <mesh geometry={geometry} material={stepFrontMaterial} renderOrder={1} />
+            <mesh position={[0, 0, 0.02]} material={stepTopMaterial} renderOrder={2}>
               <shapeGeometry args={[shape]} />
             </mesh>
           </group>
@@ -691,11 +694,11 @@ function LegacyRegularStairs({
       
       stepsArr.push(
         <group key={i} position={[posX, posY, posZ]}>
-          <mesh material={stepFrontMaterial}>
+          <mesh material={stepFrontMaterial} renderOrder={1}>
             <boxGeometry args={[sizeX, sizeY, thisStepHeight]} />
           </mesh>
-          <mesh position={[0, 0, thisStepHeight / 2 - 0.01]} material={stepTopMaterial}>
-            <boxGeometry args={[sizeX, sizeY, 0.02]} />
+          <mesh position={[0, 0, thisStepHeight / 2 + 0.003]} material={stepTopMaterial} renderOrder={2}>
+            <boxGeometry args={[sizeX, sizeY, 0.01]} />
           </mesh>
         </group>
       );
