@@ -13,8 +13,7 @@ import { FiltrationStep } from '@/components/steps/FiltrationStep';
 import { LightingStep } from '@/components/steps/LightingStep';
 import { AutomationStep } from '@/components/steps/AutomationStep';
 import { AttractionsStep } from '@/components/steps/AttractionsStep';
-import { ExcavationStep } from '@/components/steps/ExcavationStep';
-import { ConstructionStep } from '@/components/steps/ConstructionStep';
+import { GroundworksStep } from '@/components/steps/GroundworksStep';
 import { AdditionsStep } from '@/components/steps/AdditionsStep';
 import { SummaryStep } from '@/components/steps/SummaryStep';
 import { SettingsDialog } from '@/components/SettingsDialog';
@@ -24,7 +23,7 @@ import { toast } from 'sonner';
 import { getOfferByIdFromDb } from '@/lib/offerDb';
 
 const DRAFT_STORAGE_KEY = 'pool_prestige_draft';
-const TOTAL_STEPS = 12;
+const TOTAL_STEPS = 11;
 
 interface DraftData {
   draftId: string;
@@ -290,24 +289,22 @@ function ConfiguratorContent() {
       case 2:
         return <DimensionsStep onNext={nextStep} onBack={prevStep} />;
       case 3:
-        return <CoveringStep onNext={nextStep} onBack={prevStep} />;
+        return <GroundworksStep onNext={nextStep} onBack={prevStep} excavationSettings={excavationSettings} />;
       case 4:
-        return <EquipmentStep onNext={nextStep} onBack={prevStep} />;
+        return <CoveringStep onNext={nextStep} onBack={prevStep} />;
       case 5:
-        return <FiltrationStep onNext={nextStep} onBack={prevStep} />;
+        return <EquipmentStep onNext={nextStep} onBack={prevStep} />;
       case 6:
-        return <LightingStep onNext={nextStep} onBack={prevStep} />;
+        return <FiltrationStep onNext={nextStep} onBack={prevStep} />;
       case 7:
-        return <AutomationStep onNext={nextStep} onBack={prevStep} />;
+        return <LightingStep onNext={nextStep} onBack={prevStep} />;
       case 8:
-        return <AttractionsStep onNext={nextStep} onBack={prevStep} />;
+        return <AutomationStep onNext={nextStep} onBack={prevStep} />;
       case 9:
-        return <ExcavationStep onNext={nextStep} onBack={prevStep} excavationSettings={excavationSettings} />;
+        return <AttractionsStep onNext={nextStep} onBack={prevStep} />;
       case 10:
-        return <ConstructionStep onNext={nextStep} onBack={prevStep} />;
-      case 11:
         return <AdditionsStep onNext={nextStep} onBack={prevStep} />;
-      case 12:
+      case 11:
         return (
           <SummaryStep 
             onBack={prevStep} 

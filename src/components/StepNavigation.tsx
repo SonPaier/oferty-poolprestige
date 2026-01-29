@@ -10,16 +10,15 @@ interface Step {
 const steps: Step[] = [
   { id: 1, label: 'Dane klienta', shortLabel: 'Klient' },
   { id: 2, label: 'Wymiary basenu', shortLabel: 'Wymiary' },
-  { id: 3, label: 'Wykończenie', shortLabel: 'Folia' },
-  { id: 4, label: 'Uzbrojenie', shortLabel: 'Niecki' },
-  { id: 5, label: 'Filtracja', shortLabel: 'Filtr' },
-  { id: 6, label: 'Oświetlenie', shortLabel: 'Światło' },
-  { id: 7, label: 'Automatyka', shortLabel: 'Automatyka' },
-  { id: 8, label: 'Atrakcje', shortLabel: 'Atrakcje' },
-  { id: 9, label: 'Roboty ziemne', shortLabel: 'Wykop' },
-  { id: 10, label: 'Prace budowlane', shortLabel: 'Budowa' },
-  { id: 11, label: 'Dodatki', shortLabel: 'Dodatki' },
-  { id: 12, label: 'Podsumowanie', shortLabel: 'Oferta' },
+  { id: 3, label: 'Roboty i budowa', shortLabel: 'Wykop' },
+  { id: 4, label: 'Wykończenie', shortLabel: 'Folia' },
+  { id: 5, label: 'Uzbrojenie', shortLabel: 'Niecki' },
+  { id: 6, label: 'Filtracja', shortLabel: 'Filtr' },
+  { id: 7, label: 'Oświetlenie', shortLabel: 'Światło' },
+  { id: 8, label: 'Automatyka', shortLabel: 'Automatyka' },
+  { id: 9, label: 'Atrakcje', shortLabel: 'Atrakcje' },
+  { id: 10, label: 'Dodatki', shortLabel: 'Dodatki' },
+  { id: 11, label: 'Podsumowanie', shortLabel: 'Oferta' },
 ];
 
 interface StepNavigationProps {
