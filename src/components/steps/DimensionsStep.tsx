@@ -1805,13 +1805,6 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
                           </span>
                           <span className="font-medium">{calculations.stairsArea.toFixed(2)} m²</span>
                         </div>
-                        <div className="flex justify-between p-3 rounded-lg bg-amber-500/10 border border-amber-500/20">
-                          <span className="text-muted-foreground flex items-center gap-1">
-                            <Footprints className="w-3 h-3" />
-                            Pow. stopni (pozioma)
-                          </span>
-                          <span className="font-medium">{calculations.stairsStepArea.toFixed(2)} m²</span>
-                        </div>
                       </>
                     )}
                     
