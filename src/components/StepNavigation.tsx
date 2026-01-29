@@ -1,6 +1,5 @@
 import { Check } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { useConfigurator } from '@/context/ConfiguratorContext';
 
 interface Step {
   id: number;
@@ -8,11 +7,11 @@ interface Step {
   shortLabel: string;
 }
 
-const getSteps = (liningType: 'foliowany' | 'ceramiczny'): Step[] => [
+const steps: Step[] = [
   { id: 1, label: 'Dane klienta', shortLabel: 'Klient' },
   { id: 2, label: 'Wymiary basenu', shortLabel: 'Wymiary' },
   { id: 3, label: 'Roboty i budowa', shortLabel: 'Wykop' },
-  { id: 4, label: liningType === 'ceramiczny' ? 'Ceramika' : 'Folia', shortLabel: liningType === 'ceramiczny' ? 'Ceramika' : 'Folia' },
+  { id: 4, label: 'Wykończenie', shortLabel: 'Wykończ.' },
   { id: 5, label: 'Uzbrojenie', shortLabel: 'Niecki' },
   { id: 6, label: 'Filtracja', shortLabel: 'Filtr' },
   { id: 7, label: 'Oświetlenie', shortLabel: 'Światło' },
@@ -29,8 +28,6 @@ interface StepNavigationProps {
 }
 
 export function StepNavigation({ currentStep, onStepClick, completedSteps = [] }: StepNavigationProps) {
-  const { state } = useConfigurator();
-  const steps = getSteps(state.dimensions.liningType);
 
   return (
     <div className="glass-card p-4 mb-6">
