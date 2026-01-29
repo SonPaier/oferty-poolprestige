@@ -1,5 +1,6 @@
 import { Check } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useConfigurator } from '@/context/ConfiguratorContext';
 
 interface Step {
   id: number;
@@ -7,11 +8,11 @@ interface Step {
   shortLabel: string;
 }
 
-const steps: Step[] = [
+const getSteps = (liningType: 'foliowany' | 'ceramiczny'): Step[] => [
   { id: 1, label: 'Dane klienta', shortLabel: 'Klient' },
   { id: 2, label: 'Wymiary basenu', shortLabel: 'Wymiary' },
   { id: 3, label: 'Roboty i budowa', shortLabel: 'Wykop' },
-  { id: 4, label: 'Wykończenie', shortLabel: 'Folia' },
+  { id: 4, label: liningType === 'ceramiczny' ? 'Ceramika' : 'Folia', shortLabel: liningType === 'ceramiczny' ? 'Ceramika' : 'Folia' },
   { id: 5, label: 'Uzbrojenie', shortLabel: 'Niecki' },
   { id: 6, label: 'Filtracja', shortLabel: 'Filtr' },
   { id: 7, label: 'Oświetlenie', shortLabel: 'Światło' },
@@ -28,13 +29,16 @@ interface StepNavigationProps {
 }
 
 export function StepNavigation({ currentStep, onStepClick, completedSteps = [] }: StepNavigationProps) {
+  const { state } = useConfigurator();
+  const steps = getSteps(state.dimensions.liningType);
+
   return (
     <div className="glass-card p-4 mb-6">
       <div className="flex items-center justify-between overflow-x-auto pb-2 gap-1">
         {steps.map((step, index) => {
           const isActive = currentStep === step.id;
           const isCompleted = completedSteps.includes(step.id) || step.id < currentStep;
-          const isClickable = true; // Allow navigation to any step
+          const isClickable = true;
           
           return (
             <div key={step.id} className="flex items-center flex-shrink-0">
