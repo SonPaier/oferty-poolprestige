@@ -1814,8 +1814,11 @@ function CustomWadingPoolMesh({
         rimElements.push(
           <mesh 
             key={`rim-${i}`}
-            // Top of rim should be flush with pool edge (z=0) -> center at -RIM_WIDTH/2
-            position={[wallMidX, wallMidY, -RIM_WIDTH / 2]}
+            // IMPORTANT: the rim/top-cap belongs to the DIVIDING WALL.
+            // If the user sets dividingWallOffset (top of wall below pool edge),
+            // this cap must follow that top height, not stay at z=0.
+            // Center the cap so its TOP is at z = -wallOffsetFromEdge.
+            position={[wallMidX, wallMidY, -wallOffsetFromEdge - RIM_WIDTH / 2]}
             rotation={[0, 0, angle]}
             material={concreteMaterial}
           >
