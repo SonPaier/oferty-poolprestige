@@ -1189,16 +1189,16 @@ function CustomStairsMesh({
       roughness: 0.6,
       side: THREE.DoubleSide,
       polygonOffset: true,
-      polygonOffsetFactor: -2,
-      polygonOffsetUnits: -2,
+      polygonOffsetFactor: -8,
+      polygonOffsetUnits: -8,
     }), []);
   const stepFrontMaterial = useMemo(() => 
     new THREE.MeshStandardMaterial({ 
       color: '#5b9bd5',
       side: THREE.DoubleSide,
       polygonOffset: true,
-      polygonOffsetFactor: 1,
-      polygonOffsetUnits: 1,
+      polygonOffsetFactor: 2,
+      polygonOffsetUnits: 2,
     }), []);
 
   // Calculate pool center (same as getPoolShape uses for custom pools)
@@ -1328,7 +1328,8 @@ function CustomStairsMesh({
           stepsArr.push(
             <group key={i}>
               <mesh geometry={stepBodyGeo} material={stepFrontMaterial} renderOrder={1} />
-              <mesh position={[0, 0, stepTopZ - 0.01]} geometry={stepTopGeo} material={stepTopMaterial} renderOrder={2} />
+              {/* IMPORTANT: top cap must sit slightly ABOVE the body top to avoid angle-dependent z-fighting */}
+              <mesh position={[0, 0, stepTopZ + 0.003]} geometry={stepTopGeo} material={stepTopMaterial} renderOrder={2} />
             </group>
           );
         }
@@ -1390,7 +1391,7 @@ function CustomStairsMesh({
         stepsArr.push(
           <group key={i}>
             <mesh geometry={stepBodyGeo} material={stepFrontMaterial} renderOrder={1} />
-            <mesh position={[0, 0, stepTopZ - 0.01]} geometry={stepTopGeo} material={stepTopMaterial} renderOrder={2} />
+            <mesh position={[0, 0, stepTopZ + 0.003]} geometry={stepTopGeo} material={stepTopMaterial} renderOrder={2} />
           </group>
         );
       }
@@ -1437,7 +1438,7 @@ function CustomStairsMesh({
       stepsArr.push(
         <group key={i}>
           <mesh geometry={stepBodyGeo} material={stepFrontMaterial} renderOrder={1} />
-          <mesh position={[0, 0, stepTopZ - 0.01]} geometry={stepTopGeo} material={stepTopMaterial} renderOrder={2} />
+          <mesh position={[0, 0, stepTopZ + 0.003]} geometry={stepTopGeo} material={stepTopMaterial} renderOrder={2} />
         </group>
       );
     }
@@ -1669,6 +1670,19 @@ function CustomWadingPoolMesh({
     geo.translate(0, 0, -wadingDepth - WADING_WALL_THICKNESS);
     return geo;
   }, [shapeObj, wadingDepth]);
+
+  const wadingFloorMaterial = useMemo(
+    () =>
+      new THREE.MeshStandardMaterial({
+        color: '#0369a1',
+        side: THREE.DoubleSide,
+        // Keep the top face stable vs. nearby concrete geometry
+        polygonOffset: true,
+        polygonOffsetFactor: -2,
+        polygonOffsetUnits: -2,
+      }),
+    []
+  );
 
   const bounds = useMemo(() => {
     const xs = transformedVertices.map(v => v.x);
@@ -1927,9 +1941,7 @@ function CustomWadingPoolMesh({
   return (
     <group>
       {/* Floor box - BLUE (same as WadingPoolMesh: #0369a1) */}
-      <mesh geometry={floorGeo}>
-        <meshStandardMaterial color="#0369a1" />
-      </mesh>
+      <mesh geometry={floorGeo} material={wadingFloorMaterial} />
       
       {/* Internal walls and corner pillars */}
       {walls}
