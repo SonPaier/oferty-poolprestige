@@ -636,10 +636,11 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
     stairsConfig?: Partial<StairsConfig>,
     wadingPoolConfig?: Partial<WadingPoolConfig>
   ) => {
-    // Convert single vertices to arrays for the new format
-    const stairsArray = stairsVertices && stairsVertices.length >= 3 ? [stairsVertices] : dimensions.customStairsVertices || [];
-    const rotationsArray = stairsRotation !== undefined ? [stairsRotation] : dimensions.customStairsRotations || [];
-    const wadingArray = wadingPoolVertices && wadingPoolVertices.length >= 3 ? [wadingPoolVertices] : dimensions.customWadingPoolVertices || [];
+    // IMPORTANT: Only include stairs/wading arrays if they were actually drawn
+    // If undefined was passed, it means the element was NOT drawn - use empty array
+    const stairsArray = stairsVertices && stairsVertices.length >= 3 ? [stairsVertices] : [];
+    const rotationsArray = stairsVertices && stairsVertices.length >= 3 && stairsRotation !== undefined ? [stairsRotation] : [];
+    const wadingArray = wadingPoolVertices && wadingPoolVertices.length >= 3 ? [wadingPoolVertices] : [];
 
     // Merge stairs config from drawer with existing config
     const updatedStairsConfig: StairsConfig = {
