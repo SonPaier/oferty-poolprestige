@@ -1659,17 +1659,13 @@ function CustomWadingPoolMesh({
   const shape2D = useMemo(() => transformedVertices.map(v => new THREE.Vector2(v.x, v.y)), [transformedVertices]);
   const shapeObj = useMemo(() => new THREE.Shape(shape2D), [shape2D]);
 
-  // Create floor geometry as ExtrudeGeometry with WADING_WALL_THICKNESS depth (like WadingPoolMesh)
+  // Create floor geometry as a FLAT ShapeGeometry (no side walls) to avoid blue walls bleeding onto dividing wall area
   const floorGeo = useMemo(() => {
-    const geo = new THREE.ExtrudeGeometry(shapeObj, {
-      depth: WADING_WALL_THICKNESS,
-      bevelEnabled: false,
-    });
-    // Position: the floor's TOP surface should be at -wadingDepth
-    // ExtrudeGeometry goes in +Z direction, so we place it at -wadingDepth and it extends down
-    geo.translate(0, 0, -wadingDepth - WADING_WALL_THICKNESS);
+    const geo = new THREE.ShapeGeometry(shapeObj);
+    // Rotate so it lies flat (XY plane → XZ plane isn't needed here, we stay XY but position in Z)
+    // ShapeGeometry is on XY plane with Z=0; we position the mesh at z=-wadingDepth
     return geo;
-  }, [shapeObj, wadingDepth]);
+  }, [shapeObj]);
 
   const wadingFloorMaterial = useMemo(
     () =>
@@ -1940,8 +1936,8 @@ function CustomWadingPoolMesh({
 
   return (
     <group>
-      {/* Floor box - BLUE (same as WadingPoolMesh: #0369a1) */}
-      <mesh geometry={floorGeo} material={wadingFloorMaterial} />
+      {/* Floor plane - BLUE, flat at z=-wadingDepth */}
+      <mesh position={[0, 0, -wadingDepth]} geometry={floorGeo} material={wadingFloorMaterial} />
       
       {/* Internal walls and corner pillars */}
       {walls}
