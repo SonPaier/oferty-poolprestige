@@ -146,14 +146,11 @@ function calculateTotalStairsStepArea(dimensions: PoolDimensions): number {
     const stepDepth = dimensions.stairs.stepDepth || 0.30;
     
     if (dimensions.stairs.shapeType === 'diagonal-45') {
-      // Diagonal 45° - treads are trapezoidal, approximate as triangular decrease
-      const diagonalSize = stepCount * stepDepth;
-      // Average width of treads in a diagonal stair
-      // Each step has decreasing width from base to apex
-      // Sum of widths: diagonalSize * (1/stepCount + 2/stepCount + ... + stepCount/stepCount)
-      // = diagonalSize * (stepCount+1)/2/stepCount
-      const avgWidth = diagonalSize * (stepCount + 1) / (2 * stepCount);
-      totalArea = stepCount * avgWidth * stepDepth;
+      // Diagonal 45° forms a right triangle
+      // Each step i (from 1 to stepCount) has width = i * stepDepth
+      // Step surface area = sum of (i * stepDepth * stepDepth) for i = 1 to stepCount
+      // = stepDepth² * (1 + 2 + ... + stepCount) = stepDepth² * stepCount*(stepCount+1)/2
+      totalArea = stepDepth * stepDepth * stepCount * (stepCount + 1) / 2;
     } else {
       // Rectangular: simple width × depth × count
       totalArea = stepCount * stairsWidth * stepDepth;
