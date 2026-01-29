@@ -69,9 +69,8 @@ export function calculatePoolMetrics(
   const nominalLoad = nominalLoadByType[poolType];
   const requiredFlow = (0.37 * volume) / nominalLoad + (6 * attractions);
   
-  // Calculate stairs area
+  // Calculate stairs area (projection only)
   const stairsArea = calculateTotalStairsArea(dimensions);
-  const stairsStepArea = calculateTotalStairsStepArea(dimensions);
   
   // Calculate wading pool area
   const wadingPoolArea = calculateWadingPoolArea(dimensions);
@@ -85,7 +84,6 @@ export function calculatePoolMetrics(
     requiredFlow,
     waterDepth,
     stairsArea,
-    stairsStepArea,
     wadingPoolArea,
   };
 }
@@ -118,47 +116,6 @@ function calculateTotalStairsArea(dimensions: PoolDimensions): number {
   return totalArea;
 }
 
-/**
- * Calculate total step (tread) surface area - horizontal surface of all steps
- * For foil calculation purposes
- */
-function calculateTotalStairsStepArea(dimensions: PoolDimensions): number {
-  let totalArea = 0;
-  const stepCount = dimensions.stairs?.stepCount || 4;
-  
-  // For irregular pools with custom drawn stairs
-  if (dimensions.shape === 'nieregularny' && dimensions.customStairsVertices) {
-    for (const vertices of dimensions.customStairsVertices) {
-      if (vertices && vertices.length >= 3) {
-        // Each stair polygon has multiple steps
-        // Approximate: total polygon area represents the footprint
-        // Step surface = perimeter_of_step * step_depth for each step
-        // Simplified: total area / stepCount * stepCount (same as total area conceptually)
-        // But we want the sum of horizontal treads surfaces
-        const polygonArea = calculatePolygonArea(vertices);
-        // For irregular stairs, approximate step surfaces based on polygon
-        totalArea += polygonArea; // Simplified - full area represents all treads
-      }
-    }
-  } else if (dimensions.stairs?.enabled) {
-    // For rectangular stairs: stepCount treads, each tread = width × stepDepth
-    const stairsWidth = typeof dimensions.stairs.width === 'number' ? dimensions.stairs.width : 1.5;
-    const stepDepth = dimensions.stairs.stepDepth || 0.30;
-    
-    if (dimensions.stairs.shapeType === 'diagonal-45') {
-      // Diagonal 45° forms a right triangle
-      // Each step i (from 1 to stepCount) has width = i * stepDepth
-      // Step surface area = sum of (i * stepDepth * stepDepth) for i = 1 to stepCount
-      // = stepDepth² * (1 + 2 + ... + stepCount) = stepDepth² * stepCount*(stepCount+1)/2
-      totalArea = stepDepth * stepDepth * stepCount * (stepCount + 1) / 2;
-    } else {
-      // Rectangular: simple width × depth × count
-      totalArea = stepCount * stairsWidth * stepDepth;
-    }
-  }
-  
-  return totalArea;
-}
 
 /**
  * Calculate wading pool area
