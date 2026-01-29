@@ -137,7 +137,7 @@ function PoolMesh({ dimensions, solid = false }: { dimensions: PoolDimensions; s
   const isRectangular = shape === 'prostokatny';
 
   // Create geometry for walls and bottom
-  const { wallGeometry, bottomGeometry, edges, shellGeometry, rimGeometry } = useMemo(() => {
+  const { wallGeometry, bottomGeometry, edges, shellGeometry, rimGeometry, shellBottomGeometry } = useMemo(() => {
     if (isRectangular) {
       // Custom geometry for rectangular pools with optional slope
       const wallGeo = new THREE.BufferGeometry();
@@ -241,6 +241,24 @@ function PoolMesh({ dimensions, solid = false }: { dimensions: PoolDimensions; s
       ]);
       shellGeo.computeVertexNormals();
       
+      // Create SHELL BOTTOM (closes the construction from below) - concrete white
+      const shellBottomGeo = new THREE.BufferGeometry();
+      const shellBottomVerts = hasSlope ? [
+        -outerHalfL, -outerHalfW, -outerDepth,
+        outerHalfL, -outerHalfW, -outerDeepDepth,
+        outerHalfL, outerHalfW, -outerDeepDepth,
+        -outerHalfL, outerHalfW, -outerDepth,
+      ] : [
+        -outerHalfL, -outerHalfW, -outerDepth,
+        outerHalfL, -outerHalfW, -outerDepth,
+        outerHalfL, outerHalfW, -outerDepth,
+        -outerHalfL, outerHalfW, -outerDepth,
+      ];
+      shellBottomGeo.setAttribute('position', new THREE.Float32BufferAttribute(shellBottomVerts, 3));
+      // Normals face DOWN (outward from the structure)
+      shellBottomGeo.setIndex([0, 2, 1, 0, 3, 2]);
+      shellBottomGeo.computeVertexNormals();
+      
       // Create top rim geometry (connects inner and outer walls at top)
       const rimGeo = new THREE.BufferGeometry();
       const rimVerts = [
@@ -299,7 +317,7 @@ function PoolMesh({ dimensions, solid = false }: { dimensions: PoolDimensions; s
         [[-halfL, halfW, 0], [-halfL, halfW, -depth]],
       ];
       
-      return { wallGeometry: wallGeo, bottomGeometry: bottomGeo, edges: edgePoints, shellGeometry: shellGeo, rimGeometry: rimGeo };
+      return { wallGeometry: wallGeo, bottomGeometry: bottomGeo, edges: edgePoints, shellGeometry: shellGeo, rimGeometry: rimGeo, shellBottomGeometry: shellBottomGeo };
     } else {
       // For other shapes (oval, L-shape, custom)
       const shapeObj = new THREE.Shape(shape2D);
@@ -415,6 +433,11 @@ function PoolMesh({ dimensions, solid = false }: { dimensions: PoolDimensions; s
       shellGeo.setIndex(shellIndices);
       shellGeo.computeVertexNormals();
       
+      // Create SHELL BOTTOM for non-rectangular shapes (closes construction from below)
+      const outerShapeObj = new THREE.Shape(outerShape2D);
+      const shellBottomGeo = new THREE.ShapeGeometry(outerShapeObj);
+      // No translation needed; we position the mesh at -outerDepth in JSX
+      
       // Create rim geometry for non-rectangular shapes
       const rimPositions: number[] = [];
       const rimIndices: number[] = [];
@@ -475,15 +498,25 @@ function PoolMesh({ dimensions, solid = false }: { dimensions: PoolDimensions; s
         edgePoints.push([[pt.x, pt.y, 0], [pt.x, pt.y, -depth]]);
       }
       
-      return { wallGeometry: wallGeo, bottomGeometry: bottomGeo, edges: edgePoints, shellGeometry: shellGeo, rimGeometry: rimGeo };
+      return { wallGeometry: wallGeo, bottomGeometry: bottomGeo, edges: edgePoints, shellGeometry: shellGeo, rimGeometry: rimGeo, shellBottomGeometry: shellBottomGeo, outerDepth };
     }
   }, [shape, length, width, depth, actualDeepDepth, hasSlope, shape2D, isRectangular]);
 
+  // Compute outerDepth for non-rectangular shapes (for positioning shell bottom)
+  const nonRectOuterDepth = depth + WALL_THICKNESS;
+  
   return (
     <group>
       {/* Outer concrete shell - WHITE */}
       {shellGeometry && (
         <mesh geometry={shellGeometry} material={concreteMaterial} />
+      )}
+      
+      {/* Shell bottom (closes the construction from below) - WHITE */}
+      {shellBottomGeometry && (
+        isRectangular 
+          ? <mesh geometry={shellBottomGeometry} material={concreteMaterial} />
+          : <mesh geometry={shellBottomGeometry} material={concreteMaterial} position={[0, 0, -nonRectOuterDepth]} rotation={[Math.PI, 0, 0]} />
       )}
       
       {/* Top rim (white, connects inner and outer walls) */}
