@@ -4,9 +4,11 @@ import {
   PoolCalculations, 
   FoilCalculation,
   FilterCalculation,
-  nominalLoadByType
+  nominalLoadByType,
+  CustomPoolVertex
 } from '@/types/configurator';
 import { Product, products, getPriceInPLN } from '@/data/products';
+import { calculateStairsArea, generateStairsGeometry } from '@/lib/stairsShapeGenerator';
 
 const OVERLAP_CM = 10; // 10cm overlap for foil welding
 const OVERLAP_M = OVERLAP_CM / 100;
@@ -67,6 +69,13 @@ export function calculatePoolMetrics(
   const nominalLoad = nominalLoadByType[poolType];
   const requiredFlow = (0.37 * volume) / nominalLoad + (6 * attractions);
   
+  // Calculate stairs area
+  const stairsArea = calculateTotalStairsArea(dimensions);
+  const stairsStepArea = calculateTotalStairsStepArea(dimensions);
+  
+  // Calculate wading pool area
+  const wadingPoolArea = calculateWadingPoolArea(dimensions);
+  
   return {
     volume,
     surfaceArea,
@@ -75,7 +84,122 @@ export function calculatePoolMetrics(
     bottomArea,
     requiredFlow,
     waterDepth,
+    stairsArea,
+    stairsStepArea,
+    wadingPoolArea,
   };
+}
+
+/**
+ * Calculate total stairs area from all stair polygons
+ */
+function calculateTotalStairsArea(dimensions: PoolDimensions): number {
+  let totalArea = 0;
+  
+  // For irregular pools with custom drawn stairs
+  if (dimensions.shape === 'nieregularny' && dimensions.customStairsVertices) {
+    for (const vertices of dimensions.customStairsVertices) {
+      if (vertices && vertices.length >= 3) {
+        totalArea += calculatePolygonArea(vertices);
+      }
+    }
+  } else if (dimensions.stairs?.enabled) {
+    // For rectangular/oval pools with config-based stairs
+    const stairsGeometry = generateStairsGeometry(
+      dimensions.length,
+      dimensions.width,
+      dimensions.stairs
+    );
+    if (stairsGeometry) {
+      totalArea = calculateStairsArea(stairsGeometry.vertices);
+    }
+  }
+  
+  return totalArea;
+}
+
+/**
+ * Calculate total step (tread) surface area - horizontal surface of all steps
+ * For foil calculation purposes
+ */
+function calculateTotalStairsStepArea(dimensions: PoolDimensions): number {
+  let totalArea = 0;
+  const stepCount = dimensions.stairs?.stepCount || 4;
+  
+  // For irregular pools with custom drawn stairs
+  if (dimensions.shape === 'nieregularny' && dimensions.customStairsVertices) {
+    for (const vertices of dimensions.customStairsVertices) {
+      if (vertices && vertices.length >= 3) {
+        // Each stair polygon has multiple steps
+        // Approximate: total polygon area represents the footprint
+        // Step surface = perimeter_of_step * step_depth for each step
+        // Simplified: total area / stepCount * stepCount (same as total area conceptually)
+        // But we want the sum of horizontal treads surfaces
+        const polygonArea = calculatePolygonArea(vertices);
+        // For irregular stairs, approximate step surfaces based on polygon
+        totalArea += polygonArea; // Simplified - full area represents all treads
+      }
+    }
+  } else if (dimensions.stairs?.enabled) {
+    // For rectangular stairs: stepCount treads, each tread = width × stepDepth
+    const stairsWidth = typeof dimensions.stairs.width === 'number' ? dimensions.stairs.width : 1.5;
+    const stepDepth = dimensions.stairs.stepDepth || 0.30;
+    
+    if (dimensions.stairs.shapeType === 'diagonal-45') {
+      // Diagonal 45° - treads are trapezoidal, approximate as triangular decrease
+      const diagonalSize = stepCount * stepDepth;
+      // Average width of treads in a diagonal stair
+      // Each step has decreasing width from base to apex
+      // Sum of widths: diagonalSize * (1/stepCount + 2/stepCount + ... + stepCount/stepCount)
+      // = diagonalSize * (stepCount+1)/2/stepCount
+      const avgWidth = diagonalSize * (stepCount + 1) / (2 * stepCount);
+      totalArea = stepCount * avgWidth * stepDepth;
+    } else {
+      // Rectangular: simple width × depth × count
+      totalArea = stepCount * stairsWidth * stepDepth;
+    }
+  }
+  
+  return totalArea;
+}
+
+/**
+ * Calculate wading pool area
+ */
+function calculateWadingPoolArea(dimensions: PoolDimensions): number {
+  let totalArea = 0;
+  
+  // For irregular pools with custom drawn wading pools
+  if (dimensions.shape === 'nieregularny' && dimensions.customWadingPoolVertices) {
+    for (const vertices of dimensions.customWadingPoolVertices) {
+      if (vertices && vertices.length >= 3) {
+        totalArea += calculatePolygonArea(vertices);
+      }
+    }
+  } else if (dimensions.wadingPool?.enabled) {
+    // For rectangular pools: width × length (external dimensions including walls)
+    const wadingWidth = dimensions.wadingPool.width || 2;
+    const wadingLength = dimensions.wadingPool.length || 1.5;
+    totalArea = wadingWidth * wadingLength;
+  }
+  
+  return totalArea;
+}
+
+/**
+ * Calculate polygon area using Shoelace formula
+ */
+function calculatePolygonArea(vertices: CustomPoolVertex[]): number {
+  if (vertices.length < 3) return 0;
+  
+  let area = 0;
+  for (let i = 0; i < vertices.length; i++) {
+    const j = (i + 1) % vertices.length;
+    area += vertices[i].x * vertices[j].y;
+    area -= vertices[j].x * vertices[i].y;
+  }
+  
+  return Math.abs(area) / 2;
 }
 
 export interface FoilStrip {
