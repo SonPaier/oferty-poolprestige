@@ -1187,13 +1187,15 @@ function CustomStairsMesh({
     new THREE.MeshStandardMaterial({ 
       color: '#ffffff', 
       roughness: 0.6,
+      side: THREE.DoubleSide,
       polygonOffset: true,
-      polygonOffsetFactor: -1,
-      polygonOffsetUnits: -1,
+      polygonOffsetFactor: -2,
+      polygonOffsetUnits: -2,
     }), []);
   const stepFrontMaterial = useMemo(() => 
     new THREE.MeshStandardMaterial({ 
       color: '#5b9bd5',
+      side: THREE.DoubleSide,
       polygonOffset: true,
       polygonOffsetFactor: 1,
       polygonOffsetUnits: 1,
@@ -1209,81 +1211,15 @@ function CustomStairsMesh({
     return { x: (minX + maxX) / 2, y: (minY + maxY) / 2 };
   }, [poolVertices]);
 
-  // Transform wading pool vertices relative to pool center (for adjacency detection)
-  const transformedWadingArrays = useMemo(() => 
-    wadingPoolVerticesArrays.map(wpVerts => 
-      wpVerts.map(v => ({ x: v.x - poolCenter.x, y: v.y - poolCenter.y }))
-    ),
-  [wadingPoolVerticesArrays, poolCenter]);
+  // NOTE: Ścianki brodzika są teraz pozycjonowane "do środka" (inset), więc nie robimy już
+  // żadnego sztucznego przesuwania schodów o 7.5cm. Schody mają trzymać się obrysu.
+  // (Zostawiamy prop wadingPoolVerticesArrays dla kompatybilności API.)
+  void wadingPoolVerticesArrays;
 
-  // Apply offset to stair vertices that are adjacent to wading pool walls
-  // Offset = WADING_WALL_THICKNESS / 2 = 7.5cm (same as rectangular pool logic)
-  const STAIR_OFFSET = WADING_WALL_THICKNESS / 2; // 7.5cm
-  
-  const adjustedVertices = useMemo(() => {
-    const baseVertices = vertices.map(v => ({ x: v.x - poolCenter.x, y: v.y - poolCenter.y }));
-    
-    if (transformedWadingArrays.length === 0) {
-      return baseVertices;
-    }
-    
-    // For each stair vertex, check if it's close to any wading pool edge
-    // If so, push it away from the wading pool by STAIR_OFFSET
-    return baseVertices.map(sv => {
-      let offsetX = 0;
-      let offsetY = 0;
-      
-      for (const wpVerts of transformedWadingArrays) {
-        if (wpVerts.length < 3) continue;
-        
-        // Find closest wading pool edge to this stair vertex
-        for (let i = 0; i < wpVerts.length; i++) {
-          const a = wpVerts[i];
-          const b = wpVerts[(i + 1) % wpVerts.length];
-          
-          // Calculate distance from stair vertex to this wading pool edge
-          const dist = pointToSegmentDistance(sv, a, b);
-          
-          if (dist < 0.3) { // Within 30cm of wading pool edge
-            // Calculate push direction (perpendicular to the edge, pointing away from wading pool center)
-            const edgeDx = b.x - a.x;
-            const edgeDy = b.y - a.y;
-            const edgeLen = Math.sqrt(edgeDx * edgeDx + edgeDy * edgeDy);
-            if (edgeLen < 0.01) continue;
-            
-            // Normal perpendicular to edge
-            const nx = -edgeDy / edgeLen;
-            const ny = edgeDx / edgeLen;
-            
-            // Wading pool center
-            const wpCenterX = wpVerts.reduce((sum, v) => sum + v.x, 0) / wpVerts.length;
-            const wpCenterY = wpVerts.reduce((sum, v) => sum + v.y, 0) / wpVerts.length;
-            
-            // Edge midpoint
-            const edgeMidX = (a.x + b.x) / 2;
-            const edgeMidY = (a.y + b.y) / 2;
-            
-            // Determine which side of the edge is "outside" (away from wading pool center)
-            const toCenter = { x: wpCenterX - edgeMidX, y: wpCenterY - edgeMidY };
-            const dotWithNormal = toCenter.x * nx + toCenter.y * ny;
-            
-            // If normal points toward center, flip it
-            const pushNx = dotWithNormal > 0 ? -nx : nx;
-            const pushNy = dotWithNormal > 0 ? -ny : ny;
-            
-            // Apply offset in push direction
-            offsetX += pushNx * STAIR_OFFSET;
-            offsetY += pushNy * STAIR_OFFSET;
-          }
-        }
-      }
-      
-      return { x: sv.x + offsetX, y: sv.y + offsetY };
-    });
-  }, [vertices, poolCenter, transformedWadingArrays, STAIR_OFFSET]);
-
-  // Use adjusted vertices instead of original
-  const transformedVertices = adjustedVertices;
+  const transformedVertices = useMemo(
+    () => vertices.map(v => ({ x: v.x - poolCenter.x, y: v.y - poolCenter.y })),
+    [vertices, poolCenter]
+  );
 
   // Calculate bounding box for step sizing and dimensions
   const bounds = useMemo(() => {
@@ -1391,8 +1327,8 @@ function CustomStairsMesh({
           
           stepsArr.push(
             <group key={i}>
-              <mesh geometry={stepBodyGeo} material={stepFrontMaterial} />
-              <mesh position={[0, 0, stepTopZ - 0.01]} geometry={stepTopGeo} material={stepTopMaterial} />
+              <mesh geometry={stepBodyGeo} material={stepFrontMaterial} renderOrder={1} />
+              <mesh position={[0, 0, stepTopZ - 0.01]} geometry={stepTopGeo} material={stepTopMaterial} renderOrder={2} />
             </group>
           );
         }
@@ -1453,8 +1389,8 @@ function CustomStairsMesh({
         
         stepsArr.push(
           <group key={i}>
-            <mesh geometry={stepBodyGeo} material={stepFrontMaterial} />
-            <mesh position={[0, 0, stepTopZ - 0.01]} geometry={stepTopGeo} material={stepTopMaterial} />
+            <mesh geometry={stepBodyGeo} material={stepFrontMaterial} renderOrder={1} />
+            <mesh position={[0, 0, stepTopZ - 0.01]} geometry={stepTopGeo} material={stepTopMaterial} renderOrder={2} />
           </group>
         );
       }
@@ -1500,8 +1436,8 @@ function CustomStairsMesh({
       
       stepsArr.push(
         <group key={i}>
-          <mesh geometry={stepBodyGeo} material={stepFrontMaterial} />
-          <mesh position={[0, 0, stepTopZ - 0.01]} geometry={stepTopGeo} material={stepTopMaterial} />
+          <mesh geometry={stepBodyGeo} material={stepFrontMaterial} renderOrder={1} />
+          <mesh position={[0, 0, stepTopZ - 0.01]} geometry={stepTopGeo} material={stepTopMaterial} renderOrder={2} />
         </group>
       );
     }
@@ -1763,13 +1699,53 @@ function CustomWadingPoolMesh({
 
   // Determine which edges are internal (facing inside pool)
   const { walls, cornerWalls, rims } = useMemo(() => {
+    // Ray casting point-in-polygon test
+    const isPointInPolygon = (pt: { x: number; y: number }, poly: { x: number; y: number }[]) => {
+      let inside = false;
+      for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+        const xi = poly[i].x, yi = poly[i].y;
+        const xj = poly[j].x, yj = poly[j].y;
+        const intersect = ((yi > pt.y) !== (yj > pt.y)) &&
+          (pt.x < ((xj - xi) * (pt.y - yi)) / (yj - yi + 1e-12) + xi);
+        if (intersect) inside = !inside;
+      }
+      return inside;
+    };
+
+    const getInwardNormal = (a: { x: number; y: number }, b: { x: number; y: number }) => {
+      const dx = b.x - a.x;
+      const dy = b.y - a.y;
+      const len = Math.hypot(dx, dy);
+      if (len < 1e-6) return { nx: 0, ny: 0 };
+
+      // Candidate normals
+      const n1 = { nx: -dy / len, ny: dx / len };
+      const n2 = { nx: dy / len, ny: -dx / len };
+
+      // Pick the one that points INSIDE the wading pool polygon
+      const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+      const eps = 0.02; // 2cm
+      const p1 = { x: mid.x + n1.nx * eps, y: mid.y + n1.ny * eps };
+      return isPointInPolygon(p1, transformedVertices) ? n1 : n2;
+    };
+
     const wallElements: JSX.Element[] = [];
     const cornerElements: JSX.Element[] = [];
     const rimElements: JSX.Element[] = [];
     const threshold = 0.3;
     
     // Find internal edges (not on pool boundary)
-    const internalEdges: { curr: typeof transformedVertices[0]; next: typeof transformedVertices[0]; index: number }[] = [];
+    const internalEdges: {
+      curr: typeof transformedVertices[0];
+      next: typeof transformedVertices[0];
+      index: number;
+      midX: number;
+      midY: number;
+      angle: number;
+      length: number;
+      nx: number;
+      ny: number;
+    }[] = [];
     
     for (let i = 0; i < transformedVertices.length; i++) {
       const curr = transformedVertices[i];
@@ -1787,27 +1763,32 @@ function CustomWadingPoolMesh({
       const distToPoolEdge = pointToLineDistance({ x: midX, y: midY }, transformedPoolVertices);
       
       if (!isOnPoolBoundary && distToPoolEdge >= threshold) {
-        internalEdges.push({ curr, next, index: i });
+        const dx = next.x - curr.x;
+        const dy = next.y - curr.y;
+        const length = Math.sqrt(dx * dx + dy * dy);
+        const angle = Math.atan2(dy, dx);
+        const { nx, ny } = getInwardNormal(curr, next);
+        internalEdges.push({ curr, next, index: i, midX, midY, angle, length, nx, ny });
       }
     }
     
     // Create walls for each internal edge
     for (const edge of internalEdges) {
-      const { curr, next, index: i } = edge;
-      
-      const dx = next.x - curr.x;
-      const dy = next.y - curr.y;
-      const length = Math.sqrt(dx * dx + dy * dy);
-      const angle = Math.atan2(dy, dx);
-      const midX = (curr.x + next.x) / 2;
-      const midY = (curr.y + next.y) / 2;
+      const { index: i, length, angle, midX, midY, nx, ny } = edge;
+
+      // IMPORTANT:
+      // W basenie prostokątnym ścianki brodzika są "wewnątrz" footprintu (inward), a nie centrowane na obrysie.
+      // Dla brodzika rysowanego robimy to samo: przesuwamy ściany o połowę grubości DO ŚRODKA brodzika.
+      const inset = RIM_WIDTH / 2;
+      const wallMidX = midX + nx * inset;
+      const wallMidY = midY + ny * inset;
       
       // Dividing wall (from pool edge down to wading depth) - ONLY if enabled
       if (hasDividingWall && dividingWallHeight > 0.01) {
         wallElements.push(
           <mesh 
             key={`dividing-wall-${i}`}
-            position={[midX, midY, -wallOffsetFromEdge - dividingWallHeight / 2]}
+            position={[wallMidX, wallMidY, -wallOffsetFromEdge - dividingWallHeight / 2]}
             rotation={[0, 0, angle]}
             material={concreteMaterial}
           >
@@ -1820,7 +1801,7 @@ function CustomWadingPoolMesh({
       wallElements.push(
         <mesh 
           key={`internal-wall-${i}`}
-          position={[midX, midY, -wadingDepth - internalWallHeight / 2]}
+          position={[wallMidX, wallMidY, -wadingDepth - internalWallHeight / 2]}
           rotation={[0, 0, angle]}
           material={concreteMaterial}
         >
@@ -1833,7 +1814,8 @@ function CustomWadingPoolMesh({
         rimElements.push(
           <mesh 
             key={`rim-${i}`}
-            position={[midX, midY, 0]}
+            // Top of rim should be flush with pool edge (z=0) -> center at -RIM_WIDTH/2
+            position={[wallMidX, wallMidY, -RIM_WIDTH / 2]}
             rotation={[0, 0, angle]}
             material={concreteMaterial}
           >
@@ -1856,12 +1838,30 @@ function CustomWadingPoolMesh({
           null;
           
         if (sharedVertex) {
+          // Shift corner pillars inward as well (average of adjacent edge inward normals)
+          const n1 = { x: edge1.nx, y: edge1.ny };
+          const n2 = { x: edge2.nx, y: edge2.ny };
+          let ax = n1.x + n2.x;
+          let ay = n1.y + n2.y;
+          const alen = Math.hypot(ax, ay);
+          if (alen > 1e-6) {
+            ax /= alen;
+            ay /= alen;
+          } else {
+            // fallback: use edge1 normal
+            ax = n1.x;
+            ay = n1.y;
+          }
+          const inset = RIM_WIDTH / 2;
+          const pillarX = sharedVertex.x + ax * inset;
+          const pillarY = sharedVertex.y + ay * inset;
+
           // Corner pillar for dividing wall
           if (hasDividingWall && dividingWallHeight > 0.01) {
             cornerElements.push(
               <mesh
                 key={`corner-dividing-${i}-${j}`}
-                position={[sharedVertex.x, sharedVertex.y, -wallOffsetFromEdge - dividingWallHeight / 2]}
+                position={[pillarX, pillarY, -wallOffsetFromEdge - dividingWallHeight / 2]}
                 material={concreteMaterial}
               >
                 <boxGeometry args={[RIM_WIDTH, RIM_WIDTH, dividingWallHeight]} />
@@ -1873,7 +1873,7 @@ function CustomWadingPoolMesh({
           cornerElements.push(
             <mesh
               key={`corner-internal-${i}-${j}`}
-              position={[sharedVertex.x, sharedVertex.y, -wadingDepth - internalWallHeight / 2]}
+              position={[pillarX, pillarY, -wadingDepth - internalWallHeight / 2]}
               material={concreteMaterial}
             >
               <boxGeometry args={[RIM_WIDTH, RIM_WIDTH, internalWallHeight]} />
