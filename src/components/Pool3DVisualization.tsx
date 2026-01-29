@@ -1712,6 +1712,8 @@ function CustomWadingPoolMesh({
     // Tiny epsilon to avoid z-fighting where the (white) wall top coincides with the (blue) floor top.
     // This is what was making the top plane look non-blue when the dividing wall is disabled.
     const TOP_EPS = 0.002; // 2mm
+    // Slight overlap so the dividing wall never appears detached from the wading floor due to depth precision.
+    const BOTTOM_OVERLAP = 0.004; // 4mm
 
     // Ray casting point-in-polygon test
     const isPointInPolygon = (pt: { x: number; y: number }, poly: { x: number; y: number }[]) => {
@@ -1818,14 +1820,15 @@ function CustomWadingPoolMesh({
       
       // Dividing wall (from pool edge down to wading depth) - ONLY if enabled
       if (hasDividingWall && dividingWallHeight > 0.01) {
+        const wallH = dividingWallHeight + BOTTOM_OVERLAP;
         wallElements.push(
           <mesh 
             key={`dividing-wall-${i}`}
-            position={[wallMidX, wallMidY, -wallOffsetFromEdge - dividingWallHeight / 2]}
+            position={[wallMidX, wallMidY, -wallOffsetFromEdge - wallH / 2]}
             rotation={[0, 0, angle]}
             material={concreteMaterial}
           >
-            <boxGeometry args={[length, RIM_WIDTH, dividingWallHeight]} />
+            <boxGeometry args={[length, RIM_WIDTH, wallH]} />
           </mesh>
         );
       }
@@ -1902,14 +1905,15 @@ function CustomWadingPoolMesh({
 
           // Corner pillar for dividing wall
           if (hasDividingWall && dividingWallHeight > 0.01) {
+            const wallH = dividingWallHeight + BOTTOM_OVERLAP;
             cornerElements.push(
               <mesh
                 key={`corner-dividing-${i}-${j}`}
-                position={[pillarX, pillarY, -wallOffsetFromEdge - dividingWallHeight / 2]}
+                position={[pillarX, pillarY, -wallOffsetFromEdge - wallH / 2]}
                 material={concreteMaterial}
                 rotation={[Math.PI / 2, 0, 0]}
               >
-                <cylinderGeometry args={[radius, radius, dividingWallHeight, radialSegments]} />
+                <cylinderGeometry args={[radius, radius, wallH, radialSegments]} />
               </mesh>
             );
           }
