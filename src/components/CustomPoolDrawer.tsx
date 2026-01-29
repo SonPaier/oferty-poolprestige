@@ -240,8 +240,22 @@ export function CustomPoolDrawer({
         const triangleGeom = analyzeTriangleGeometry(vertices);
         if (triangleGeom && triangleGeom.isScalene) {
           // Auto-set rotation perpendicular to longest edge
-          const autoRotation = calculatePerpendicularRotation(triangleGeom);
-          setStairsRotation(autoRotation);
+          // NOTE: calculatePerpendicularRotation returns atan2 angle (0°=+X),
+          // while our UI uses: 0°=↓, 90°=←, 180°=↑, 270°=→
+          const snapTo45 = (deg: number) => {
+            const norm = ((deg % 360) + 360) % 360;
+            let best = STAIRS_ANGLES[0];
+            let bestDelta = Infinity;
+            for (const a of STAIRS_ANGLES) {
+              const d = Math.abs(((norm - a + 540) % 360) - 180);
+              if (d < bestDelta) { bestDelta = d; best = a; }
+            }
+            return best;
+          };
+          const angleDeg = calculatePerpendicularRotation(triangleGeom);
+          // Convert from atan2 convention to UI convention (subtract 90°)
+          const uiAngle = ((angleDeg - 90) % 360 + 360) % 360;
+          setStairsRotation(snapTo45(uiAngle));
           toast.success(
             `Trójkąt nierównoboczny wykryty! Kierunek schodzenia ustawiony automatycznie (prostopadle do podstawy). ` +
             `Długość: ${(dims.stairsLength * 100).toFixed(0)}cm`
@@ -650,11 +664,11 @@ export function CustomPoolDrawer({
     const arrowHead = 12;
     
     // Calculate arrow direction based on rotation (8 directions)
-    // Convert rotation to radians - rotation 0° means arrow points down (+Y in canvas)
-    // We need to convert the "entry from" direction to "descent towards" direction
-    const radians = ((rotation - 180) * Math.PI) / 180;
-    const dx = Math.sin(radians);
-    const dy = -Math.cos(radians); // Negative because canvas Y is flipped
+    // UI convention (stairsAngleLabels): 0°=↓, 45°=↙, 90°=←, 135°=↖, 180°=↑, 225°=↗, 270°=→, 315°=↘
+    // Canvas has +Y down, so we map directly:
+    const radians = (rotation * Math.PI) / 180;
+    const dx = -Math.sin(radians);
+    const dy = Math.cos(radians);
     
     const endX = cx + dx * arrowLen;
     const endY = cy + dy * arrowLen;

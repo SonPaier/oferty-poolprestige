@@ -1373,8 +1373,9 @@ function CustomStairsMesh({
     
     // === REGULAR GEOMETRY (isosceles triangle or rectangle) ===
     // Calculate descent direction vector from rotation
+    // UI convention (stairsAngleLabels): 0°=↓, 90°=←, 180°=↑, 270°=→
     const rotRad = (rotation * Math.PI) / 180;
-    const descentVec = { x: Math.cos(rotRad), y: Math.sin(rotRad) };
+    const descentVec = { x: -Math.sin(rotRad), y: Math.cos(rotRad) };
     
     // Project all vertices onto descent axis to find extent
     const projections = transformedVertices.map(v => 

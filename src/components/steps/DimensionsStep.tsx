@@ -641,18 +641,21 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
     const stairsArray = stairsVertices && stairsVertices.length >= 3 ? [stairsVertices] : [];
     const rotationsArray = stairsVertices && stairsVertices.length >= 3 && stairsRotation !== undefined ? [stairsRotation] : [];
     const wadingArray = wadingPoolVertices && wadingPoolVertices.length >= 3 ? [wadingPoolVertices] : [];
+    const isIrregular = dimensions.shape === 'nieregularny';
 
     // Merge stairs config from drawer with existing config
     const updatedStairsConfig: StairsConfig = {
       ...dimensions.stairs,
-      enabled: stairsArray.length > 0 ? true : dimensions.stairs?.enabled || false,
+      // For irregular shapes: if there are no drawn stairs vertices, treat stairs as disabled
+      enabled: stairsArray.length > 0 ? true : (isIrregular ? false : (dimensions.stairs?.enabled || false)),
       ...(stairsConfig || {}),
     };
     
     // Merge wading pool config from drawer with existing config
     const updatedWadingPoolConfig: WadingPoolConfig = {
       ...dimensions.wadingPool,
-      enabled: wadingArray.length > 0 ? true : dimensions.wadingPool?.enabled || false,
+      // For irregular shapes: if there are no drawn wading vertices, treat wading pool as disabled
+      enabled: wadingArray.length > 0 ? true : (isIrregular ? false : (dimensions.wadingPool?.enabled || false)),
       ...(wadingPoolConfig || {}),
     };
 
