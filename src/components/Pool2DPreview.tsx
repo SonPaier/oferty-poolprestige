@@ -429,9 +429,10 @@ export default function Pool2DPreview({ dimensions, height = 300, dimensionDispl
       
       // === REGULAR GEOMETRY: Equal spacing ===
       // Get rotation from stairs rotation data (arrow direction)
+      // UI convention (stairsAngleLabels): 0°=↓, 90°=←, 180°=↑, 270°=→
       const rotation = dimensions.customStairsRotations?.[0] ?? 135; // default diagonal
       const rotRad = (rotation * Math.PI) / 180;
-      const descentVec = { x: Math.cos(rotRad), y: Math.sin(rotRad) };
+      const descentVec = { x: -Math.sin(rotRad), y: Math.cos(rotRad) };
       // Perpendicular vector for step lines
       const perpVec = { x: -descentVec.y, y: descentVec.x };
       
