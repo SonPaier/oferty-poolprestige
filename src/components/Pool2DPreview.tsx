@@ -350,7 +350,9 @@ export default function Pool2DPreview({ dimensions, height = 300, dimensionDispl
   
   // Get full stairs data including step lines
   const stairsData = useMemo(() => {
-    if (dimensions.shape === 'nieregularny' && dimensions.customStairsVertices?.[0]) {
+    // Check for custom stairs vertices array with at least 3 vertices (valid polygon)
+    const customStairsValid = dimensions.customStairsVertices?.[0]?.length >= 3;
+    if (dimensions.shape === 'nieregularny' && customStairsValid) {
       const stairsVerts = dimensions.customStairsVertices[0];
       // Transform vertices for rendering (centered on pool)
       const outline = transformCustomVertices(
@@ -495,8 +497,9 @@ export default function Pool2DPreview({ dimensions, height = 300, dimensionDispl
   const stairsStepLines = stairsData?.stepLines || [];
   
   const wadingPoolPoints = useMemo(() => {
-    // Check for custom wading pool vertices array
-    if (dimensions.shape === 'nieregularny' && dimensions.customWadingPoolVertices?.[0]) {
+    // Check for custom wading pool vertices array with at least 3 vertices (valid polygon)
+    const customWadingValid = dimensions.customWadingPoolVertices?.[0]?.length >= 3;
+    if (dimensions.shape === 'nieregularny' && customWadingValid) {
       return transformCustomVertices(
         dimensions.customWadingPoolVertices[0],
         dimensions.customVertices
