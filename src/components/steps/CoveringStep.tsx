@@ -27,7 +27,9 @@ import {
   Package,
   Layers,
   GripVertical,
-  HelpCircle
+  HelpCircle,
+  Footprints,
+  Waves
 } from 'lucide-react';
 import { Product, getPriceInPLN } from '@/data/products';
 import { formatPrice, calculateFoilOptimization, FoilOptimizationResult } from '@/lib/calculations';
@@ -35,6 +37,16 @@ import { OfferItem } from '@/types/configurator';
 import { useFoilProducts, useProducts, getDbProductPriceInPLN, DbProduct } from '@/hooks/useProducts';
 import { ProductCard } from '@/components/ProductCard';
 import { supabase } from '@/integrations/supabase/client';
+// Import new foil planners
+import { 
+  planStairsSurface, 
+  planPaddlingPoolSurface,
+  isStructuralFoil,
+  getAntiSlipFoilForStairs,
+  StairsPlanResult,
+  PaddlingPlanResult,
+  FoilProduct
+} from '@/lib/foil';
 
 interface CoveringStepProps {
   onNext: () => void;
@@ -134,26 +146,55 @@ export function CoveringStep({ onNext, onBack }: CoveringStepProps) {
     );
   }, [dimensions, foilType, companySettings.irregularSurchargePercent]);
 
-  // Calculate stairs and wading pool areas for anti-slip foil
-  const stairsArea = useMemo(() => {
-    if (dimensions.customStairsVertices && dimensions.customStairsVertices.length > 0) {
-      return dimensions.customStairsVertices.length * 4; // 4m² per stair set
-    }
-    return dimensions.stairs.enabled ? 4 : 0;
+  // Use new foil planners for stairs and paddling pool
+  const stairsPlan = useMemo((): StairsPlanResult | null => {
+    if (!dimensions.stairs.enabled) return null;
+    return planStairsSurface(dimensions.stairs, dimensions.depth, dimensions);
   }, [dimensions]);
 
-  const wadingPoolArea = useMemo(() => {
-    if (dimensions.customWadingPoolVertices && dimensions.customWadingPoolVertices.length > 0) {
-      return dimensions.customWadingPoolVertices.length * 2; // 2m² per wading pool
-    }
-    return dimensions.wadingPool.enabled ? 2 : 0;
+  const paddlingPlan = useMemo((): PaddlingPlanResult | null => {
+    if (!dimensions.wadingPool.enabled) return null;
+    return planPaddlingPoolSurface(dimensions.wadingPool, dimensions.depth, dimensions);
   }, [dimensions]);
+
+  // Calculate anti-slip areas from plans
+  const antiSlipBreakdown = useMemo(() => {
+    const stairsStepArea = stairsPlan?.stepArea || 0;
+    const paddlingBottomArea = paddlingPlan?.bottomArea || 0;
+    const totalAntiSlip = stairsStepArea + paddlingBottomArea;
+    
+    // Regular foil areas for stairs/paddling (risers, walls, dividing wall)
+    const stairsRiserArea = stairsPlan?.riserArea || 0;
+    const paddlingWallsArea = paddlingPlan?.wallsArea || 0;
+    const dividingWallArea = paddlingPlan?.dividingWall 
+      ? paddlingPlan.dividingWall.poolSideArea + 
+        paddlingPlan.dividingWall.paddlingSideArea + 
+        paddlingPlan.dividingWall.topArea
+      : 0;
+    const totalRegularExtra = stairsRiserArea + paddlingWallsArea + dividingWallArea;
+    
+    return {
+      stairsStepArea,
+      stairsRiserArea,
+      paddlingBottomArea,
+      paddlingWallsArea,
+      dividingWall: paddlingPlan?.dividingWall,
+      totalAntiSlip,
+      totalRegularExtra,
+    };
+  }, [stairsPlan, paddlingPlan]);
+
+  // Check if selected foil is structural (anti-slip already)
+  const selectedFoilIsStructural = useMemo(() => {
+    if (!selectedFoil) return false;
+    return foilCategory === 'strukturalna';
+  }, [selectedFoil, foilCategory]);
 
   // Initialize materials when foil calculation changes
   useEffect(() => {
     if (foilCalc && !isCeramic) {
-      const totalArea = foilCalc.totalArea;
-      const antislipArea = stairsArea + wadingPoolArea;
+      const totalArea = foilCalc.totalArea + antiSlipBreakdown.totalRegularExtra;
+      const antislipArea = antiSlipBreakdown.totalAntiSlip;
       
       const defaultMaterials: MaterialItem[] = [
         {
@@ -203,22 +244,28 @@ export function CoveringStep({ onNext, onBack }: CoveringStepProps) {
         },
       ];
       
-      // Add anti-slip foil if stairs or wading pool
-      if (antislipArea > 0) {
+      // Add anti-slip foil if stairs or wading pool (and main foil is NOT structural)
+      if (antislipArea > 0 && !selectedFoilIsStructural) {
         defaultMaterials.push({
           id: 'antislip',
-          name: 'Folia antypoślizgowa',
+          name: 'Folia antypoślizgowa (schody/brodzik)',
           symbol: 'ANTYSLIP',
           unit: 'm²',
-          suggestedQty: Math.ceil(antislipArea),
+          suggestedQty: Math.ceil(antislipArea * 1.1), // +10% for overlaps
           manualQty: null,
           pricePerUnit: 120,
         });
       }
       
+      // Add extra regular foil for risers, paddling walls, dividing wall
+      if (antiSlipBreakdown.totalRegularExtra > 0) {
+        // This is already included in the main foil calculation via totalArea adjustment
+        // No need for separate line item, but we track it for display
+      }
+      
       setMaterials(defaultMaterials);
     }
-  }, [foilCalc, isCeramic, stairsArea, wadingPoolArea, dimensions]);
+  }, [foilCalc, isCeramic, antiSlipBreakdown, selectedFoilIsStructural, dimensions]);
 
   // Get available colors from database
   const availableColors = useMemo(() => {
@@ -554,10 +601,59 @@ export function CoveringStep({ onNext, onBack }: CoveringStepProps) {
                       <p className="text-primary font-medium">
                         Odpad: {foilCalc.wastePercentage.toFixed(1)}%
                       </p>
-                      {(stairsArea > 0 || wadingPoolArea > 0) && (
-                        <p className="text-accent">
-                          Folia antypoślizgowa: {stairsArea + wadingPoolArea} m²
-                        </p>
+                      {antiSlipBreakdown.totalAntiSlip > 0 && (
+                        <div className="pt-1 border-t border-border/50 mt-1">
+                          <p className="text-accent font-medium flex items-center gap-1">
+                            <Footprints className="w-3 h-3" />
+                            Folia antypoślizgowa: {antiSlipBreakdown.totalAntiSlip.toFixed(1)} m²
+                            {selectedFoilIsStructural && (
+                              <span className="text-xs text-muted-foreground">(strukturalna)</span>
+                            )}
+                          </p>
+                          {antiSlipBreakdown.stairsStepArea > 0 && (
+                            <p className="text-xs text-muted-foreground ml-4">
+                              • Stopnie schodów: {antiSlipBreakdown.stairsStepArea.toFixed(1)} m²
+                            </p>
+                          )}
+                          {antiSlipBreakdown.paddlingBottomArea > 0 && (
+                            <p className="text-xs text-muted-foreground ml-4">
+                              • Dno brodzika: {antiSlipBreakdown.paddlingBottomArea.toFixed(1)} m²
+                            </p>
+                          )}
+                        </div>
+                      )}
+                      {antiSlipBreakdown.totalRegularExtra > 0 && (
+                        <div className="pt-1">
+                          <p className="text-muted-foreground text-xs flex items-center gap-1">
+                            <Waves className="w-3 h-3" />
+                            Dodatkowa folia główna: {antiSlipBreakdown.totalRegularExtra.toFixed(1)} m²
+                          </p>
+                          {antiSlipBreakdown.stairsRiserArea > 0 && (
+                            <p className="text-xs text-muted-foreground ml-4">
+                              • Podstopnie: {antiSlipBreakdown.stairsRiserArea.toFixed(1)} m²
+                            </p>
+                          )}
+                          {antiSlipBreakdown.paddlingWallsArea > 0 && (
+                            <p className="text-xs text-muted-foreground ml-4">
+                              • Ściany brodzika: {antiSlipBreakdown.paddlingWallsArea.toFixed(1)} m²
+                            </p>
+                          )}
+                          {antiSlipBreakdown.dividingWall && (
+                            <>
+                              <p className="text-xs text-muted-foreground ml-4">
+                                • Murek (strona basenu): {antiSlipBreakdown.dividingWall.poolSideArea.toFixed(1)} m²
+                              </p>
+                              {antiSlipBreakdown.dividingWall.paddlingSideArea > 0 && (
+                                <p className="text-xs text-muted-foreground ml-4">
+                                  • Murek (strona brodzika): {antiSlipBreakdown.dividingWall.paddlingSideArea.toFixed(1)} m²
+                                </p>
+                              )}
+                              <p className="text-xs text-muted-foreground ml-4">
+                                • Góra murka: {antiSlipBreakdown.dividingWall.topArea.toFixed(1)} m²
+                              </p>
+                            </>
+                          )}
+                        </div>
                       )}
                     </div>
                   </div>
