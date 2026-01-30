@@ -1,220 +1,260 @@
 
-# Plan Wdrożenia: Moduł Wykończenia (Folia/Ceramika) - v2
+# Faza 2: Rozbudowa Algorytmu Optymalizacji Folii
 
-## Aktualizacja na podstawie feedbacku
+## Zmiany względem poprzedniego planu
 
-### Punkt 1.1 - Folia antypoślizgowa
-- Każda folia strukturalna (Touch, Relief, Ceramics, Pearl, Alive) jest automatycznie antypoślizgowa
-- Usunięte kolumny `is_anti_slip` i `anti_slip_price_diff` z planu migracji
-- Logika: `foil_category === 'strukturalna'` = antypoślizgowa (bez dodatkowej flagi)
+### Folia antypoślizgowa - poprawione reguły
+1. **Schody**: antypoślizgowa tylko na stopniach (powierzchnie POZIOME), podstopnie (powierzchnie PIONOWE) = zwykła folia
+2. **Brodzik**: antypoślizgowa tylko na DNIE, ściany brodzika = zwykła folia
+3. **Wyjątek**: jeśli wybrana folia na cały basen jest strukturalna → wszędzie ta sama folia
 
-### Punkt 1.2 - Istniejące materiały w bazie
-Po analizie bazy danych, następujące materiały instalacyjne **już istnieją** i nie będą duplikowane:
+### Murek rozdzielający - poprawiona geometria
+Dla przykładu: basen 1.4m, brodzik 0.4m, murek 0.2m:
 
-| Kategoria | Produkty w bazie |
-|-----------|------------------|
-| **Podkłady** | `Podkład włóknina 400g/m2`, `Podkład włóknina 500g/m2`, `Włóknina impregnowana 1.5m/2m`, `Geowłóknina antybakteryjna 1.5m/2m` |
-| **Profile** | `Kątownik PCW wewnętrzny 2m`, `Kątownik stalowy Tebas 2x5cm`, `Kątownik stalowy 3x6cm`, `Płaskownik PCW 2m` |
-| **Klej** | `Klej do podkładu 5kg-20kg`, `Klej Alkorplus Contact/Thermo 5kg` |
-| **Folia specjalna** | `Folia podkład pod Touch/Ceramics` (dla folii strukturalnych) |
+```text
+Poziom wody (0m)
+├── Góra murka: -0.2m (powierzchnia pozioma)
+│
+├── Od strony BRODZIKA: ściana murka 0.2m
+│   (od dna brodzika -0.4m do góry murka -0.2m)
+│
+├── Dno brodzika: -0.4m
+│
+├── Od strony BASENU: ściana podniesiona 1.0m
+│   (od dna basenu -1.4m do góry murka -0.2m → NIE DO DNA BRODZIKA!)
+│   czyli: głębokość_basenu - głębokość_brodzika = 1.4m - 0.4m = 1.0m
+│   UWAGA: Wysokość murka (0.2m) NIE jest dodawana - murek wystaje ponad dno brodzika
+│
+└── Dno basenu: -1.4m
+```
 
-**Brakujące materiały** (do ewentualnego importu):
-- Nity aluminiowe (opakowania)
-- Folia w płynie (litry)
+Schemat przekroju:
+```text
+                0m ─────────────────────────────────────────
+                   │                      │ góra murka (0.2m poziomo)
+              -0.2m├──────────────────────┼────────────────
+                   │                      │
+              -0.4m│    BRODZIK (0.4m)    │ ściana murka 0.2m (od strony brodzika)
+         dno brodzika ────────────────────┘
+                   │
+                   │       BASEN GŁÓWNY
+                   │    ściana podniesiona 1.0m (od strony basenu)
+                   │    (1.4m - 0.4m = 1.0m)
+              -1.4m│
+          dno basenu ─────────────────────────────────────────
+```
 
 ---
 
-## Zrewidowana Faza 1: Rozszerzenie struktury danych
+## Struktura implementacji
 
-### 1.1 Migracja tabeli `products` (uproszczona)
-Dodanie tylko niezbędnych kolumn do folii:
-
-| Kolumna | Typ | Opis |
-|---------|-----|------|
-| `manufacturer` | TEXT | Producent (np. "Renolit", "ELBE") |
-| `series` | TEXT | Seria (np. "Alkorplan 2000", "Touch") - można wypełnić z `subcategory` |
-| `available_widths` | JSONB | Dostępne szerokości `[1.65, 2.05]` |
-| `roll_length` | DECIMAL | Długość rolki (25m) |
-| `joint_type` | TEXT | `'overlap'` / `'butt'` (dla strukturalnych) |
-| `overlap_width` | DECIMAL | Szerokość zakładu (0.07m) |
-
-**Usunięte z planu** (zgodnie z feedbackiem):
-- ~~is_anti_slip~~ - każda strukturalna = antypoślizgowa
-- ~~anti_slip_price_diff~~ - to osobny produkt, nie wariant
-
-### 1.2 Tabela `installation_materials` - mapowanie do istniejących produktów
-Zamiast duplikować produkty, utworzymy tabelę mapującą istniejące produkty do reguł obliczania:
-
-```text
-Struktura tabeli installation_materials:
-+---------------------+-------------+----------------------------------------+
-| Pole                | Typ         | Opis                                   |
-+---------------------+-------------+----------------------------------------+
-| id                  | UUID PK     | Identyfikator                          |
-| product_id          | UUID FK     | Referencja do products.id              |
-| finishing_type      | TEXT        | 'foil' / 'ceramic'                     |
-| material_category   | TEXT        | 'substrate', 'profile', 'glue', 'rivet'|
-| calculation_rule    | JSONB       | Reguły auto-wyliczania                 |
-| is_default          | BOOLEAN     | Czy domyślny dla wariantu standard     |
-| variant_level       | TEXT        | 'economy' / 'standard' / 'premium'     |
-| is_optional         | BOOLEAN     | Czy opcjonalny do odznaczenia          |
-| sort_order          | INTEGER     | Kolejność wyświetlania                 |
-+---------------------+-------------+----------------------------------------+
-```
-
-**Przykładowe mapowania:**
-
-| Materiał w bazie | product_id | material_category | variant_level | Reguła |
-|------------------|------------|-------------------|---------------|--------|
-| Podkład włóknina 400g | (uuid) | substrate | economy | area_coverage: bottom+walls |
-| Podkład włóknina 500g | (uuid) | substrate | standard | area_coverage: bottom+walls |
-| Włóknina impregnowana 2m | (uuid) | substrate | premium | area_coverage: bottom+walls |
-| Kątownik stalowy 2x5cm | (uuid) | profile | standard | perimeter: pool+stairs |
-| Płaskownik PCW 2m | (uuid) | profile | standard | perimeter: pool |
-| Klej do podkładu 10kg | (uuid) | glue | standard | per_area: 1kg/6.6m² |
-
-### 1.3 Tabela `installation_services` (bez zmian)
-Usługi montażu z cenami za m²:
-
-| Usługa | Typ | Stawka |
-|--------|-----|--------|
-| Montaż folii - standardowy | foil | 45 zł/m² |
-| Montaż folii - schody | foil | 60 zł/m² |
-| Zgrzewanie doczołowe | foil | 15 zł/mb |
-| Montaż ceramiki - standardowy | ceramic | 80 zł/m² |
-
-### 1.4 Logika antypoślizgowej folii (w kodzie, nie w bazie)
+### 1. Nowe typy powierzchni
 
 ```typescript
-// W algorytmie optymalizacji:
-const isAntiSlip = (product: Product): boolean => {
+// Rozszerzenie SurfaceType
+type ExtendedSurfaceType = SurfaceType | 
+  'stairs-step' |        // Poziome stopnie (antypoślizgowa)
+  'stairs-riser' |       // Pionowe podstopnie (zwykła)
+  'paddling-bottom' |    // Dno brodzika (antypoślizgowa)
+  'paddling-wall' |      // Ściany brodzika (zwykła)
+  'dividing-wall-pool' | // Murek od strony basenu (zwykła)
+  'dividing-wall-paddling' | // Murek od strony brodzika (zwykła)
+  'dividing-wall-top';   // Góra murka (pozioma, jak stopień)
+```
+
+### 2. Nowy interfejs ExtendedFoilPlanResult
+
+```typescript
+interface ExtendedFoilPlanResult extends FoilPlanResult {
+  // Dane dla schodów
+  stairsPlan?: {
+    surfaces: SurfacePlan[];
+    stepArea: number;      // Powierzchnia stopni (antypoślizgowa)
+    riserArea: number;     // Powierzchnia podstopni (zwykła)
+    antiSlipProductId?: string;
+  };
+  
+  // Dane dla brodzika
+  paddlingPlan?: {
+    surfaces: SurfacePlan[];
+    bottomArea: number;    // Dno (antypoślizgowa)
+    wallsArea: number;     // Ściany (zwykła)
+    dividingWall?: {
+      poolSideArea: number;     // Od strony basenu
+      paddlingSideArea: number; // Od strony brodzika
+      topArea: number;          // Góra murka
+    };
+  };
+  
+  // Flagi dla folii strukturalnej
+  isStructural: boolean;
+  buttJointLength: number;
+  score: number;
+}
+```
+
+### 3. Funkcje pomocnicze
+
+```typescript
+// Sprawdzenie czy folia jest strukturalna/antypoślizgowa
+function isStructuralFoil(product: Product): boolean {
   return product.foil_category === 'strukturalna';
-};
+}
 
-// Automatyczne przypisanie na schody i brodzik:
-const getAntiSlipFoilForStairs = (selectedProduct: Product, allProducts: Product[]): Product | null => {
-  if (isAntiSlip(selectedProduct)) {
-    return selectedProduct; // strukturalna = OK na schody
+// Automatyczny dobór folii antypoślizgowej
+function getAntiSlipFoilForStairs(
+  selectedProduct: Product, 
+  allProducts: Product[]
+): Product | null {
+  if (isStructuralFoil(selectedProduct)) {
+    return selectedProduct; // strukturalna = OK wszędzie
   }
-  // Dla folii niestrukturalnej - szukaj Relief w tym samym kolorze
-  const colorMatch = selectedProduct.shade;
+  // Szukaj Relief/Touch w tym samym kolorze
   return allProducts.find(p => 
-    p.subcategory === 'Relief' && p.shade === colorMatch
+    p.foil_category === 'strukturalna' && 
+    p.shade === selectedProduct.shade
   ) || null;
-};
+}
+```
+
+### 4. Funkcja planStairsSurface()
+
+```typescript
+function planStairsSurface(
+  stairsConfig: StairsConfig,
+  poolDepth: number,
+  dimensions: PoolDimensions
+): { stepSurfaces: SurfacePlan[]; riserSurfaces: SurfacePlan[] } {
+  const stepCount = stairsConfig.stepCount;
+  const stepDepth = stairsConfig.stepDepth;
+  const stepHeight = stairsConfig.stepHeight;
+  const stairsWidth = typeof stairsConfig.width === 'number' 
+    ? stairsConfig.width : dimensions.width;
+  
+  // STOPNIE (poziome) - antypoślizgowa
+  const stepArea = stepCount * stepDepth * stairsWidth;
+  
+  // PODSTOPNIE (pionowe) - zwykła folia
+  const riserArea = stepCount * stepHeight * stairsWidth;
+  
+  return {
+    stepSurfaces: [{ type: 'stairs-step', area: stepArea, ... }],
+    riserSurfaces: [{ type: 'stairs-riser', area: riserArea, ... }]
+  };
+}
+```
+
+### 5. Funkcja planPaddlingPoolSurface()
+
+```typescript
+function planPaddlingPoolSurface(
+  wadingConfig: WadingPoolConfig,
+  poolDepth: number
+): PaddlingPlanResult {
+  const { width, length, depth: paddlingDepth, hasDividingWall, dividingWallOffset } = wadingConfig;
+  
+  // DNO brodzika - antypoślizgowa
+  const bottomArea = width * length;
+  
+  // ŚCIANY brodzika (3 zewnętrzne) - zwykła folia
+  // 2 ściany wzdłuż + 1 ściana w poprzek (bez murka)
+  const wallsArea = 2 * (length * paddlingDepth) + (width * paddlingDepth);
+  
+  // MUREK ROZDZIELAJĄCY (jeśli włączony)
+  let dividingWall = undefined;
+  if (hasDividingWall) {
+    const wallHeight = (dividingWallOffset || 0) / 100; // cm → m
+    
+    // Strona BRODZIKA: wysokość murka
+    const paddlingSideArea = width * wallHeight;
+    
+    // Strona BASENU: głębokość_basenu - głębokość_brodzika
+    const poolSideHeight = poolDepth - paddlingDepth;
+    const poolSideArea = width * poolSideHeight;
+    
+    // GÓRA murka (pozioma, jak stopień)
+    const wallThickness = 0.15; // 15cm grubość murka
+    const topArea = width * wallThickness;
+    
+    dividingWall = {
+      poolSideArea,
+      paddlingSideArea,
+      topArea,
+    };
+  }
+  
+  return {
+    surfaces: [...],
+    bottomArea,    // Antypoślizgowa
+    wallsArea,     // Zwykła
+    dividingWall,  // Zwykła (wszystkie strony murka)
+  };
+}
+```
+
+### 6. Funkcja scoreCuttingPlan()
+
+```typescript
+function scoreCuttingPlan(plan: FoilPlanResult): number {
+  let score = 0;
+  
+  // Kary
+  score += plan.wastePercentage * 10;        // Odpad
+  score += plan.issues.length * 50;           // Błędy
+  score += plan.strips.length * 2;            // Spawy
+  score += plan.rolls.length * 5;             // Rolki
+  
+  // Bonusy
+  const uniqueWidths = new Set(plan.strips.map(s => s.rollWidth));
+  if (uniqueWidths.size === 1) score -= 20;   // Jedna szerokość
+  
+  return score; // Mniej = lepiej
+}
+```
+
+### 7. Obsługa folii strukturalnej (butt joint)
+
+```typescript
+// Wykrywanie zgrzewania doczołowego
+if (selectedProduct?.joint_type === 'butt') {
+  // Brak zakładów na dnie
+  const adjustedOverlapBottom = 0;
+  
+  // Oblicz długość zgrzewów doczołowych
+  const buttJointLength = calculateButtJointLength(bottomPlan);
+  
+  // Dodatkowe materiały/usługi
+  extraMaterials.push({ name: 'Folia podkładowa', ... });
+  extraServices.push({ name: 'Zgrzewanie doczołowe', rate: 15, length: buttJointLength });
+}
 ```
 
 ---
 
-## Faza 2: Algorytm optymalizacji (bez zmian)
+## Pliki do modyfikacji
 
-### 2.1 Rozszerzenie `foilPlanner.ts`
-- `planStairs()` - rozkład folii na schodach
-- `planPaddling()` - rozkład folii w brodziku
-- `scoreCuttingPlan()` - punktacja planów
-- Logika automatycznego doboru folii strukturalnej na schody
-
-### 2.2 Obsługa folii strukturalnej
-- Wykrywanie `foil_category === 'strukturalna'`
-- Zgrzewanie doczołowe (bez zakładów na dnie)
-- Dodatkowe materiały: folia podkładowa (product symbol: 069978)
+### src/lib/foilPlanner.ts
+- Dodanie nowych typów powierzchni
+- Nowe funkcje: `isStructuralFoil()`, `getAntiSlipFoilForStairs()`
+- Nowe funkcje: `planStairsSurface()`, `planPaddlingPoolSurface()`
+- Nowa funkcja: `scoreCuttingPlan()`
+- Rozszerzenie: `planFoilLayout()` → `planExtendedFoilLayout()`
+- Nowy interfejs: `ExtendedFoilPlanResult`
 
 ---
 
-## Faza 3: UI (bez zmian koncepcyjnych)
+## Podsumowanie powierzchni i typów folii
 
-### 3.1 Wizard wewnętrzny w CoveringStep
+| Powierzchnia | Typ folii | Uwagi |
+|--------------|-----------|-------|
+| Dno basenu | Wybrana | Główna folia |
+| Ściany basenu | Wybrana | Główna folia |
+| Stopnie schodów (poziome) | Antypoślizgowa* | Strukturalna |
+| Podstopnie (pionowe) | Wybrana | Główna folia |
+| Dno brodzika | Antypoślizgowa* | Strukturalna |
+| Ściany brodzika | Wybrana | Główna folia |
+| Murek - strona basenu | Wybrana | 1.0m dla przykładu |
+| Murek - strona brodzika | Wybrana | 0.2m dla przykładu |
+| Murek - góra | Wybrana | Pozioma jak stopień |
 
-```text
-CoveringStep.tsx (rozbudowany)
-├── [Tab 1] Wybór typu          
-├── [Tab 2] Filtrowanie (podtyp + kolor)
-├── [Tab 3] Wybór produktu (podtyp/seria/konkretny)
-├── [Tab 4] Optymalizacja + wizualizacja 2D
-├── [Tab 5] Materiały instalacyjne (auto-dobrane z bazy)
-├── [Tab 6] Warianty cenowe (3 kolumny)
-└── [Tab 7] Podsumowanie
-```
-
-### 3.2 Auto-wyliczanie materiałów
-Hook `useMaterialCalculation` będzie:
-1. Pobierał mapowania z `installation_materials` 
-2. Szukał odpowiednich produktów w `products` po `product_id`
-3. Aplikował reguły `calculation_rule` na podstawie powierzchni basenu
-
----
-
-## Kolejność implementacji (zaktualizowana)
-
-```text
-Etap 1 (baza danych):
-  1. Migracja products (manufacturer, series, widths, joint_type)
-  2. Tabela installation_materials z FK do products
-  3. Seed: mapowanie istniejących produktów do reguł
-  4. Tabela installation_services + seed
-  5. Rozszerzenie offers.finishing_variant
-
-Etap 2 (algorytm):
-  6. Logika isAntiSlip() w foilPlanner
-  7. Funkcje planStairs(), planPaddling()
-  8. Auto-dobór folii strukturalnej na schody
-
-Etap 3 (UI):
-  9-15. Jak w poprzednim planie
-```
-
----
-
-## Szczegóły techniczne
-
-### Reguły calculation_rule (przykłady JSONB):
-
-```json
-// Podkład - pokrycie powierzchni
-{
-  "type": "area_coverage",
-  "applies_to": ["bottom", "walls", "stairs"],
-  "product_width": 2.0,
-  "waste_factor": 1.05
-}
-
-// Profile - obwód
-{
-  "type": "perimeter",
-  "locations": ["pool_edge", "stairs_edge"],
-  "unit_length": 2.0,
-  "round_up": true
-}
-
-// Klej - na powierzchnię podkładu
-{
-  "type": "per_area",
-  "base": "substrate_area",
-  "kg_per_100m2": 15,
-  "package_sizes": [5, 7, 10, 15, 20]
-}
-
-// Nity - na długość profili
-{
-  "type": "per_length",
-  "base": "profile_length",
-  "pcs_per_meter": 4,
-  "package_size": 100
-}
-```
-
-### Mapowanie wariantów do produktów:
-
-| Wariant | Podkład | Profil | Folia |
-|---------|---------|--------|-------|
-| Ekonomiczny | 400g/m² zwykły | Kątownik PCW | Najtańsza z podtypu |
-| Standard | 500g/m² zwykły | Kątownik stalowy | Średnia cena |
-| Premium | Impregnowany 2m | Kątownik stalowy | Najdroższa strukturalna |
-
----
-
-## Poza zakresem (bez zmian)
-- Osobna tabela na wyniki optymalizacji (w sesji)
-- Historia zmian oferty
-- Komentarze klienta
-
+*Jeśli wybrana folia jest strukturalna → wszędzie ta sama folia
