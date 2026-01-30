@@ -14,6 +14,63 @@ export type Database = {
   }
   public: {
     Tables: {
+      foil_optimization_results: {
+        Row: {
+          created_at: string
+          cutting_plan: Json
+          id: string
+          is_recommended: boolean
+          pool_configuration_id: string | null
+          product_id: string | null
+          roll_width: number
+          score: number
+          total_area_m2: number
+          waste_percentage: number
+          waste_pieces: Json
+        }
+        Insert: {
+          created_at?: string
+          cutting_plan?: Json
+          id?: string
+          is_recommended?: boolean
+          pool_configuration_id?: string | null
+          product_id?: string | null
+          roll_width: number
+          score?: number
+          total_area_m2?: number
+          waste_percentage?: number
+          waste_pieces?: Json
+        }
+        Update: {
+          created_at?: string
+          cutting_plan?: Json
+          id?: string
+          is_recommended?: boolean
+          pool_configuration_id?: string | null
+          product_id?: string | null
+          roll_width?: number
+          score?: number
+          total_area_m2?: number
+          waste_percentage?: number
+          waste_pieces?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "foil_optimization_results_pool_configuration_id_fkey"
+            columns: ["pool_configuration_id"]
+            isOneToOne: false
+            referencedRelation: "pool_configurations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "foil_optimization_results_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       installation_materials: {
         Row: {
           calculation_rule: Json
@@ -112,16 +169,162 @@ export type Database = {
         }
         Relationships: []
       }
+      offer_changes_log: {
+        Row: {
+          change_type: string
+          changed_by: string | null
+          created_at: string
+          field_name: string | null
+          id: string
+          new_value: Json | null
+          offer_id: string | null
+          old_value: Json | null
+        }
+        Insert: {
+          change_type: string
+          changed_by?: string | null
+          created_at?: string
+          field_name?: string | null
+          id?: string
+          new_value?: Json | null
+          offer_id?: string | null
+          old_value?: Json | null
+        }
+        Update: {
+          change_type?: string
+          changed_by?: string | null
+          created_at?: string
+          field_name?: string | null
+          id?: string
+          new_value?: Json | null
+          offer_id?: string | null
+          old_value?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "offer_changes_log_offer_id_fkey"
+            columns: ["offer_id"]
+            isOneToOne: false
+            referencedRelation: "offers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      offer_comments: {
+        Row: {
+          author: string | null
+          comment_text: string
+          created_at: string
+          id: string
+          is_internal: boolean
+          offer_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          author?: string | null
+          comment_text: string
+          created_at?: string
+          id?: string
+          is_internal?: boolean
+          offer_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          author?: string | null
+          comment_text?: string
+          created_at?: string
+          id?: string
+          is_internal?: boolean
+          offer_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "offer_comments_offer_id_fkey"
+            columns: ["offer_id"]
+            isOneToOne: false
+            referencedRelation: "offers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      offer_variants: {
+        Row: {
+          created_at: string
+          foil_product_id: string | null
+          id: string
+          is_default: boolean
+          materials: Json
+          offer_id: string | null
+          services: Json
+          total_gross: number
+          total_materials_net: number
+          total_net: number
+          total_services_net: number
+          updated_at: string
+          variant_level: string
+        }
+        Insert: {
+          created_at?: string
+          foil_product_id?: string | null
+          id?: string
+          is_default?: boolean
+          materials?: Json
+          offer_id?: string | null
+          services?: Json
+          total_gross?: number
+          total_materials_net?: number
+          total_net?: number
+          total_services_net?: number
+          updated_at?: string
+          variant_level: string
+        }
+        Update: {
+          created_at?: string
+          foil_product_id?: string | null
+          id?: string
+          is_default?: boolean
+          materials?: Json
+          offer_id?: string | null
+          services?: Json
+          total_gross?: number
+          total_materials_net?: number
+          total_net?: number
+          total_services_net?: number
+          updated_at?: string
+          variant_level?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "offer_variants_foil_product_id_fkey"
+            columns: ["foil_product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "offer_variants_offer_id_fkey"
+            columns: ["offer_id"]
+            isOneToOne: false
+            referencedRelation: "offers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       offers: {
         Row: {
           calculations: Json | null
           created_at: string
           customer_data: Json
           dimensions: Json
+          discount_per_module: Json | null
+          discount_percentage: number | null
           excavation: Json
           finishing_variant: Json | null
           id: string
           is_draft: boolean
+          margin_percentage: number | null
+          notes_internal: string | null
           offer_number: string
           pool_type: string
           sections: Json
@@ -137,10 +340,14 @@ export type Database = {
           created_at?: string
           customer_data: Json
           dimensions: Json
+          discount_per_module?: Json | null
+          discount_percentage?: number | null
           excavation: Json
           finishing_variant?: Json | null
           id?: string
           is_draft?: boolean
+          margin_percentage?: number | null
+          notes_internal?: string | null
           offer_number: string
           pool_type: string
           sections: Json
@@ -156,10 +363,14 @@ export type Database = {
           created_at?: string
           customer_data?: Json
           dimensions?: Json
+          discount_per_module?: Json | null
+          discount_percentage?: number | null
           excavation?: Json
           finishing_variant?: Json | null
           id?: string
           is_draft?: boolean
+          margin_percentage?: number | null
+          notes_internal?: string | null
           offer_number?: string
           pool_type?: string
           sections?: Json
@@ -171,6 +382,50 @@ export type Database = {
           valid_until?: string | null
         }
         Relationships: []
+      }
+      pool_configurations: {
+        Row: {
+          calculated_areas: Json
+          created_at: string
+          dimensions: Json
+          id: string
+          offer_id: string | null
+          paddling_pool_config: Json | null
+          pool_type: string
+          stairs_config: Json | null
+          updated_at: string
+        }
+        Insert: {
+          calculated_areas?: Json
+          created_at?: string
+          dimensions: Json
+          id?: string
+          offer_id?: string | null
+          paddling_pool_config?: Json | null
+          pool_type: string
+          stairs_config?: Json | null
+          updated_at?: string
+        }
+        Update: {
+          calculated_areas?: Json
+          created_at?: string
+          dimensions?: Json
+          id?: string
+          offer_id?: string | null
+          paddling_pool_config?: Json | null
+          pool_type?: string
+          stairs_config?: Json | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pool_configurations_offer_id_fkey"
+            columns: ["offer_id"]
+            isOneToOne: false
+            referencedRelation: "offers"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       portfolio: {
         Row: {
@@ -370,6 +625,47 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      subiekt_sync_log: {
+        Row: {
+          created_at: string
+          error_message: string | null
+          id: string
+          offer_id: string | null
+          subiekt_document_id: string | null
+          sync_completed_at: string | null
+          sync_started_at: string | null
+          sync_status: string
+        }
+        Insert: {
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          offer_id?: string | null
+          subiekt_document_id?: string | null
+          sync_completed_at?: string | null
+          sync_started_at?: string | null
+          sync_status?: string
+        }
+        Update: {
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          offer_id?: string | null
+          subiekt_document_id?: string | null
+          sync_completed_at?: string | null
+          sync_started_at?: string | null
+          sync_status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "subiekt_sync_log_offer_id_fkey"
+            columns: ["offer_id"]
+            isOneToOne: false
+            referencedRelation: "offers"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Views: {
