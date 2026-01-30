@@ -5,7 +5,10 @@ interface CoveringStepProps {
   onBack: () => void;
 }
 
-// Re-export the new wizard as CoveringStep for backward compatibility
+/**
+ * CoveringStep - Wrapper for the new 7-step Finishing Module Wizard
+ * Provides backward compatibility with the existing step navigation system
+ */
 export function CoveringStep({ onNext, onBack }: CoveringStepProps) {
   return <FinishingModuleWizard onNext={onNext} onBack={onBack} />;
 }
