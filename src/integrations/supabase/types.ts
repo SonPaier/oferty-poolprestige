@@ -14,6 +14,104 @@ export type Database = {
   }
   public: {
     Tables: {
+      installation_materials: {
+        Row: {
+          calculation_rule: Json
+          created_at: string
+          finishing_type: string
+          id: string
+          is_default: boolean
+          is_optional: boolean
+          material_category: string
+          product_id: string
+          sort_order: number
+          updated_at: string
+          variant_level: string
+        }
+        Insert: {
+          calculation_rule?: Json
+          created_at?: string
+          finishing_type: string
+          id?: string
+          is_default?: boolean
+          is_optional?: boolean
+          material_category: string
+          product_id: string
+          sort_order?: number
+          updated_at?: string
+          variant_level?: string
+        }
+        Update: {
+          calculation_rule?: Json
+          created_at?: string
+          finishing_type?: string
+          id?: string
+          is_default?: boolean
+          is_optional?: boolean
+          material_category?: string
+          product_id?: string
+          sort_order?: number
+          updated_at?: string
+          variant_level?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "installation_materials_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      installation_services: {
+        Row: {
+          applies_to: Json
+          created_at: string
+          description: string | null
+          finishing_type: string
+          id: string
+          is_default: boolean
+          is_optional: boolean
+          name: string
+          price_per_unit: number
+          service_category: string
+          sort_order: number
+          unit: string
+          updated_at: string
+        }
+        Insert: {
+          applies_to?: Json
+          created_at?: string
+          description?: string | null
+          finishing_type: string
+          id?: string
+          is_default?: boolean
+          is_optional?: boolean
+          name: string
+          price_per_unit?: number
+          service_category: string
+          sort_order?: number
+          unit?: string
+          updated_at?: string
+        }
+        Update: {
+          applies_to?: Json
+          created_at?: string
+          description?: string | null
+          finishing_type?: string
+          id?: string
+          is_default?: boolean
+          is_optional?: boolean
+          name?: string
+          price_per_unit?: number
+          service_category?: string
+          sort_order?: number
+          unit?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       offers: {
         Row: {
           calculations: Json | null
@@ -21,7 +119,9 @@ export type Database = {
           customer_data: Json
           dimensions: Json
           excavation: Json
+          finishing_variant: Json | null
           id: string
+          is_draft: boolean
           offer_number: string
           pool_type: string
           sections: Json
@@ -30,6 +130,7 @@ export type Database = {
           total_gross: number
           total_net: number
           updated_at: string
+          valid_until: string | null
         }
         Insert: {
           calculations?: Json | null
@@ -37,7 +138,9 @@ export type Database = {
           customer_data: Json
           dimensions: Json
           excavation: Json
+          finishing_variant?: Json | null
           id?: string
+          is_draft?: boolean
           offer_number: string
           pool_type: string
           sections: Json
@@ -46,6 +149,7 @@ export type Database = {
           total_gross?: number
           total_net?: number
           updated_at?: string
+          valid_until?: string | null
         }
         Update: {
           calculations?: Json | null
@@ -53,7 +157,9 @@ export type Database = {
           customer_data?: Json
           dimensions?: Json
           excavation?: Json
+          finishing_variant?: Json | null
           id?: string
+          is_draft?: boolean
           offer_number?: string
           pool_type?: string
           sections?: Json
@@ -62,6 +168,7 @@ export type Database = {
           total_gross?: number
           total_net?: number
           updated_at?: string
+          valid_until?: string | null
         }
         Relationships: []
       }
@@ -167,6 +274,7 @@ export type Database = {
       }
       products: {
         Row: {
+          available_widths: Json | null
           category: string | null
           created_at: string
           currency: string
@@ -176,8 +284,13 @@ export type Database = {
           foil_width: number | null
           id: string
           image_id: string | null
+          joint_type: string | null
+          manufacturer: string | null
           name: string
+          overlap_width: number | null
           price: number
+          roll_length: number | null
+          series: string | null
           shade: string | null
           stock_quantity: number | null
           subcategory: string | null
@@ -185,6 +298,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          available_widths?: Json | null
           category?: string | null
           created_at?: string
           currency?: string
@@ -194,8 +308,13 @@ export type Database = {
           foil_width?: number | null
           id?: string
           image_id?: string | null
+          joint_type?: string | null
+          manufacturer?: string | null
           name: string
+          overlap_width?: number | null
           price?: number
+          roll_length?: number | null
+          series?: string | null
           shade?: string | null
           stock_quantity?: number | null
           subcategory?: string | null
@@ -203,6 +322,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          available_widths?: Json | null
           category?: string | null
           created_at?: string
           currency?: string
@@ -212,8 +332,13 @@ export type Database = {
           foil_width?: number | null
           id?: string
           image_id?: string | null
+          joint_type?: string | null
+          manufacturer?: string | null
           name?: string
+          overlap_width?: number | null
           price?: number
+          roll_length?: number | null
+          series?: string | null
           shade?: string | null
           stock_quantity?: number | null
           subcategory?: string | null
