@@ -30,6 +30,43 @@
 
 ---
 
+# Faza 3: Integracja z CoveringStep.tsx ✅ ZAKOŃCZONE
+
+## Zmiany w CoveringStep.tsx
+
+### Import nowych plannerów
+```typescript
+import { 
+  planStairsSurface, 
+  planPaddlingPoolSurface,
+  isStructuralFoil,
+  getAntiSlipFoilForStairs,
+  StairsPlanResult,
+  PaddlingPlanResult,
+  FoilProduct
+} from '@/lib/foil';
+```
+
+### Nowe obliczenia
+- `stairsPlan` - wynik planowania schodów z `planStairsSurface()`
+- `paddlingPlan` - wynik planowania brodzika z `planPaddlingPoolSurface()`
+- `antiSlipBreakdown` - rozbicie powierzchni antypoślizgowych i zwykłych
+
+### Wyświetlanie w UI
+- Szczegółowy breakdown powierzchni antypoślizgowej:
+  - Stopnie schodów (m²)
+  - Dno brodzika (m²)
+- Szczegółowy breakdown dodatkowej folii głównej:
+  - Podstopnie (m²)
+  - Ściany brodzika (m²)
+  - Murek rozdzielający (strona basenu, strona brodzika, góra)
+
+### Logika antypoślizgowej
+- Jeśli wybrana folia jest strukturalna → nie dodajemy osobnej pozycji antypoślizgowej
+- W przeciwnym razie → automatycznie dodajemy pozycję "Folia antypoślizgowa"
+
+---
+
 ## Poprawione reguły folii antypoślizgowej
 
 | Powierzchnia | Typ folii | Uwagi |
@@ -48,41 +85,14 @@
 
 ---
 
-## Geometria murka rozdzielającego
-
-Przykład: basen 1.4m, brodzik 0.4m, offset murka 0.2m:
-
-```text
-                0m ─────────────────────────────────────────
-                   │                      │ góra murka (0.15m szerokość)
-              -0.2m├──────────────────────┼────────────────
-                   │                      │
-              -0.4m│    BRODZIK (0.4m)    │ ściana murka 0.2m (od strony brodzika)
-         dno brodzika ────────────────────┘
-                   │
-                   │       BASEN GŁÓWNY
-                   │    ściana podniesiona 1.0m (od strony basenu)
-                   │    = poolDepth - paddlingDepth = 1.4 - 0.4
-              -1.4m│
-          dno basenu ─────────────────────────────────────────
-```
-
-Obliczenia:
-- **Strona basenu**: 1.4m - 0.4m = **1.0m** wysokości
-- **Strona brodzika**: **0.2m** wysokości (= offset murka)
-- **Góra murka**: **0.15m** szerokość (stała)
-
----
-
 # Następne kroki
 
-## Faza 3: Integracja z CoveringStep.tsx
-- [ ] Użycie nowych plannerów do obliczania powierzchni
-- [ ] Automatyczne dodawanie folii antypoślizgowej do materiałów
-- [ ] Wyświetlanie rozbicia powierzchni w dialogu szczegółów
-- [ ] Obsługa folii strukturalnej (butt joints) - zgrzewanie doczołowe
-
-## Faza 4: Aktualizacja wizualizacji
+## Faza 4: Aktualizacja wizualizacji (opcjonalne)
 - [ ] Wyświetlanie pasów folii na schodach w 2D/3D
 - [ ] Wyświetlanie pasów folii na brodziku w 2D/3D
 - [ ] Kolorowanie powierzchni antypoślizgowych
+
+## Faza 5: Obsługa folii strukturalnej (butt joint)
+- [ ] Wykrywanie `joint_type === 'butt'` w wybranej folii
+- [ ] Obliczanie długości zgrzewów doczołowych
+- [ ] Dodanie usługi "Zgrzewanie doczołowe" do materiałów
