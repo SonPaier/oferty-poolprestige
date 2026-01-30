@@ -42,11 +42,14 @@ import {
   planStairsSurface, 
   planPaddlingPoolSurface,
   isStructuralFoil,
+  isButtJointFoil,
   getAntiSlipFoilForStairs,
+  calculateButtJointLength,
   StairsPlanResult,
   PaddlingPlanResult,
   FoilProduct
 } from '@/lib/foil';
+import { Badge } from '@/components/ui/badge';
 
 interface CoveringStepProps {
   onNext: () => void;
@@ -190,6 +193,46 @@ export function CoveringStep({ onNext, onBack }: CoveringStepProps) {
     return foilCategory === 'strukturalna';
   }, [selectedFoil, foilCategory]);
 
+  // Check if selected foil uses butt joint (structural foils)
+  const selectedFoilIsButtJoint = useMemo(() => {
+    if (!selectedFoil || !dbFoils) return false;
+    // Find the foil in dbFoils to check its properties
+    const dbFoil = dbFoils.find(f => f.id === selectedFoil.id);
+    // Structural foils use butt joints
+    return foilCategory === 'strukturalna' || dbFoil?.type === 'strukturalna';
+  }, [selectedFoil, dbFoils, foilCategory]);
+
+  // Calculate butt joint length for structural foils
+  const buttJointInfo = useMemo(() => {
+    if (!selectedFoilIsButtJoint || !foilCalc) return null;
+    
+    // Estimate butt joint length from bottom strips
+    // Butt joints occur between adjacent strips on the pool bottom
+    const bottomStrips = foilCalc.strips?.filter(s => 
+      s.surface === 'bottom'
+    ) || [];
+    
+    if (bottomStrips.length <= 1) return { length: 0, cost: 0 };
+    
+    // Calculate total joint length (between adjacent strips)
+    let totalJointLength = 0;
+    for (let i = 1; i < bottomStrips.length; i++) {
+      // Joint runs the full strip length (the shorter of the two)
+      totalJointLength += Math.min(
+        bottomStrips[i - 1].stripLength,
+        bottomStrips[i].stripLength
+      );
+    }
+    
+    const BUTT_WELD_PRICE_PER_M = 15; // zł/mb
+    
+    return {
+      length: totalJointLength,
+      cost: totalJointLength * BUTT_WELD_PRICE_PER_M,
+      pricePerM: BUTT_WELD_PRICE_PER_M,
+    };
+  }, [selectedFoilIsButtJoint, foilCalc]);
+
   // Initialize materials when foil calculation changes
   useEffect(() => {
     if (foilCalc && !isCeramic) {
@@ -257,6 +300,19 @@ export function CoveringStep({ onNext, onBack }: CoveringStepProps) {
         });
       }
       
+      // Add butt welding service for structural foils
+      if (selectedFoilIsButtJoint && buttJointInfo && buttJointInfo.length > 0) {
+        defaultMaterials.push({
+          id: 'butt-welding',
+          name: 'Usługa zgrzewania doczołowego',
+          symbol: 'ZGRZEW-DOC',
+          unit: 'mb',
+          suggestedQty: Math.ceil(buttJointInfo.length * 10) / 10, // Round to 0.1m
+          manualQty: null,
+          pricePerUnit: buttJointInfo.pricePerM,
+        });
+      }
+      
       // Add extra regular foil for risers, paddling walls, dividing wall
       if (antiSlipBreakdown.totalRegularExtra > 0) {
         // This is already included in the main foil calculation via totalArea adjustment
@@ -265,7 +321,7 @@ export function CoveringStep({ onNext, onBack }: CoveringStepProps) {
       
       setMaterials(defaultMaterials);
     }
-  }, [foilCalc, isCeramic, antiSlipBreakdown, selectedFoilIsStructural, dimensions]);
+  }, [foilCalc, isCeramic, antiSlipBreakdown, selectedFoilIsStructural, selectedFoilIsButtJoint, buttJointInfo, dimensions]);
 
   // Get available colors from database
   const availableColors = useMemo(() => {
@@ -814,8 +870,30 @@ export function CoveringStep({ onNext, onBack }: CoveringStepProps) {
           {selectedFoil && foilCalc && (
             <Card className="glass-card border-primary/20 bg-primary/5">
               <CardContent className="pt-4">
-                <p className="text-sm text-muted-foreground">Wybrana folia</p>
-                <p className="font-medium truncate">{selectedFoil.name}</p>
+                <div className="flex items-start justify-between">
+                  <div>
+                    <p className="text-sm text-muted-foreground">Wybrana folia</p>
+                    <p className="font-medium truncate">{selectedFoil.name}</p>
+                  </div>
+                  {selectedFoilIsButtJoint && (
+                    <Badge variant="secondary" className="bg-accent/20 text-accent border-accent/30 text-xs">
+                      Zgrzewanie doczołowe
+                    </Badge>
+                  )}
+                </div>
+                
+                {/* Butt joint info */}
+                {selectedFoilIsButtJoint && buttJointInfo && buttJointInfo.length > 0 && (
+                  <div className="mt-2 p-2 rounded bg-accent/10 border border-accent/20">
+                    <p className="text-xs text-accent font-medium">
+                      Zgrzewy doczołowe: {buttJointInfo.length.toFixed(1)} mb
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Usługa: {buttJointInfo.length.toFixed(1)} mb × {formatPrice(buttJointInfo.pricePerM)}/mb = {formatPrice(buttJointInfo.cost)}
+                    </p>
+                  </div>
+                )}
+                
                 <div className="mt-2 flex justify-between items-center">
                   <span className="text-sm text-muted-foreground">
                     {foilCalc.totalArea.toFixed(1)} m² × {formatPrice(getPriceInPLN(selectedFoil))}
