@@ -565,13 +565,27 @@ export function CoveringStep({ onNext, onBack }: CoveringStepProps) {
                             Szczegóły
                           </Button>
                         </DialogTrigger>
-                        <DialogContent className="max-w-lg">
+                        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
                           <DialogHeader>
                             <DialogTitle>Sposób kalkulacji rolek folii</DialogTitle>
                           </DialogHeader>
                           <div className="space-y-4 text-sm">
+                            {/* Legend */}
+                            <div className="flex items-center gap-4 p-2 rounded-lg bg-muted/30 border border-border">
+                              <span className="text-xs font-medium">Legenda:</span>
+                              <span className="flex items-center gap-1 text-xs">
+                                <span className="w-3 h-3 rounded-sm bg-blue-500" />
+                                Folia regularna
+                              </span>
+                              <span className="flex items-center gap-1 text-xs">
+                                <span className="w-3 h-3 rounded-sm bg-orange-500" />
+                                Folia antypoślizgowa
+                              </span>
+                            </div>
+                            
+                            {/* Section 1: Basic pool surface */}
                             <div>
-                              <h4 className="font-semibold mb-2">1. Obliczenie powierzchni</h4>
+                              <h4 className="font-semibold mb-2">1. Obliczenie powierzchni niecki</h4>
                               <ul className="list-disc list-inside space-y-1 text-muted-foreground">
                                 <li>Dno basenu: {dimensions.length} × {dimensions.width} = {(dimensions.length * dimensions.width).toFixed(2)} m²</li>
                                 <li>Ściany długie: 2 × {dimensions.length} × {dimensions.depth} = {(2 * dimensions.length * dimensions.depth).toFixed(2)} m²</li>
@@ -580,7 +594,151 @@ export function CoveringStep({ onNext, onBack }: CoveringStepProps) {
                               </ul>
                             </div>
                             
-                            <div>
+                            {/* Section 1a: Stairs */}
+                            {dimensions.stairs.enabled && stairsPlan && (
+                              <div className="border-t pt-4">
+                                <h4 className="font-semibold mb-2 flex items-center gap-2">
+                                  <span>📐</span>
+                                  1a. Schody
+                                </h4>
+                                <div className="space-y-2 text-muted-foreground">
+                                  <ul className="list-disc list-inside space-y-1">
+                                    <li>Liczba stopni: {dimensions.stairs.stepCount}</li>
+                                    <li>Wymiary stopnia: {dimensions.stairs.stepDepth}m × {dimensions.stairs.stepHeight}m</li>
+                                    <li>Szerokość schodów: {dimensions.stairs.width}m</li>
+                                  </ul>
+                                  
+                                  <div className="mt-3 rounded-lg border border-border overflow-hidden">
+                                    <table className="w-full text-xs">
+                                      <tbody>
+                                        <tr className="border-b border-border">
+                                          <td className="p-2 bg-muted/30">Stopnie (poziome)</td>
+                                          <td className="p-2 text-right font-medium">{stairsPlan.stepArea.toFixed(2)} m²</td>
+                                          <td className="p-2 text-right">
+                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300">
+                                              🟧 antypoślizgowa
+                                            </span>
+                                          </td>
+                                        </tr>
+                                        <tr className="border-b border-border">
+                                          <td className="p-2 bg-muted/30">Podstopnie (pionowe)</td>
+                                          <td className="p-2 text-right font-medium">{stairsPlan.riserArea.toFixed(2)} m²</td>
+                                          <td className="p-2 text-right">
+                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300">
+                                              🟦 regularna
+                                            </span>
+                                          </td>
+                                        </tr>
+                                        <tr>
+                                          <td className="p-2 bg-muted/50 font-medium">Razem schody</td>
+                                          <td className="p-2 text-right font-bold">{(stairsPlan.stepArea + stairsPlan.riserArea).toFixed(2)} m²</td>
+                                          <td className="p-2"></td>
+                                        </tr>
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+                            
+                            {/* Section 1b: Paddling pool */}
+                            {dimensions.wadingPool.enabled && paddlingPlan && (
+                              <div className="border-t pt-4">
+                                <h4 className="font-semibold mb-2 flex items-center gap-2">
+                                  <span>🌊</span>
+                                  1b. Brodzik
+                                </h4>
+                                <div className="space-y-2 text-muted-foreground">
+                                  <ul className="list-disc list-inside space-y-1">
+                                    <li>Wymiary: {dimensions.wadingPool.width}m × {dimensions.wadingPool.length}m × {dimensions.wadingPool.depth}m</li>
+                                  </ul>
+                                  
+                                  <div className="mt-3 rounded-lg border border-border overflow-hidden">
+                                    <table className="w-full text-xs">
+                                      <tbody>
+                                        <tr className="border-b border-border">
+                                          <td className="p-2 bg-muted/30">Dno brodzika</td>
+                                          <td className="p-2 text-right font-medium">{paddlingPlan.bottomArea.toFixed(2)} m²</td>
+                                          <td className="p-2 text-right">
+                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300">
+                                              🟧 antypoślizgowa
+                                            </span>
+                                          </td>
+                                        </tr>
+                                        <tr className="border-b border-border">
+                                          <td className="p-2 bg-muted/30">Ściany zewnętrzne (3 strony)</td>
+                                          <td className="p-2 text-right font-medium">{paddlingPlan.wallsArea.toFixed(2)} m²</td>
+                                          <td className="p-2 text-right">
+                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300">
+                                              🟦 regularna
+                                            </span>
+                                          </td>
+                                        </tr>
+                                        <tr>
+                                          <td className="p-2 bg-muted/50 font-medium">Razem brodzik</td>
+                                          <td className="p-2 text-right font-bold">{(paddlingPlan.bottomArea + paddlingPlan.wallsArea).toFixed(2)} m²</td>
+                                          <td className="p-2"></td>
+                                        </tr>
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                  
+                                  {/* Dividing wall detail */}
+                                  {paddlingPlan.dividingWall && (
+                                    <div className="mt-3">
+                                      <p className="text-sm font-medium text-foreground mb-2">Murek rozdzielający:</p>
+                                      <div className="rounded-lg border border-border overflow-hidden">
+                                        <table className="w-full text-xs">
+                                          <tbody>
+                                            <tr className="border-b border-border">
+                                              <td className="p-2 bg-muted/30">Strona basenu (wys. {(dimensions.depth - dimensions.wadingPool.depth).toFixed(2)}m)</td>
+                                              <td className="p-2 text-right font-medium">{paddlingPlan.dividingWall.poolSideArea.toFixed(2)} m²</td>
+                                              <td className="p-2 text-right">
+                                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300">
+                                                  🟦 regularna
+                                                </span>
+                                              </td>
+                                            </tr>
+                                            {paddlingPlan.dividingWall.paddlingSideArea > 0 && (
+                                              <tr className="border-b border-border">
+                                                <td className="p-2 bg-muted/30">Strona brodzika</td>
+                                                <td className="p-2 text-right font-medium">{paddlingPlan.dividingWall.paddlingSideArea.toFixed(2)} m²</td>
+                                                <td className="p-2 text-right">
+                                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300">
+                                                    🟦 regularna
+                                                  </span>
+                                                </td>
+                                              </tr>
+                                            )}
+                                            <tr className="border-b border-border">
+                                              <td className="p-2 bg-muted/30">Góra murka (szer. 0.15m)</td>
+                                              <td className="p-2 text-right font-medium">{paddlingPlan.dividingWall.topArea.toFixed(2)} m²</td>
+                                              <td className="p-2 text-right">
+                                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300">
+                                                  🟦 regularna
+                                                </span>
+                                              </td>
+                                            </tr>
+                                            <tr>
+                                              <td className="p-2 bg-muted/50 font-medium">Razem murek</td>
+                                              <td className="p-2 text-right font-bold">
+                                                {(paddlingPlan.dividingWall.poolSideArea + 
+                                                  paddlingPlan.dividingWall.paddlingSideArea + 
+                                                  paddlingPlan.dividingWall.topArea).toFixed(2)} m²
+                                              </td>
+                                              <td className="p-2"></td>
+                                            </tr>
+                                          </tbody>
+                                        </table>
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+                            
+                            {/* Section 2: Overages */}
+                            <div className="border-t pt-4">
                               <h4 className="font-semibold mb-2">2. Naddatki</h4>
                               <ul className="list-disc list-inside space-y-1 text-muted-foreground">
                                 <li>Zakładki spawów: +10% na zakłady między pasami</li>
@@ -590,7 +748,8 @@ export function CoveringStep({ onNext, onBack }: CoveringStepProps) {
                               </ul>
                             </div>
                             
-                            <div>
+                            {/* Section 3: Roll optimization */}
+                            <div className="border-t pt-4">
                               <h4 className="font-semibold mb-2">3. Optymalizacja rolek</h4>
                               <p className="text-muted-foreground mb-2">
                                 Folia jest układana pasami wzdłuż dłuższego boku basenu, aby zminimalizować ilość spawów.
@@ -603,17 +762,98 @@ export function CoveringStep({ onNext, onBack }: CoveringStepProps) {
                               </ul>
                             </div>
                             
-                            <div className="pt-2 border-t">
-                              <h4 className="font-semibold mb-2">4. Wynik kalkulacji</h4>
-                              <div className="grid grid-cols-2 gap-2">
-                                <div className="p-2 rounded bg-muted/50">
-                                  <p className="text-xs text-muted-foreground">Całkowita powierzchnia</p>
-                                  <p className="font-medium">{foilCalc.totalArea.toFixed(1)} m²</p>
+                            {/* Section 4: Results summary */}
+                            <div className="border-t pt-4">
+                              <h4 className="font-semibold mb-2">4. Podsumowanie</h4>
+                              
+                              {/* Foil type breakdown table */}
+                              <div className="rounded-lg border border-border overflow-hidden mb-3">
+                                <table className="w-full text-xs">
+                                  <thead>
+                                    <tr className="border-b border-border bg-muted/50">
+                                      <th className="p-2 text-left font-medium">Typ folii</th>
+                                      <th className="p-2 text-right font-medium">Powierzchnia</th>
+                                      <th className="p-2 text-right font-medium">Rolki</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    <tr className="border-b border-border">
+                                      <td className="p-2">
+                                        <span className="flex items-center gap-2">
+                                          <span className="w-3 h-3 rounded-sm bg-blue-500" />
+                                          Folia główna (niecka)
+                                        </span>
+                                      </td>
+                                      <td className="p-2 text-right font-medium">{foilCalc.totalArea.toFixed(1)} m²</td>
+                                      <td className="p-2 text-right text-muted-foreground">
+                                        {foilCalc.rolls165 > 0 && <span>1,65m: {foilCalc.rolls165}</span>}
+                                        {foilCalc.rolls165 > 0 && foilCalc.rolls205 > 0 && <span>, </span>}
+                                        {foilCalc.rolls205 > 0 && <span>2,05m: {foilCalc.rolls205}</span>}
+                                      </td>
+                                    </tr>
+                                    {antiSlipBreakdown.totalRegularExtra > 0 && (
+                                      <tr className="border-b border-border">
+                                        <td className="p-2">
+                                          <span className="flex items-center gap-2">
+                                            <span className="w-3 h-3 rounded-sm bg-blue-500" />
+                                            Dodatkowa folia regularna
+                                          </span>
+                                          <span className="block text-xs text-muted-foreground mt-0.5">
+                                            (podstopnie + ściany brodzika + murek)
+                                          </span>
+                                        </td>
+                                        <td className="p-2 text-right font-medium">{antiSlipBreakdown.totalRegularExtra.toFixed(1)} m²</td>
+                                        <td className="p-2 text-right text-muted-foreground">-</td>
+                                      </tr>
+                                    )}
+                                    {antiSlipBreakdown.totalAntiSlip > 0 && !selectedFoilIsStructural && (
+                                      <tr className="border-b border-border">
+                                        <td className="p-2">
+                                          <span className="flex items-center gap-2">
+                                            <span className="w-3 h-3 rounded-sm bg-orange-500" />
+                                            Folia antypoślizgowa
+                                          </span>
+                                          <span className="block text-xs text-muted-foreground mt-0.5">
+                                            (stopnie schodów + dno brodzika)
+                                          </span>
+                                        </td>
+                                        <td className="p-2 text-right font-medium">{antiSlipBreakdown.totalAntiSlip.toFixed(1)} m²</td>
+                                        <td className="p-2 text-right text-muted-foreground">-</td>
+                                      </tr>
+                                    )}
+                                    <tr className="bg-muted/30">
+                                      <td className="p-2 font-medium" colSpan={2}>
+                                        RAZEM folia regularna
+                                      </td>
+                                      <td className="p-2 text-right font-bold">
+                                        {(foilCalc.totalArea + antiSlipBreakdown.totalRegularExtra).toFixed(1)} m²
+                                      </td>
+                                    </tr>
+                                    {antiSlipBreakdown.totalAntiSlip > 0 && !selectedFoilIsStructural && (
+                                      <tr className="bg-orange-50 dark:bg-orange-900/10">
+                                        <td className="p-2 font-medium" colSpan={2}>
+                                          RAZEM antypoślizgowa
+                                        </td>
+                                        <td className="p-2 text-right font-bold text-orange-700 dark:text-orange-400">
+                                          {antiSlipBreakdown.totalAntiSlip.toFixed(1)} m²
+                                        </td>
+                                      </tr>
+                                    )}
+                                  </tbody>
+                                </table>
+                              </div>
+                              
+                              {/* Structural foil note */}
+                              {selectedFoilIsStructural && antiSlipBreakdown.totalAntiSlip > 0 && (
+                                <div className="p-2 rounded-lg bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 mb-3">
+                                  <p className="text-xs text-green-800 dark:text-green-300">
+                                    ✓ <strong>Folia strukturalna jest antypoślizgowa</strong> — nie wymaga osobnej folii na schody/dno brodzika
+                                  </p>
                                 </div>
-                                <div className="p-2 rounded bg-muted/50">
-                                  <p className="text-xs text-muted-foreground">Odpad</p>
-                                  <p className="font-medium">{foilCalc.wastePercentage.toFixed(1)}%</p>
-                                </div>
+                              )}
+                              
+                              {/* Basic stats */}
+                              <div className="grid grid-cols-3 gap-2">
                                 <div className="p-2 rounded bg-muted/50">
                                   <p className="text-xs text-muted-foreground">Rolki 1,65m</p>
                                   <p className="font-medium">{foilCalc.rolls165} szt.</p>
@@ -622,11 +862,16 @@ export function CoveringStep({ onNext, onBack }: CoveringStepProps) {
                                   <p className="text-xs text-muted-foreground">Rolki 2,05m</p>
                                   <p className="font-medium">{foilCalc.rolls205} szt.</p>
                                 </div>
+                                <div className="p-2 rounded bg-muted/50">
+                                  <p className="text-xs text-muted-foreground">Odpad</p>
+                                  <p className="font-medium">{foilCalc.wastePercentage.toFixed(1)}%</p>
+                                </div>
                               </div>
                             </div>
                             
+                            {/* Section 5: Strips layout */}
                             {foilCalc.strips && foilCalc.strips.length > 0 && (
-                              <div className="pt-2 border-t">
+                              <div className="border-t pt-4">
                                 <h4 className="font-semibold mb-2">5. Układ pasów</h4>
                                 <div className="max-h-32 overflow-y-auto space-y-1">
                                   {foilCalc.strips.map((strip, idx) => (
