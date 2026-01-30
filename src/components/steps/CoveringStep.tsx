@@ -50,6 +50,7 @@ import {
   FoilProduct
 } from '@/lib/foil';
 import { Badge } from '@/components/ui/badge';
+import { FoilLayoutVisualization } from '@/components/FoilLayoutVisualization';
 
 interface CoveringStepProps {
   onNext: () => void;
@@ -889,6 +890,19 @@ export function CoveringStep({ onNext, onBack }: CoveringStepProps) {
                                 </div>
                               </div>
                             )}
+                            
+                            {/* Section 6: Visual layout */}
+                            <div className="border-t pt-4">
+                              <h4 className="font-semibold mb-2">6. Wizualizacja układu folii</h4>
+                              <FoilLayoutVisualization
+                                dimensions={dimensions}
+                                rollWidth={1.65}
+                                label="Układ pasów folii (rolka 1.65m)"
+                                stairsPlan={stairsPlan}
+                                paddlingPlan={paddlingPlan}
+                                showAntiSlipIndicators
+                              />
+                            </div>
                           </div>
                         </DialogContent>
                       </Dialog>
