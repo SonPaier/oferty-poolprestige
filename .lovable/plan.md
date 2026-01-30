@@ -1,98 +1,120 @@
-# Faza 2: Rozbudowa Algorytmu Optymalizacji Folii ✅ ZAKOŃCZONE
 
-## Zaimplementowane moduły
+# Faza 5: Naprawa i Implementacja Obsługi Folii Strukturalnej (Butt Joint)
 
-### src/lib/foil/types.ts
-- `ExtendedSurfaceType` - nowe typy powierzchni (stairs-step, stairs-riser, paddling-bottom, paddling-wall, dividing-wall-*)
-- `ExtendedSurfacePlan` - rozszerzony plan powierzchni
-- `StairsPlanResult` - wynik planowania folii na schody
-- `PaddlingPlanResult` - wynik planowania folii na brodzik
-- `DividingWallPlan` - szczegóły geometrii murka rozdzielającego
-- `ExtendedFoilPlanResult` - rozszerzony wynik planowania
+## Problem zidentyfikowany
 
-### src/lib/foil/helpers.ts
-- `isStructuralFoil()` - sprawdzenie czy folia jest strukturalna
-- `isButtJointFoil()` - sprawdzenie czy folia wymaga zgrzewania doczołowego
-- `getAntiSlipFoilForStairs()` - automatyczny dobór folii antypoślizgowej
-- `scoreCuttingPlan()` - punktacja planu cięcia (niższy = lepszy)
-- `calculateButtJointLength()` - obliczanie długości zgrzewów doczołowych
+Migracja z Fazy 1 nie zaktualizowała poprawnie `joint_type` dla folii strukturalnych, ponieważ warunek `category = 'Folia basenowa'` nie pasuje do faktycznej wartości w bazie (`'folia'`).
 
-### src/lib/foil/stairsPlanner.ts
-- `planStairsSurface()` - planowanie folii na schody
-- `calculateTotalStairsArea()` - całkowita powierzchnia schodów
-
-### src/lib/foil/paddlingPlanner.ts
-- `planPaddlingPoolSurface()` - planowanie folii na brodzik z murkiem
-- `calculateTotalPaddlingArea()` - całkowita powierzchnia brodzika
-
-### src/lib/foil/index.ts
-- Eksport wszystkich funkcji i typów
+Wynik zapytania:
+- Wszystkie folie strukturalne mają `joint_type = NULL` zamiast `'butt'`
+- Wszystkie folie jednokolorowe i nadrukowe mają `joint_type = NULL` zamiast `'overlap'`
 
 ---
 
-# Faza 3: Integracja z CoveringStep.tsx ✅ ZAKOŃCZONE
+## Część 1: Naprawa danych w bazie
 
-## Zmiany w CoveringStep.tsx
+### Migracja korygująca
+Utworzenie nowej migracji SQL:
+- UPDATE folii strukturalnych: `joint_type = 'butt'` WHERE `foil_category = 'strukturalna'`
+- UPDATE folii pozostałych: `joint_type = 'overlap'` WHERE `foil_category IN ('jednokolorowa', 'nadruk')`
+- Usunięcie warunku `category = 'Folia basenowa'` (niepotrzebny skoro filtrujemy po `foil_category`)
 
-### Import nowych plannerów
-```typescript
-import { 
-  planStairsSurface, 
-  planPaddlingPoolSurface,
-  isStructuralFoil,
-  getAntiSlipFoilForStairs,
-  StairsPlanResult,
-  PaddlingPlanResult,
-  FoilProduct
-} from '@/lib/foil';
+---
+
+## Część 2: Integracja butt joint w CoveringStep.tsx
+
+### Wykrywanie folii butt joint
+Dodanie nowej logiki w `CoveringStep.tsx`:
+- Import funkcji `isButtJointFoil` i `calculateButtJointLength`
+- Sprawdzanie czy wybrana folia ma `joint_type === 'butt'`
+- Obliczanie długości zgrzewów doczołowych
+
+### Nowe elementy UI
+1. **Wskaźnik typu folii** - badge informujący że wybrana folia jest strukturalna/butt joint
+2. **Obliczenie długości zgrzewów** - wyświetlenie w sekcji "Zapotrzebowanie"
+3. **Usługa zgrzewania doczołowego** - automatyczne dodanie do materiałów (15 zł/mb)
+4. **Materiał: folia podkładowa** - automatyczne dodanie dla Touch/Ceramics
+
+### Modyfikacja materiałów
+Aktualna lista materiałów:
+- foil-main, underlay, rivets, glue, profiles, antislip
+
+Nowe materiały dla folii butt joint:
+- `butt-welding-service` - Usługa zgrzewania doczołowego (mb)
+- `structural-underlay` - Folia podkładowa pod Touch/Ceramics (m²)
+
+### Logika warunkowa
+```
+Jeśli selectedFoil.joint_type === 'butt':
+  ├── Oblicz buttJointLength z calculateButtJointLength()
+  ├── Dodaj materiał: Zgrzewanie doczołowe × buttJointLength mb × 15 zł
+  ├── Dodaj materiał: Folia podkładowa × bottomArea m²
+  └── Wyświetl badge "Zgrzewanie doczołowe"
+W przeciwnym razie:
+  └── Standardowa lista materiałów
 ```
 
-### Nowe obliczenia
-- `stairsPlan` - wynik planowania schodów z `planStairsSurface()`
-- `paddlingPlan` - wynik planowania brodzika z `planPaddlingPoolSurface()`
-- `antiSlipBreakdown` - rozbicie powierzchni antypoślizgowych i zwykłych
+---
 
-### Wyświetlanie w UI
-- Szczegółowy breakdown powierzchni antypoślizgowej:
-  - Stopnie schodów (m²)
-  - Dno brodzika (m²)
-- Szczegółowy breakdown dodatkowej folii głównej:
-  - Podstopnie (m²)
-  - Ściany brodzika (m²)
-  - Murek rozdzielający (strona basenu, strona brodzika, góra)
+## Część 3: Rozszerzenie typu produktu
 
-### Logika antypoślizgowej
-- Jeśli wybrana folia jest strukturalna → nie dodajemy osobnej pozycji antypoślizgowej
-- W przeciwnym razie → automatycznie dodajemy pozycję "Folia antypoślizgowa"
+### Mapowanie danych z bazy
+Funkcja `useFoilProducts` musi zwracać `joint_type`:
+- Sprawdzenie czy hook już pobiera tę kolumnę
+- Jeśli nie - rozszerzenie query
+
+### Aktualizacja interfejsu FoilProduct
+Upewnienie się że `FoilProduct` w `types.ts` zawiera:
+- `joint_type?: 'overlap' | 'butt' | null`
 
 ---
 
-## Poprawione reguły folii antypoślizgowej
+## Pliki do modyfikacji
 
-| Powierzchnia | Typ folii | Uwagi |
-|--------------|-----------|-------|
-| Dno basenu | Wybrana | Główna folia |
-| Ściany basenu | Wybrana | Główna folia |
-| **Stopnie schodów (poziome)** | **Antypoślizgowa*** | Strukturalna |
-| Podstopnie (pionowe) | Wybrana | Główna folia |
-| **Dno brodzika** | **Antypoślizgowa*** | Strukturalna |
-| Ściany brodzika | Wybrana | Główna folia |
-| Murek - strona basenu | Wybrana | poolDepth - paddlingDepth |
-| Murek - strona brodzika | Wybrana | dividingWallOffset |
-| Murek - góra | Wybrana | 15cm szerokość |
-
-*Jeśli wybrana folia jest już strukturalna → wszędzie ta sama folia
+| Plik | Zmiany |
+|------|--------|
+| Nowa migracja SQL | Naprawa `joint_type` dla istniejących produktów |
+| `src/components/steps/CoveringStep.tsx` | Import `isButtJointFoil`, `calculateButtJointLength`, logika UI dla butt joint |
+| `src/hooks/useProducts.ts` | Sprawdzenie czy `joint_type` jest pobierane (prawdopodobnie tak, bo select *) |
+| `.lovable/plan.md` | Aktualizacja statusu Fazy 5 |
 
 ---
 
-# Następne kroki
+## Szczegóły techniczne
 
-## Faza 4: Aktualizacja wizualizacji (opcjonalne)
-- [ ] Wyświetlanie pasów folii na schodach w 2D/3D
-- [ ] Wyświetlanie pasów folii na brodziku w 2D/3D
-- [ ] Kolorowanie powierzchni antypoślizgowych
+### Obliczanie długości zgrzewów doczołowych
+Funkcja `calculateButtJointLength` już istnieje w `src/lib/foil/helpers.ts`:
+- Zlicza długość spawów między sąsiednimi pasami na dnie
+- Suma = (liczba pasów - 1) × długość pasa
 
-## Faza 5: Obsługa folii strukturalnej (butt joint)
-- [ ] Wykrywanie `joint_type === 'butt'` w wybranej folii
-- [ ] Obliczanie długości zgrzewów doczołowych
-- [ ] Dodanie usługi "Zgrzewanie doczołowe" do materiałów
+### Ceny usług i materiałów
+Z tabeli `installation_services`:
+- Zgrzewanie doczołowe: 15 zł/mb
+
+Potrzebne materiały (z bazy lub hardcoded):
+- Folia podkładowa pod Touch/Ceramics - szukamy produktu z symbolem zawierającym "podkład" i "Touch"
+
+---
+
+## Kolejność implementacji
+
+1. Migracja SQL - naprawa `joint_type`
+2. Sprawdzenie hooka `useFoilProducts`
+3. Rozszerzenie logiki w `CoveringStep.tsx`:
+   - Wykrywanie butt joint
+   - Obliczanie długości zgrzewów
+   - Dodawanie usługi zgrzewania
+   - Dodawanie folii podkładowej
+4. UI: badge/info o typie zgrzewania
+5. Aktualizacja planu
+
+---
+
+## Oczekiwany wynik
+
+Po wybraniu folii strukturalnej (Touch, Ceramics, Pearl, itp.):
+- UI pokazuje badge "Zgrzewanie doczołowe"
+- W sekcji Zapotrzebowanie pojawia się długość zgrzewów (np. "12.5 mb")
+- W liście materiałów automatycznie:
+  - Usługa: Zgrzewanie doczołowe 12.5 mb × 15 zł = 187.50 zł
+  - Materiał: Folia podkładowa X m² × Y zł
