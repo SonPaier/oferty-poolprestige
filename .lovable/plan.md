@@ -1,141 +1,137 @@
-# Status Projektu: Kalkulacja Folii
 
-## Ukończone Fazy
+# Analiza Braków - User Stories vs Stan Projektu
 
-### Faza 7: Aktualizacja Wizualizacji 2D/3D Układu Folii - UKOŃCZONA
+## Podsumowanie Realizacji
 
-**Data ukończenia:** 2026-01-30
-
-**Zrealizowane zmiany:**
-1. Rozszerzono `FoilLayoutVisualization.tsx` o nowe powierzchnie:
-   - Stopnie schodów (antypoślizgowe - pomarańczowe)
-   - Podstopnie schodów (regularne - niebieskie)
-   - Dno brodzika (antypoślizgowe - pomarańczowe)
-   - Ściany brodzika (regularne - niebieskie)
-   - Murek rozdzielający z 3 powierzchniami
-
-2. Zintegrowano wizualizację z dialogiem "Szczegóły kalkulacji" w CoveringStep:
-   - Nowa sekcja "6. Wizualizacja układu folii"
-   - Grupowanie powierzchni według typu
-   - Oznaczenia kolorystyczne dla folii regularnej i antypoślizgowej
-
-3. Dodano legendę i oznaczenia kolorystyczne:
-   - 🟦 Folia regularna (niebieska)
-   - 🟧 Folia antypoślizgowa (pomarańczowa)
-
-**Pliki zmodyfikowane:**
-- `src/components/FoilLayoutVisualization.tsx`
-- `src/components/steps/CoveringStep.tsx`
+Na podstawie analizy dokumentu USER_STORIES-2.docx oraz aktualnego stanu kodu, projekt realizuje **około 40-50%** wymagań.
 
 ---
 
-# Faza 7: Aktualizacja Wizualizacji 2D/3D Układu Folii o Schody i Brodzik
+## ✅ Co zostało zrealizowane
 
-## Stan obecny
+### EPIC 1 - Struktura Danych (3/10 stories)
+- **US-1.1**: Rozszerzenie tabeli products ✅
+- **US-1.2**: Tabela installation_materials ✅
+- **US-1.3**: Tabela installation_services ✅
 
-### Komponent FoilLayoutVisualization.tsx
-Istnieje komponent `FoilLayoutVisualization.tsx`, który:
-- Generuje wizualizację SVG układu pasów folii
-- Pokazuje 3 typy powierzchni: dno basenu, ściana boczna (długa), ściana czołowa (krótka)
-- Wyświetla pasy folii z zakładkami (overlap) jako przerywane linie
-- **NIE jest nigdzie zaimportowany ani używany w aplikacji**
+### EPIC 2 - Algorytm Optymalizacji (8/12 stories)
+- **US-2.1**: calculatePoolMetrics() ✅
+- **US-2.2**: planBottomSurface() ✅
+- **US-2.3**: planWallSurface() ✅
+- **US-2.4**: planStairsSurface() ✅
+- **US-2.5**: planPaddlingPoolSurface() ✅
+- **US-2.6**: packStripsIntoRolls() ✅
+- **US-2.9**: planFoilLayout() ✅
+- **US-2.10**: Obsługa folii strukturalnej ✅
+- **US-2.11**: Porównanie 1.65m vs 2.05m ✅
 
-### Problem
-1. Komponent nie uwzględnia schodów ani brodzika
-2. Komponent nie jest zintegrowany z dialogiem "Szczegóły kalkulacji" w CoveringStep
-3. Brak wizualizacji dla powierzchni antypoślizgowych vs regularnych
-
----
-
-## Cel Fazy 7
-
-1. **Rozszerzyć FoilLayoutVisualization** o nowe powierzchnie:
-   - Stopnie schodów (poziome) - oznaczone jako antypoślizgowe
-   - Podstopnie schodów (pionowe) - regularna folia
-   - Dno brodzika - antypoślizgowe
-   - Ściany brodzika (3 strony) - regularna folia
-   - Murek rozdzielający (3 powierzchnie) - regularna folia
-
-2. **Zintegrować wizualizację** z dialogiem szczegółów w CoveringStep
-
-3. **Dodać oznaczenia kolorystyczne** dla typów folii (regularna vs antypoślizgowa)
+### EPIC 3 - UI Komponenty (1/8 stories)
+- **US-3.5** (częściowo): Wizualizacja optymalizacji folii ✅
 
 ---
 
-## Szczegółowy Layout Wizualizacji
+## ❌ Co NIE zostało zrealizowane
 
-### Dla schodów prostokątnych
-```text
-┌─────────────────────────────────────────────┐
-│  Schody - stopnie (antypoślizgowa)          │
-│  ┌─────────────────────────────────────┐    │
-│  │ ╔══════════════════════════════════╗│ 1.5m │
-│  │ ║ Stopień 1  ║ Stopień 2 ║ ... ║   ║│(width)│
-│  │ ╚══════════════════════════════════╝│    │
-│  └─────────────────────────────────────┘    │
-│  Wymiary: 0.30m × 1.5m × 5 stopni = 2.25 m² │
-│  [🟧 Powierzchnia antypoślizgowa]            │
-└─────────────────────────────────────────────┘
+### EPIC 1 - Brakujące tabele bazodanowe
 
-┌─────────────────────────────────────────────┐
-│  Schody - podstopnie                        │
-│  ┌───────────────────────────────┐          │
-│  │ Podstopień (pion)            ││ 0.20m   │
-│  │ × 5 sztuk × 1.5m szer.       ││ (height)│
-│  └───────────────────────────────┘          │
-│  Wymiary: 0.20m × 1.5m × 5 = 1.50 m²        │
-│  [🟦 Folia regularna]                        │
-└─────────────────────────────────────────────┘
-```
+| US | Wymaganie | Opis |
+|----|-----------|------|
+| US-1.4 | `pool_configurations` | Przechowywanie obliczonych powierzchni basenu |
+| US-1.5 | `foil_optimization_results` | Przechowywanie wyników optymalizacji |
+| US-1.6 | `offer_variants` | System wariantów ekonomiczny/standard/premium |
+| US-1.7 | `offer_changes_log` | Śledzenie zmian w ofercie |
+| US-1.8 | `offer_comments` | Komentarze do oferty |
+| US-1.9 | Rozszerzenie `offers` | Pola discount_percentage, discount_per_module |
+| US-1.10 | `subiekt_sync_log` | Przygotowanie pod Subiekt Nexo |
 
-### Dla brodzika
-```text
-┌─────────────────────────────────────────────┐
-│  Brodzik - dno (antypoślizgowa)             │
-│  ┌─────────────────────────────────────┐    │
-│  │ ┌───────────────────────────────┐   │    │
-│  │ │   Dno brodzika               │   │ 1.5m │
-│  │ │   2.0m × 1.5m = 3.0 m²       │   │    │
-│  │ └───────────────────────────────┘   │    │
-│  └─────────────────────────────────────┘    │
-│  [🟧 Powierzchnia antypoślizgowa]            │
-└─────────────────────────────────────────────┘
+### EPIC 2 - Brakująca funkcjonalność algorytmu
 
-┌─────────────────────────────────────────────┐
-│  Brodzik - ściany zewnętrzne (3 strony)     │
-│  ┌───────────────────────────────────┐      │
-│  │ 2 × boczne: 1.5m × 0.4m = 1.20 m²│      │
-│  │ 1 × tylna:  2.0m × 0.4m = 0.80 m²│      │
-│  │ Razem: 2.00 m²                    │      │
-│  └───────────────────────────────────────┘  │
-│  [🟦 Folia regularna]                        │
-└─────────────────────────────────────────────┘
-```
+| US | Wymaganie | Opis |
+|----|-----------|------|
+| US-2.7 | Wykrywanie odpadów | Pełna identyfikacja waste_pieces z powodami |
+| US-2.8 | Scoring zaawansowany | Pełny system punktacji (-100 za zgrzew, -50 za wąski pas, itd.) |
+| US-2.12 | Testy jednostkowe | Brak testów Vitest dla algorytmu |
 
-### Dla murka rozdzielającego
-```text
-┌─────────────────────────────────────────────┐
-│  Murek rozdzielający                        │
-│  ┌───────────────────────────────────┐      │
-│  │ Strona basenu:  2.0m × 1.0m = 2.0 m² │   │
-│  │ Strona brodzika: 2.0m × 0.2m = 0.4 m²│   │
-│  │ Góra murka: 2.0m × 0.15m = 0.3 m²    │   │
-│  │ Razem: 2.70 m²                        │   │
-│  └───────────────────────────────────────┘  │
-│  [🟦 Folia regularna]                        │
-└─────────────────────────────────────────────┘
-```
+### EPIC 3 - Brakujące UI komponenty (krytyczne!)
+
+| US | Wymaganie | Opis |
+|----|-----------|------|
+| US-3.1 | Wizard wykończenia | 7-krokowy wizard dedykowany dla modułu wykończenia |
+| US-3.2 | Wybór typu wykończenia | Duże karty folia/ceramika z ikonami |
+| US-3.3 | Filtrowanie produktów | Multi-select kolory, dropdown podtyp, live search |
+| US-3.4 | Poziom szczegółowości | 3 taby: podtyp / seria / produkt |
+| US-3.6 | Materiały instalacyjne | Auto-wyliczanie podkładu, kątownika, nitów, kleju |
+| US-3.7 | Generowanie wariantów | 3 kolumny: ekonomiczny/standard/premium |
+| US-3.8 | Przegląd i zapis | Podsumowanie przed zapisaniem |
 
 ---
 
-## Legenda kolorów (w komponencie)
+## Plan Dalszej Realizacji
 
-```text
-┌─────────────────────────────────────────┐
-│ Legenda:                                │
-│ ▓▓▓ Folia główna (jednokolorowa/nadruk) │
-│ ▓▓▓ Folia antypoślizgowa                │
-│ --- Zakładka spawu (overlap)            │
-│ ═══ Zgrzew doczołowy (butt joint)       │
-└─────────────────────────────────────────┘
-```
+### Faza 8: Rozszerzenie Bazy Danych (US-1.4 do US-1.10)
+Utworzenie brakujących tabel:
+- `pool_configurations` z polem `calculated_areas`
+- `foil_optimization_results` z planem cięcia
+- `offer_variants` dla wariantów cenowych
+- `offer_changes_log` dla historii zmian
+- `offer_comments` dla komentarzy
+- Rozszerzenie `offers` o pola rabatowe
+
+### Faza 9: Testy Jednostkowe Algorytmu (US-2.12)
+- Konfiguracja Vitest
+- Testy dla calculatePoolAreas()
+- Testy dla planBottom(), planWalls(), planStairs()
+- Testy dla scoreCuttingPlan()
+- Testy end-to-end dla optimizeFoilCutting()
+
+### Faza 10: Wizard Wykończenia - UI (US-3.1 do US-3.4)
+- Komponent FinishingModuleWizard
+- Krok 1: Wybór folia/ceramika
+- Krok 2: Filtrowanie produktów
+- Krok 3: Taby podtyp/seria/produkt
+
+### Faza 11: Materiały i Usługi (US-3.6)
+- Komponent InstallationMaterialsStep
+- Auto-wyliczanie ilości (podkład, kątownik, nity, klej)
+- Edycja ręczna z nadpisaniem auto
+
+### Faza 12: System Wariantów (US-3.7)
+- Komponent VariantsGeneratorStep
+- Generowanie 3 wariantów cenowych
+- Edycja wariantów
+- Wybór domyślnego
+
+### Faza 13: Podsumowanie i Zapis (US-3.8)
+- Komponent SummaryReviewStep
+- Przegląd wszystkich wyborów
+- Walidacja przed zapisem
+- Zapis do bazy
+
+---
+
+## Rekomendacja
+
+Proponuję kontynuować realizację w następującej kolejności:
+
+1. **Faza 8**: Rozszerzenie bazy danych (fundamenty)
+2. **Faza 10**: Wizard wykończenia UI (główna funkcjonalność)
+3. **Faza 11**: Materiały instalacyjne (wyliczenia kosztów)
+4. **Faza 12**: System wariantów (oferta dla klienta)
+5. **Faza 9**: Testy jednostkowe (jakość kodu)
+6. **Faza 13**: Podsumowanie i zapis (finalizacja)
+
+---
+
+## Szacowany nakład pracy
+
+| Faza | Opis | Szacunek |
+|------|------|----------|
+| Faza 8 | Baza danych | 2-3h |
+| Faza 9 | Testy jednostkowe | 3-4h |
+| Faza 10 | Wizard UI | 4-6h |
+| Faza 11 | Materiały instalacyjne | 3-4h |
+| Faza 12 | System wariantów | 3-4h |
+| Faza 13 | Podsumowanie i zapis | 2-3h |
+| **SUMA** | | **17-24h** |
+
+Czy chcesz, abym zaczął realizację od konkretnej fazy?
