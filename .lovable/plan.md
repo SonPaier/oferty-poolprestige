@@ -9,10 +9,17 @@ Na podstawie analizy dokumentu USER_STORIES-2.docx oraz aktualnego stanu kodu, p
 
 ## ✅ Co zostało zrealizowane
 
-### EPIC 1 - Struktura Danych (3/10 stories)
+### EPIC 1 - Struktura Danych (3/10 stories → 10/10 stories)
 - **US-1.1**: Rozszerzenie tabeli products ✅
 - **US-1.2**: Tabela installation_materials ✅
 - **US-1.3**: Tabela installation_services ✅
+- **US-1.4**: Tabela pool_configurations ✅ (2026-01-30)
+- **US-1.5**: Tabela foil_optimization_results ✅ (2026-01-30)
+- **US-1.6**: Tabela offer_variants ✅ (2026-01-30)
+- **US-1.7**: Tabela offer_changes_log ✅ (2026-01-30)
+- **US-1.8**: Tabela offer_comments ✅ (2026-01-30)
+- **US-1.9**: Rozszerzenie offers (discount_percentage, discount_per_module, margin_percentage, notes_internal) ✅ (2026-01-30)
+- **US-1.10**: Tabela subiekt_sync_log ✅ (2026-01-30)
 
 ### EPIC 2 - Algorytm Optymalizacji (8/12 stories)
 - **US-2.1**: calculatePoolMetrics() ✅
@@ -31,18 +38,6 @@ Na podstawie analizy dokumentu USER_STORIES-2.docx oraz aktualnego stanu kodu, p
 ---
 
 ## ❌ Co NIE zostało zrealizowane
-
-### EPIC 1 - Brakujące tabele bazodanowe
-
-| US | Wymaganie | Opis |
-|----|-----------|------|
-| US-1.4 | `pool_configurations` | Przechowywanie obliczonych powierzchni basenu |
-| US-1.5 | `foil_optimization_results` | Przechowywanie wyników optymalizacji |
-| US-1.6 | `offer_variants` | System wariantów ekonomiczny/standard/premium |
-| US-1.7 | `offer_changes_log` | Śledzenie zmian w ofercie |
-| US-1.8 | `offer_comments` | Komentarze do oferty |
-| US-1.9 | Rozszerzenie `offers` | Pola discount_percentage, discount_per_module |
-| US-1.10 | `subiekt_sync_log` | Przygotowanie pod Subiekt Nexo |
 
 ### EPIC 2 - Brakująca funkcjonalność algorytmu
 
@@ -66,16 +61,29 @@ Na podstawie analizy dokumentu USER_STORIES-2.docx oraz aktualnego stanu kodu, p
 
 ---
 
-## Plan Dalszej Realizacji
+## Ukończone Fazy
 
-### Faza 8: Rozszerzenie Bazy Danych (US-1.4 do US-1.10)
-Utworzenie brakujących tabel:
-- `pool_configurations` z polem `calculated_areas`
-- `foil_optimization_results` z planem cięcia
-- `offer_variants` dla wariantów cenowych
-- `offer_changes_log` dla historii zmian
-- `offer_comments` dla komentarzy
-- Rozszerzenie `offers` o pola rabatowe
+### Faza 8: Rozszerzenie Bazy Danych - UKOŃCZONA ✅
+
+**Data ukończenia:** 2026-01-30
+
+**Utworzone tabele:**
+1. `pool_configurations` - przechowywanie obliczonych powierzchni basenu
+2. `foil_optimization_results` - wyniki optymalizacji z planem cięcia
+3. `offer_variants` - warianty cenowe (economy/standard/premium)
+4. `offer_changes_log` - historia zmian w ofercie
+5. `offer_comments` - komentarze do oferty
+6. `subiekt_sync_log` - przygotowanie pod Subiekt Nexo
+
+**Rozszerzenie tabeli offers:**
+- `discount_percentage` - rabat procentowy
+- `discount_per_module` - rabaty na moduły (JSONB)
+- `margin_percentage` - marża procentowa
+- `notes_internal` - notatki wewnętrzne
+
+---
+
+## Plan Dalszej Realizacji
 
 ### Faza 9: Testy Jednostkowe Algorytmu (US-2.12)
 - Konfiguracja Vitest
@@ -109,29 +117,13 @@ Utworzenie brakujących tabel:
 
 ---
 
-## Rekomendacja
-
-Proponuję kontynuować realizację w następującej kolejności:
-
-1. **Faza 8**: Rozszerzenie bazy danych (fundamenty)
-2. **Faza 10**: Wizard wykończenia UI (główna funkcjonalność)
-3. **Faza 11**: Materiały instalacyjne (wyliczenia kosztów)
-4. **Faza 12**: System wariantów (oferta dla klienta)
-5. **Faza 9**: Testy jednostkowe (jakość kodu)
-6. **Faza 13**: Podsumowanie i zapis (finalizacja)
-
----
-
 ## Szacowany nakład pracy
 
-| Faza | Opis | Szacunek |
-|------|------|----------|
-| Faza 8 | Baza danych | 2-3h |
-| Faza 9 | Testy jednostkowe | 3-4h |
-| Faza 10 | Wizard UI | 4-6h |
-| Faza 11 | Materiały instalacyjne | 3-4h |
-| Faza 12 | System wariantów | 3-4h |
-| Faza 13 | Podsumowanie i zapis | 2-3h |
-| **SUMA** | | **17-24h** |
-
-Czy chcesz, abym zaczął realizację od konkretnej fazy?
+| Faza | Opis | Szacunek | Status |
+|------|------|----------|--------|
+| Faza 8 | Baza danych | 2-3h | ✅ UKOŃCZONA |
+| Faza 9 | Testy jednostkowe | 3-4h | ⏳ Do realizacji |
+| Faza 10 | Wizard UI | 4-6h | ⏳ Do realizacji |
+| Faza 11 | Materiały instalacyjne | 3-4h | ⏳ Do realizacji |
+| Faza 12 | System wariantów | 3-4h | ⏳ Do realizacji |
+| Faza 13 | Podsumowanie i zapis | 2-3h | ⏳ Do realizacji |
