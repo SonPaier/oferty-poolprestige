@@ -24,6 +24,7 @@ import {
 export const ROLL_WIDTH_NARROW = 1.65;
 export const ROLL_WIDTH_WIDE = 2.05;
 export const ROLL_LENGTH = 25;
+export const MIN_REUSABLE_OFFCUT_LENGTH = 2; // meters
 export const MIN_OVERLAP_BOTTOM = 0.05;
 export const MIN_OVERLAP_WALL = 0.10;
 export const FOLD_AT_BOTTOM = 0.15;
@@ -129,16 +130,18 @@ function calculateStripsForWidth(
   coverWidth: number,
   rollWidth: RollWidth,
   overlap: number
-): { count: number; usedArea: number; wasteArea: number } {
+): { count: number; coveredWidth: number; wasteArea: number; totalCoveredWidth: number; materialWidthUsed: number } {
   if (coverWidth <= 0) {
-    return { count: 0, usedArea: 0, wasteArea: 0 };
+    return { count: 0, coveredWidth: 0, wasteArea: 0, totalCoveredWidth: 0, materialWidthUsed: 0 };
   }
 
   if (coverWidth <= rollWidth) {
-    return { 
-      count: 1, 
-      usedArea: rollWidth,
-      wasteArea: rollWidth - coverWidth
+    return {
+      count: 1,
+      coveredWidth: rollWidth,
+      wasteArea: rollWidth - coverWidth,
+      totalCoveredWidth: rollWidth,
+      materialWidthUsed: rollWidth,
     };
   }
 
@@ -147,14 +150,71 @@ function calculateStripsForWidth(
   const additionalStrips = Math.ceil(remainingAfterFirst / effectiveWidth);
   const totalStrips = 1 + additionalStrips;
 
-  const totalMaterial = rollWidth + additionalStrips * effectiveWidth;
-  const wasteArea = totalMaterial - coverWidth;
+  // Total *covered* width from all strips (overlap reduces effective coverage)
+  const totalCoveredWidth = totalStrips * rollWidth - (totalStrips - 1) * overlap;
+  const wasteWidth = totalCoveredWidth - coverWidth;
+
+  // Total *material* width used (overlap is still consumed)
+  const materialWidthUsed = totalStrips * rollWidth;
 
   return { 
     count: totalStrips, 
-    usedArea: totalMaterial,
-    wasteArea: Math.max(0, wasteArea)
+    coveredWidth: totalCoveredWidth,
+    wasteArea: Math.max(0, wasteWidth),
+    totalCoveredWidth,
+    materialWidthUsed,
   };
+}
+
+/**
+ * Ilość folii do wyceny (m²):
+ * - liczymy pełną powierzchnię pasów (z zakładami = pełna szerokość rolki na pas)
+ * - odejmujemy odpad, który *może* być użyty ponownie (>= 30cm szer. oraz >= 2m dł.)
+ * - dodajemy odpad z końcówek rolek, którego nie da się użyć (dł. < 2m)
+ */
+export function calculateFoilAreaForPricing(
+  config: MixConfiguration,
+  dimensions: PoolDimensions,
+  foilSubtype?: FoilSubtype | null
+): number {
+  const defs = getSurfaceDefinitions(dimensions, foilSubtype);
+  const surfaceByKey = new Map<SurfaceKey, SurfaceRollConfig>(
+    config.surfaces.map((s) => [s.surface, s])
+  );
+
+  let totalStripsArea = 0;
+  let reusableWidthWasteArea = 0;
+
+  for (const def of defs) {
+    const surface = surfaceByKey.get(def.key);
+    if (!surface) continue;
+
+    const calc = calculateStripsForWidth(def.coverWidth, surface.rollWidth, def.overlap);
+    const stripsPerSingle = calc.count;
+    const totalStrips = stripsPerSingle * def.count;
+
+    // Full strip area consumed (includes overlaps)
+    totalStripsArea += totalStrips * def.stripLength * surface.rollWidth;
+
+    // Width waste exists only on the last strip; treat it as one offcut per surface side
+    const wasteWidth = calc.wasteArea;
+    const widthWasteArea = wasteWidth * def.stripLength * def.count;
+    const isReusable = wasteWidth >= WASTE_THRESHOLD && def.stripLength >= MIN_REUSABLE_OFFCUT_LENGTH;
+    if (isReusable) {
+      reusableWidthWasteArea += widthWasteArea;
+    }
+  }
+
+  // Roll-end waste (length leftover). Only count as waste if it's too short to reuse.
+  const rolls = packStripsIntoRolls(config);
+  const unusableRollEndWasteArea = rolls.reduce((sum, r) => {
+    if (r.wasteLength > 0 && r.wasteLength < MIN_REUSABLE_OFFCUT_LENGTH) {
+      return sum + r.wasteLength * r.rollWidth;
+    }
+    return sum;
+  }, 0);
+
+  return totalStripsArea - reusableWidthWasteArea + unusableRollEndWasteArea;
 }
 
 /**
