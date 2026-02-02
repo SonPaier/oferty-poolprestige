@@ -80,7 +80,26 @@ function FoilPoolSummary({
           </div>
         </div>
 
-        {/* Surface breakdown */}
+        {/* Surface breakdown - strip details */}
+        <div className="space-y-2 mb-3">
+          {surfaces.map((surface) => (
+            <div key={surface.surface} className="flex items-center justify-between text-sm py-1 border-b border-border/50 last:border-0">
+              <div className="flex items-center gap-2">
+                <span className={`w-2 h-2 rounded-full ${surface.rollWidth === 2.05 ? 'bg-emerald-500' : 'bg-blue-500'}`} />
+                <span className="font-medium">{surface.surfaceLabel}</span>
+              </div>
+              <div className="flex items-center gap-4 text-muted-foreground">
+                <span>{surface.stripCount} pasy × {surface.rollWidth}m</span>
+                <span>{surface.areaM2.toFixed(1)} m²</span>
+                <span className={surface.wasteM2 > 2 ? 'text-amber-600' : ''}>
+                  odpad: {surface.wasteM2.toFixed(1)} m²
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Totals */}
         <div className="grid grid-cols-3 gap-2 text-sm mb-3">
           <div>
             <span className="text-muted-foreground">Pokrycie:</span>
