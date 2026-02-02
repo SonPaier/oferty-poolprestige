@@ -29,12 +29,10 @@ import {
   PoolType, 
   PoolShape, 
   PoolOverflowType, 
-  PoolLiningType,
   PoolLocation,
   poolTypeLabels, 
   poolShapeLabels, 
   overflowTypeLabels, 
-  liningTypeLabels,
   poolLocationLabels,
   nominalLoadByType, 
   CustomPoolVertex,
@@ -790,35 +788,6 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
               </div>
             </div>
           )}
-
-          {/* Pool Lining Type (Ceramic/Foil) */}
-          <div>
-            <Label className="text-base font-medium mb-4 block">Typ wykończenia</Label>
-            <RadioGroup
-              value={dimensions.liningType}
-              onValueChange={(value) => updateDimension('liningType', value as PoolLiningType)}
-              className="grid grid-cols-2 gap-3"
-            >
-              {(Object.keys(liningTypeLabels) as PoolLiningType[]).map((type) => (
-                <div key={type} className="relative">
-                  <RadioGroupItem
-                    value={type}
-                    id={`lining-${type}`}
-                    className="peer sr-only"
-                  />
-                  <Label
-                    htmlFor={`lining-${type}`}
-                    className="flex flex-col items-center justify-center p-4 rounded-lg border border-border bg-muted/30 cursor-pointer transition-all peer-data-[state=checked]:border-primary peer-data-[state=checked]:bg-primary/10 hover:bg-muted/50"
-                  >
-                    <span className="font-medium">{liningTypeLabels[type]}</span>
-                    <span className="text-xs text-muted-foreground mt-1">
-                      {type === 'foliowany' ? 'Wykończenie folią PVC' : 'Płytki ceramiczne'}
-                    </span>
-                  </Label>
-                </div>
-              ))}
-            </RadioGroup>
-          </div>
 
           {/* Pool Type */}
           <div>
