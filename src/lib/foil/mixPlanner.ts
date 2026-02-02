@@ -294,23 +294,26 @@ function getSurfaceDefinitions(dimensions: PoolDimensions, foilSubtype?: FoilSub
 export function autoOptimizeMixConfig(dimensions: PoolDimensions, foilSubtype?: FoilSubtype | null): MixConfiguration {
   const surfaceDefinitions = getSurfaceDefinitions(dimensions, foilSubtype);
   const surfaces: SurfaceRollConfig[] = [];
-  const availableWidths = getAvailableWidths(foilSubtype);
-  const narrowOnly = isNarrowOnlyFoil(foilSubtype);
+  const narrowOnlyMain = isNarrowOnlyFoil(foilSubtype);
 
   for (const def of surfaceDefinitions) {
     let optimalWidth: RollWidth;
     let wastePerSurface: number;
 
-    if (narrowOnly) {
-      // Nadruk and strukturalna can only use 1.65m
+    // CRITICAL: Structural surfaces (stairs, paddling bottom) ALWAYS use 1.65m only
+    const isStructuralSurface = def.foilAssignment === 'structural';
+    const forceNarrow = narrowOnlyMain || isStructuralSurface;
+
+    if (forceNarrow) {
+      // Structural surfaces OR nadruk/strukturalna foils can only use 1.65m
       optimalWidth = ROLL_WIDTH_NARROW;
       const calc = calculateStripsForWidth(def.coverWidth, ROLL_WIDTH_NARROW, def.overlap);
       wastePerSurface = calc.wasteArea * def.stripLength;
     } else {
-      // Jednokolorowa can use either width - pick optimal
-      const comparison = compareRollWidths(def.coverWidth, def.stripLength, def.overlap);
-      optimalWidth = comparison.optimal;
-      wastePerSurface = optimalWidth === ROLL_WIDTH_NARROW ? comparison.narrow.waste : comparison.wide.waste;
+      // Main surfaces with jednokolorowa - use optimal mixed width selection
+      const optimalResult = findOptimalMixedWidths(def.coverWidth, def.stripLength, def.overlap);
+      optimalWidth = optimalResult.primaryWidth;
+      wastePerSurface = optimalResult.totalWaste;
     }
 
     const calc = calculateStripsForWidth(def.coverWidth, optimalWidth, def.overlap);
@@ -332,6 +335,74 @@ export function autoOptimizeMixConfig(dimensions: PoolDimensions, foilSubtype?: 
   }
 
   return calculateTotals(surfaces, true, foilSubtype);
+}
+
+/**
+ * Find optimal combination of roll widths for a given cover width
+ * Tests all possible combinations of 1.65m and 2.05m strips
+ */
+function findOptimalMixedWidths(
+  coverWidth: number,
+  stripLength: number,
+  overlap: number
+): { primaryWidth: RollWidth; totalWaste: number } {
+  // Option 1: All narrow (1.65m)
+  const narrowCalc = calculateStripsForWidth(coverWidth, ROLL_WIDTH_NARROW, overlap);
+  const narrowWaste = narrowCalc.wasteArea * stripLength;
+
+  // Option 2: All wide (2.05m)
+  const wideCalc = calculateStripsForWidth(coverWidth, ROLL_WIDTH_WIDE, overlap);
+  const wideWaste = wideCalc.wasteArea * stripLength;
+
+  // Option 3: Try mixed combinations - start with wide, fill remainder with narrow
+  let bestMixedWaste = Infinity;
+  let bestMixedWidth: RollWidth = ROLL_WIDTH_NARROW;
+
+  // Try: 1 wide + rest narrow
+  const afterOneWide = coverWidth - ROLL_WIDTH_WIDE;
+  if (afterOneWide > 0) {
+    const narrowForRest = calculateStripsForWidth(afterOneWide, ROLL_WIDTH_NARROW, overlap);
+    const mixedWaste1 = ((ROLL_WIDTH_WIDE - Math.min(ROLL_WIDTH_WIDE, coverWidth)) + narrowForRest.wasteArea) * stripLength;
+    if (mixedWaste1 < bestMixedWaste) {
+      bestMixedWaste = mixedWaste1;
+      bestMixedWidth = ROLL_WIDTH_WIDE;
+    }
+  }
+
+  // Try: 1 narrow + rest with wide
+  const afterOneNarrow = coverWidth - ROLL_WIDTH_NARROW;
+  if (afterOneNarrow > 0) {
+    const wideForRest = calculateStripsForWidth(afterOneNarrow, ROLL_WIDTH_WIDE, overlap);
+    const mixedWaste2 = ((ROLL_WIDTH_NARROW - Math.min(ROLL_WIDTH_NARROW, coverWidth)) + wideForRest.wasteArea) * stripLength;
+    if (mixedWaste2 < bestMixedWaste) {
+      bestMixedWaste = mixedWaste2;
+      bestMixedWidth = ROLL_WIDTH_NARROW;
+    }
+  }
+
+  // Compare all options and pick the best
+  const options: { width: RollWidth; waste: number }[] = [
+    { width: ROLL_WIDTH_NARROW, waste: narrowWaste },
+    { width: ROLL_WIDTH_WIDE, waste: wideWaste },
+  ];
+
+  // Only consider mixed if it's actually better
+  if (bestMixedWaste < Math.min(narrowWaste, wideWaste)) {
+    options.push({ width: bestMixedWidth, waste: bestMixedWaste });
+  }
+
+  // Sort by waste ascending, then by strip count (fewer is better)
+  options.sort((a, b) => {
+    if (Math.abs(a.waste - b.waste) < 0.01) {
+      // If waste is similar, prefer fewer strips
+      const aStrips = calculateStripsForWidth(coverWidth, a.width as RollWidth, overlap).count;
+      const bStrips = calculateStripsForWidth(coverWidth, b.width as RollWidth, overlap).count;
+      return aStrips - bStrips;
+    }
+    return a.waste - b.waste;
+  });
+
+  return { primaryWidth: options[0].width as RollWidth, totalWaste: options[0].waste };
 }
 
 /**
