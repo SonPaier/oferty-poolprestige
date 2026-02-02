@@ -114,9 +114,9 @@ export function FoilLayoutVisualization({
       surfaceType: 'pool',
     });
 
-    // Long walls (longerSide x depth) - strips along longer side
+    // Long wall 1 (front/przód) - strips along longer side
     result.push({
-      name: `Ściana boczna (pasy wzdłuż ${longerSide.toFixed(1)}m)`,
+      name: `Ściana długa 1 - przód (${longerSide.toFixed(1)}m × ${depth.toFixed(2)}m)`,
       realWidth: depth,
       realHeight: longerSide,
       strips: calculateStrips(longerSide, depth),
@@ -124,9 +124,29 @@ export function FoilLayoutVisualization({
       surfaceType: 'pool',
     });
 
-    // Short walls (shorterSide x depth) - strips along shorter side
+    // Long wall 2 (back/tył) - strips along longer side
     result.push({
-      name: `Ściana czołowa (pasy wzdłuż ${shorterSide.toFixed(1)}m)`,
+      name: `Ściana długa 2 - tył (${longerSide.toFixed(1)}m × ${depth.toFixed(2)}m)`,
+      realWidth: depth,
+      realHeight: longerSide,
+      strips: calculateStrips(longerSide, depth),
+      isAntiSlip: false,
+      surfaceType: 'pool',
+    });
+
+    // Short wall 1 (left/lewa) - strips along shorter side
+    result.push({
+      name: `Ściana krótka 1 - lewa (${shorterSide.toFixed(1)}m × ${depth.toFixed(2)}m)`,
+      realWidth: depth,
+      realHeight: shorterSide,
+      strips: calculateStrips(shorterSide, depth),
+      isAntiSlip: false,
+      surfaceType: 'pool',
+    });
+
+    // Short wall 2 (right/prawa) - strips along shorter side
+    result.push({
+      name: `Ściana krótka 2 - prawa (${shorterSide.toFixed(1)}m × ${depth.toFixed(2)}m)`,
       realWidth: depth,
       realHeight: shorterSide,
       strips: calculateStrips(shorterSide, depth),

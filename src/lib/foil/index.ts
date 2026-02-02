@@ -6,6 +6,7 @@
  * - Helper functions
  * - Stairs planner
  * - Paddling pool planner
+ * - MIX roll configuration planner
  */
 
 // Types
@@ -31,3 +32,22 @@ export {
   planPaddlingPoolSurface,
   calculateTotalPaddlingArea,
 } from './paddlingPlanner';
+
+// MIX roll planner
+export {
+  autoOptimizeMixConfig,
+  updateSurfaceRollWidth,
+  packStripsIntoRolls,
+  calculateComparison,
+  ROLL_WIDTH_NARROW,
+  ROLL_WIDTH_WIDE,
+  ROLL_LENGTH,
+} from './mixPlanner';
+
+export type {
+  MixConfiguration,
+  SurfaceRollConfig,
+  RollAllocation,
+  SurfaceKey,
+  RollWidth,
+} from './mixPlanner';
