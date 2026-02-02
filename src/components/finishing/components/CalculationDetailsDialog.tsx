@@ -1,3 +1,4 @@
+import { useState, useMemo } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -10,6 +11,17 @@ import { FoilLayoutVisualization } from '@/components/FoilLayoutVisualization';
 import { PoolAreas, CalculatedMaterial, FoilSubtype, SUBTYPE_NAMES } from '@/lib/finishingMaterials';
 import { formatPrice } from '@/lib/calculations';
 import { PoolDimensions } from '@/types/configurator';
+import { RollSummary } from './RollSummary';
+import { RollConfigTable } from './RollConfigTable';
+import { MaterialFormulasTable } from './MaterialFormulasTable';
+import { Foil3DVisualization } from './Foil3DVisualization';
+import { 
+  autoOptimizeMixConfig, 
+  updateSurfaceRollWidth,
+  MixConfiguration,
+  SurfaceKey,
+  RollWidth
+} from '@/lib/foil/mixPlanner';
 
 interface CalculationDetailsDialogProps {
   open: boolean;
@@ -35,19 +47,34 @@ export function CalculationDetailsDialog({
   const foilQty = manualFoilQty ?? poolAreas.totalArea;
   const foilTotal = foilQty * foilPricePerM2;
 
+  // Initialize MIX configuration with auto-optimization
+  const [mixConfig, setMixConfig] = useState<MixConfiguration>(() => 
+    autoOptimizeMixConfig(dimensions)
+  );
+
+  // Handle surface roll width change
+  const handleSurfaceRollWidthChange = (surfaceKey: SurfaceKey, newWidth: RollWidth) => {
+    setMixConfig(prev => updateSurfaceRollWidth(prev, surfaceKey, newWidth, dimensions));
+  };
+
+  // Handle reset to optimal
+  const handleResetToOptimal = () => {
+    setMixConfig(autoOptimizeMixConfig(dimensions));
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[85vh]">
+      <DialogContent className="max-w-5xl max-h-[90vh]">
         <DialogHeader>
           <DialogTitle>Szczegóły kalkulacji wykończenia</DialogTitle>
         </DialogHeader>
 
-        <ScrollArea className="h-[70vh] pr-4">
-          <div className="space-y-6">
+        <ScrollArea className="h-[80vh] pr-4">
+          <div className="space-y-8">
             {/* Area breakdown */}
             <section>
               <h3 className="font-semibold text-lg mb-3">📐 Powierzchnie</h3>
-                <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-2 gap-4">
                 <div className="p-4 rounded-lg bg-muted/50 border">
                   <h4 className="font-medium mb-2">Niecka basenu</h4>
                   <div className="space-y-1 text-sm">
@@ -56,7 +83,7 @@ export function CalculationDetailsDialog({
                       <span>{poolAreas.bottomArea.toFixed(2)} m²</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-muted-foreground">Ściany:</span>
+                      <span className="text-muted-foreground">Ściany (4×):</span>
                       <span>{poolAreas.wallArea.toFixed(2)} m²</span>
                     </div>
                   </div>
@@ -137,6 +164,75 @@ export function CalculationDetailsDialog({
               </section>
             )}
 
+            {/* Roll Summary */}
+            <section>
+              <h3 className="font-semibold text-lg mb-3">📦 Podsumowanie rolek</h3>
+              <RollSummary config={mixConfig} />
+            </section>
+
+            {/* Roll Configuration (MIX) */}
+            <section>
+              <RollConfigTable 
+                config={mixConfig}
+                onSurfaceRollWidthChange={handleSurfaceRollWidthChange}
+                onResetToOptimal={handleResetToOptimal}
+              />
+            </section>
+
+            {/* Foil strip visualization with tabs */}
+            <section>
+              <h3 className="font-semibold text-lg mb-3">🔧 Wizualizacja rozkładu pasów folii</h3>
+              <Tabs defaultValue="2d" className="w-full">
+                <TabsList className="grid w-full grid-cols-4 mb-4">
+                  <TabsTrigger value="3d">Widok 3D</TabsTrigger>
+                  <TabsTrigger value="2d">2D Rozłożone</TabsTrigger>
+                  <TabsTrigger value="1.65">Rolka 1.65m</TabsTrigger>
+                  <TabsTrigger value="2.05">Rolka 2.05m</TabsTrigger>
+                </TabsList>
+                
+                <TabsContent value="3d">
+                  <div className="relative">
+                    <Foil3DVisualization dimensions={dimensions} config={mixConfig} />
+                    <p className="text-xs text-muted-foreground mt-2">
+                      💡 Kliknij i przeciągnij, aby obracać. Scroll, aby powiększyć/pomniejszyć.
+                    </p>
+                  </div>
+                </TabsContent>
+
+                <TabsContent value="2d">
+                  <FoilLayoutVisualization
+                    dimensions={dimensions}
+                    rollWidth={mixConfig.surfaces[0]?.rollWidth || 1.65}
+                    label="Rozkład pasów - wszystkie powierzchnie"
+                    showAntiSlipIndicators={dimensions.stairs?.enabled || dimensions.wadingPool?.enabled}
+                  />
+                </TabsContent>
+                
+                <TabsContent value="1.65">
+                  <FoilLayoutVisualization
+                    dimensions={dimensions}
+                    rollWidth={1.65}
+                    label="Rozkład pasów dla rolki 1.65m"
+                    showAntiSlipIndicators={dimensions.stairs?.enabled || dimensions.wadingPool?.enabled}
+                  />
+                </TabsContent>
+                
+                <TabsContent value="2.05">
+                  <FoilLayoutVisualization
+                    dimensions={dimensions}
+                    rollWidth={2.05}
+                    label="Rozkład pasów dla rolki 2.05m"
+                    showAntiSlipIndicators={dimensions.stairs?.enabled || dimensions.wadingPool?.enabled}
+                  />
+                </TabsContent>
+              </Tabs>
+            </section>
+
+            {/* Material Formulas Table */}
+            <section>
+              <MaterialFormulasTable poolAreas={poolAreas} />
+            </section>
+
             {/* Materials breakdown */}
             <section>
               <h3 className="font-semibold text-lg mb-3">📦 Materiały montażowe</h3>
@@ -187,33 +283,6 @@ export function CalculationDetailsDialog({
                   </tfoot>
                 </table>
               </div>
-            </section>
-
-            {/* Foil strip visualization */}
-            <section>
-              <h3 className="font-semibold text-lg mb-3">🔧 Wizualizacja rozkładu pasów folii</h3>
-              <Tabs defaultValue="1.65" className="w-full">
-                <TabsList className="grid w-full grid-cols-2 mb-4">
-                  <TabsTrigger value="1.65">Rolka 1.65m</TabsTrigger>
-                  <TabsTrigger value="2.05">Rolka 2.05m</TabsTrigger>
-                </TabsList>
-                <TabsContent value="1.65">
-                  <FoilLayoutVisualization
-                    dimensions={dimensions}
-                    rollWidth={1.65}
-                    label="Rozkład pasów dla rolki 1.65m"
-                    showAntiSlipIndicators={dimensions.stairs?.enabled || dimensions.wadingPool?.enabled}
-                  />
-                </TabsContent>
-                <TabsContent value="2.05">
-                  <FoilLayoutVisualization
-                    dimensions={dimensions}
-                    rollWidth={2.05}
-                    label="Rozkład pasów dla rolki 2.05m"
-                    showAntiSlipIndicators={dimensions.stairs?.enabled || dimensions.wadingPool?.enabled}
-                  />
-                </TabsContent>
-              </Tabs>
             </section>
 
             {/* Note about structural foils */}
