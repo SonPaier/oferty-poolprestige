@@ -9,6 +9,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { FoilLayoutVisualization } from '@/components/FoilLayoutVisualization';
 import { PoolAreas, CalculatedMaterial, FoilSubtype, SUBTYPE_NAMES } from '@/lib/finishingMaterials';
+import { RollConfigTable } from './RollConfigTable';
 import { formatPrice } from '@/lib/calculations';
 import { PoolDimensions } from '@/types/configurator';
 import { RollSummary } from './RollSummary';
@@ -188,6 +189,12 @@ export function CalculationDetailsDialog({
             <section>
               <h3 className="font-semibold text-lg mb-3">📦 Podsumowanie rolek</h3>
               <RollSummary config={mixConfig} isMainFoilStructural={foilSubtype === 'strukturalna'} />
+            </section>
+
+            {/* Roll Configuration Details (read-only) */}
+            <section>
+              <h3 className="font-semibold text-lg mb-3">📋 Rozpiska pasów</h3>
+              <RollConfigTable config={mixConfig} foilSubtype={foilSubtype} />
             </section>
 
             {/* Foil strip visualization with tabs */}
