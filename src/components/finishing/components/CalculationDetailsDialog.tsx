@@ -18,6 +18,7 @@ import { Pool3DVisualization } from '@/components/Pool3DVisualization';
 import { 
   autoOptimizeMixConfig, 
   MixConfiguration,
+  calculateFoilAreaForPricing,
 } from '@/lib/foil/mixPlanner';
 
 interface CalculationDetailsDialogProps {
@@ -41,9 +42,6 @@ export function CalculationDetailsDialog({
   foilPricePerM2,
   manualFoilQty,
 }: CalculationDetailsDialogProps) {
-  const foilQty = manualFoilQty ?? poolAreas.totalArea;
-  const foilTotal = foilQty * foilPricePerM2;
-
   // Initialize MIX configuration with auto-optimization (respecting foil type constraints)
   const [mixConfig, setMixConfig] = useState<MixConfiguration>(() => 
     autoOptimizeMixConfig(dimensions, foilSubtype)
@@ -53,6 +51,14 @@ export function CalculationDetailsDialog({
   useEffect(() => {
     setMixConfig(autoOptimizeMixConfig(dimensions, foilSubtype));
   }, [foilSubtype, dimensions]);
+
+  const calculatedFoilQty = useMemo(
+    () => calculateFoilAreaForPricing(mixConfig, dimensions, foilSubtype),
+    [mixConfig, dimensions, foilSubtype]
+  );
+
+  const foilQty = manualFoilQty ?? calculatedFoilQty;
+  const foilTotal = foilQty * foilPricePerM2;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -191,7 +197,7 @@ export function CalculationDetailsDialog({
               <RollSummary 
                 config={mixConfig} 
                 isMainFoilStructural={foilSubtype === 'strukturalna'} 
-                foilAreaForPricing={poolAreas.totalArea}
+                foilAreaForPricing={foilQty}
               />
             </section>
 

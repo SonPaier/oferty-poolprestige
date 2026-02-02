@@ -8,6 +8,7 @@ import {
   getFoilLineItem 
 } from '@/lib/finishingMaterials';
 import { useConfigurator } from '@/context/ConfiguratorContext';
+import { autoOptimizeMixConfig, calculateFoilAreaForPricing } from '@/lib/foil/mixPlanner';
 
 // Types
 export type FinishingType = 'foil' | 'ceramic' | null;
@@ -293,7 +294,15 @@ export function FinishingWizardProvider({
   // Computed: foil line item
   const foilLineItem = useMemo(() => {
     if (!state.selectedSubtype) return null;
-    const foilQty = state.manualFoilQty ?? state.poolAreas.totalArea;
+
+    const autoConfig = autoOptimizeMixConfig(configuratorState.dimensions, state.selectedSubtype);
+    const autoFoilQty = calculateFoilAreaForPricing(
+      autoConfig,
+      configuratorState.dimensions,
+      state.selectedSubtype
+    );
+
+    const foilQty = state.manualFoilQty ?? autoFoilQty;
     return getFoilLineItem(
       state.selectedSubtype,
       foilQty,
@@ -303,9 +312,15 @@ export function FinishingWizardProvider({
   }, [
     state.selectedSubtype,
     state.manualFoilQty,
-    state.poolAreas.totalArea,
     state.subtypePrices,
     state.selectedProductName,
+    configuratorState.dimensions.length,
+    configuratorState.dimensions.width,
+    configuratorState.dimensions.depth,
+    configuratorState.dimensions.depthDeep,
+    configuratorState.dimensions.hasSlope,
+    configuratorState.dimensions.stairs,
+    configuratorState.dimensions.wadingPool,
   ]);
 
   // Computed: total net price
