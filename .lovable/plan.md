@@ -1,333 +1,251 @@
 
-# Faza 10: Wizard Wykończenia - UI (US-3.1 do US-3.8) ✅ COMPLETED
+# Plan: Uproszczony moduł wykończenia wnętrza basenu
 
-## Status: ZREALIZOWANE
+## Cel
 
-Zbudowano dedykowany 7-krokowy wizard dla modułu wykończenia basenu zastępujący CoveringStep.tsx.
-
-## Utworzone pliki:
-- `src/components/finishing/FinishingWizardContext.tsx` - Context + reducer
-- `src/components/finishing/FinishingModuleWizard.tsx` - Główny kontener
-- `src/components/finishing/FinishingWizardNavigation.tsx` - Nawigacja
-- `src/components/finishing/steps/Step1TypeSelection.tsx` - Wybór folia/ceramika
-- `src/components/finishing/steps/Step2ProductFiltering.tsx` - Filtrowanie
-- `src/components/finishing/steps/Step3SelectionLevel.tsx` - Taby wyboru
-- `src/components/finishing/steps/Step4FoilOptimization.tsx` - Optymalizacja
-- `src/components/finishing/steps/Step5InstallationMaterials.tsx` - Materiały
-- `src/components/finishing/steps/Step6VariantGeneration.tsx` - Warianty
-- `src/components/finishing/steps/Step7ReviewSave.tsx` - Podsumowanie
-- `src/components/finishing/components/*.tsx` - Komponenty współdzielone
+Całkowite przeprojektowanie modułu wykończenia na jednokrokowy interfejs z:
+- Wybór podtypu folii (jednokolorowe/z nadrukiem/strukturalne) z domyślnymi cenami
+- Tabela folii z filtrami na jednym ekranie
+- Automatyczne obliczanie ilości materiałów z możliwością ręcznej edycji
+- Galeria kolorów dla oferty bez wybranej konkretnej folii
+- 3 warianty cenowe: jednokolorowe = Standard, z nadrukiem = Standard Plus, strukturalne = Premium
 
 ---
 
-## Architektura komponentów
+## Zmiany w bazie danych
 
-```text
-src/components/finishing/
-├── FinishingModuleWizard.tsx       # Główny kontener z nawigacją i state
-├── FinishingWizardContext.tsx      # Context dla state wizarda
-├── FinishingWizardNavigation.tsx   # Breadcrumbs/stepper nawigacji
-├── steps/
-│   ├── Step1TypeSelection.tsx      # Wybór folia/ceramika
-│   ├── Step2ProductFiltering.tsx   # Filtrowanie (podtyp, kolor)
-│   ├── Step3SelectionLevel.tsx     # Taby: podtyp/seria/produkt
-│   ├── Step4FoilOptimization.tsx   # Auto-optymalizacja folii + wizualizacja
-│   ├── Step5InstallationMaterials.tsx  # Materiały instalacyjne
-│   ├── Step6VariantGeneration.tsx  # Generowanie 3 wariantów
-│   └── Step7ReviewSave.tsx         # Przegląd i zapis
-├── components/
-│   ├── ProductFilterBar.tsx        # Multi-select kolory, dropdown podtyp
-│   ├── ProductGrid.tsx             # Grid produktów z miniaturkami
-│   ├── ProductDetailModal.tsx      # Modal szczegółów produktu
-│   ├── MaterialsTable.tsx          # Tabela materiałów z edycją
-│   ├── MaterialEditModal.tsx       # Modal edycji ilości/materiału
-│   ├── ServicesTable.tsx           # Tabela usług montażu
-│   ├── VariantCard.tsx             # Karta wariantu (ekonomiczny/standard/premium)
-│   └── OptimizationComparisonView.tsx  # Porównanie 1.65m vs 2.05m
-└── hooks/
-    ├── useFinishingWizard.ts       # Hook dla state wizarda
-    ├── useInstallationMaterials.ts # Hook do pobierania i wyliczania materiałów
-    └── useVariantGeneration.ts     # Hook do generowania wariantów
+### 1. Aktualizacja kategorii folii
+Zamiana `antyposlizgowa` na `strukturalna` w tabeli products:
+
+```sql
+UPDATE products 
+SET foil_category = 'strukturalna' 
+WHERE foil_category = 'antyposlizgowa';
 ```
 
 ---
 
-## Szczegółowy plan implementacji
+## Zmiany w kodzie
 
-### Krok 1: Struktura i Context (FinishingWizardContext.tsx)
+### 1. Usunięcie wyboru typu wykończenia z DimensionsStep
 
-**State wizarda:**
+**Plik:** `src/components/steps/DimensionsStep.tsx`
+
+**Zmiana:**
+- Usunięcie sekcji "Typ wykończenia" (linie ~794-821)
+- Wybór foliowany/ceramiczny będzie teraz w dedykowanym kroku Wykończenie
+
+---
+
+### 2. Przeprojektowanie FinishingWizardContext
+
+**Plik:** `src/components/finishing/FinishingWizardContext.tsx`
+
+**Nowy state:**
 ```typescript
 interface FinishingWizardState {
-  currentStep: number;
+  // Główny wybór
   finishingType: 'foil' | 'ceramic' | null;
+  
+  // Podtyp folii (3 warianty cenowe)
+  selectedSubtype: 'jednokolorowa' | 'nadruk' | 'strukturalna' | null;
+  subtypePrices: {
+    jednokolorowa: number; // 107 zł domyślnie
+    nadruk: number;        // 145 zł domyślnie  
+    strukturalna: number;  // 210 zł domyślnie
+  };
+  
+  // Konkretny produkt (opcjonalnie)
+  selectedProductId: string | null;
+  selectedProductName: string | null;
+  
+  // Filtry tabeli
   filters: {
-    subtype: string | null;
-    colors: string[];
+    manufacturer: string | null;
+    shade: string | null; // kolor wiodący
     searchQuery: string;
   };
-  selectionLevel: 'subtype' | 'series' | 'product';
-  selectedSubtype: string | null;
-  selectedSeries: { manufacturer: string; series: string } | null;
-  selectedProductId: string | null;
   
-  // Foil optimization
-  optimizationResult: FoilOptimizationResult | null;
-  selectedRollWidth: 1.65 | 2.05;
-  
-  // Materials
-  materials: MaterialItem[];
-  services: ServiceItem[];
-  
-  // Variants
-  variants: {
-    economy: VariantData;
-    standard: VariantData;
-    premium: VariantData;
+  // Ilość folii i materiały (w kodzie, nie w bazie)
+  foilQuantity: {
+    totalArea: number;     // obliczone automatycznie
+    manualArea: number | null; // ręczna edycja
   };
-  defaultVariant: 'economy' | 'standard' | 'premium';
   
-  isDraft: boolean;
+  materials: MaterialItem[];
+  
+  // Flagi
+  showColorGallery: boolean;
   requiresRecalculation: boolean;
 }
 ```
 
-**Actions:**
-- `SET_STEP` - zmiana kroku
-- `SET_FINISHING_TYPE` - wybór folia/ceramika
-- `SET_FILTERS` - aktualizacja filtrów
-- `SET_SELECTION_LEVEL` - zmiana poziomu wyboru
-- `SET_SELECTED_PRODUCT` / `SERIES` / `SUBTYPE`
-- `SET_OPTIMIZATION_RESULT`
-- `UPDATE_MATERIAL` / `ADD_MATERIAL` / `REMOVE_MATERIAL`
-- `SET_VARIANTS`
-- `SET_DEFAULT_VARIANT`
-- `SAVE_AND_COMPLETE`
+**Domyślne ceny podtypów:**
+- Jednokolorowa: 107 zł/m² netto
+- Z nadrukiem: 145 zł/m² netto
+- Strukturalna: 210 zł/m² netto
 
 ---
 
-### Krok 2: Główny komponent wizarda (FinishingModuleWizard.tsx)
+### 3. Nowy jednokrokowy FinishingModuleWizard
 
-**Struktura:**
-```tsx
-export function FinishingModuleWizard() {
-  return (
-    <FinishingWizardProvider>
-      <div className="finishing-wizard">
-        <FinishingWizardNavigation />
-        <div className="wizard-content">
-          {/* Renderowanie aktualnego kroku */}
-          <WizardStepRenderer />
-        </div>
-        <WizardFooter />
-      </div>
-    </FinishingWizardProvider>
-  );
-}
-```
+**Plik:** `src/components/finishing/FinishingModuleWizard.tsx`
 
-**Nawigacja (7 kroków):**
-1. Typ wykończenia
-2. Filtrowanie
-3. Poziom wyboru
-4. Optymalizacja (tylko folia)
-5. Materiały
-6. Warianty
-7. Przegląd
+**Struktura jednokrokowa:**
 
----
-
-### Krok 3: Step1TypeSelection.tsx
-
-**UI:**
-- 2 duże karty (folia/ceramika) z ikonami
-- Info box pokazujący typ wybrany w parametrach basenu
-- Ostrzeżenie przy zmianie typu
-
-**Logika:**
-```tsx
-// Jeśli typ już wybrany w dimensions.liningType
-const preselectedType = dimensions.liningType === 'foliowany' ? 'foil' : 'ceramic';
-
-// Modal ostrzeżenia przy zmianie
-if (currentType && newType !== currentType) {
-  showWarningModal("Zmiana typu wykończenia wymaże dotychczasowe wybory...");
-}
-```
-
----
-
-### Krok 4: Step2ProductFiltering.tsx
-
-**UI:**
-- Dropdown "Podtyp": Wszystkie / Jednolite / Z nadrukiem / Strukturalne
-- Multi-select "Kolory" z kolorowymi kółkami
-- Live search input
-- Grid produktów (3-4 na rząd)
-- Licznik wyników
-
-**Integracja z bazą:**
-```sql
-SELECT * FROM products
-WHERE category = 'folia'
-  AND (subtype IS NULL OR subtype = $1)
-  AND (shade = ANY($2::text[]) OR $2 IS NULL)
-ORDER BY price ASC
+```text
+┌─────────────────────────────────────────────────────────────────┐
+│ WYKOŃCZENIE BASENU                                              │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  [Folia PVC]  [Ceramika]     ← wybór typu (duże karty)          │
+│                                                                 │
+├─────────────────────────────────────────────────────────────────┤
+│ PODTYP FOLII                                                    │
+│                                                                 │
+│  ┌───────────────┐ ┌───────────────┐ ┌───────────────┐          │
+│  │ Jednokolorowa │ │ Z nadrukiem   │ │ Strukturalna  │          │
+│  │    STANDARD   │ │ STANDARD PLUS │ │   PREMIUM     │          │
+│  │   107 zł/m²   │ │   145 zł/m²   │ │   210 zł/m²   │          │
+│  │   [Edytuj]    │ │   [Edytuj]    │ │   [Edytuj]    │          │
+│  └───────────────┘ └───────────────┘ └───────────────┘          │
+│                                                                 │
+├─────────────────────────────────────────────────────────────────┤
+│ DOSTĘPNE FOLIE (po kliknięciu podtypu)                          │
+│                                                                 │
+│  Producent: [Wszystkie ▾]  Kolor: [Wszystkie ▾]  Szukaj: [____] │
+│                                                                 │
+│  ┌────────────────────────────────────────────────────────────┐ │
+│  │ Symbol     │ Nazwa           │ Producent │ Kolor  │ Cena   │ │
+│  │─────────────────────────────────────────────────────────── │ │
+│  │ ALK-2000   │ Alkorplan Blue  │ Renolit   │ 🔵 niebieski   │ │
+│  │ ALK-3000   │ Alkorplan White │ Renolit   │ ⚪ biały       │ │
+│  └────────────────────────────────────────────────────────────┘ │
+│                                                                 │
+│  ℹ️ Bez wyboru konkretnej folii: pozycja "Folia jednokolorowa  │
+│     - kolor do sprecyzowania" [Zobacz dostępne kolory]          │
+│                                                                 │
+├─────────────────────────────────────────────────────────────────┤
+│ MATERIAŁY I ILOŚCI                                              │
+│                                                                 │
+│  ┌────────────────────────────────────────────────────────────┐ │
+│  │ Materiał          │ Ilość  │ Jedn. │ Cena/jed │ Razem     │ │
+│  │───────────────────────────────────────────────────────────│ │
+│  │ Folia jednokolorowa│ 86.4  │ m²    │ 107 zł   │ 9,244 zł  │ │
+│  │ Podkład zwykły     │ 86    │ m²    │ 12.50    │ 1,075 zł  │ │
+│  │ Kątownik PVC       │ 24    │ mb    │ 8.00     │ 192 zł    │ │
+│  │ Klej kontaktowy    │ 5     │ kg    │ 45.00    │ 225 zł    │ │
+│  └────────────────────────────────────────────────────────────┘ │
+│                                                                 │
+│  ⚠️ Rozmiar basenu zmieniony - [Przelicz ponownie]              │
+│                                                                 │
+│                            RAZEM NETTO: 10,736 zł               │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-### Krok 5: Step3SelectionLevel.tsx
+### 4. Komponenty do utworzenia/modyfikacji
 
-**3 taby:**
+#### 4.1 SubtypeCard (nowy)
+**Plik:** `src/components/finishing/components/SubtypeCard.tsx`
 
-1. **Tab "Podtyp"**:
-   - Kafelki: Jednolite, Z nadrukiem, Strukturalne
-   - Zakres cen, liczba produktów
-   - Info: "Cena w ofercie: MAX z podtypu"
+Karta podtypu z:
+- Nazwa (Jednokolorowa/Z nadrukiem/Strukturalna)
+- Etykieta wariantu (STANDARD/STANDARD PLUS/PREMIUM)
+- Cena za m² z możliwością edycji
+- Stan zaznaczenia
 
-2. **Tab "Seria"**:
-   - Accordion per producent (Renolit, Haogenplast)
-   - Dla każdej serii: zdjęcie, zakres cen
+#### 4.2 FoilProductTable (nowy)
+**Plik:** `src/components/finishing/components/FoilProductTable.tsx`
 
-3. **Tab "Produkt"**:
-   - Reużycie ProductGrid z kroku 2
-   - Modal szczegółów przy wyborze
+Tabela z:
+- Kolumny: Symbol, Nazwa, Producent, Seria, Kolor (z kółkiem), Szerokość rolki, Cena
+- Filtrowanie: dropdown producent, dropdown kolor, search nazwa
+- Zaznaczanie wiersza = wybór konkretnego produktu
+- Możliwość odznaczenia (powrót do "kolor do sprecyzowania")
+
+#### 4.3 ColorGalleryModal (nowy)
+**Plik:** `src/components/finishing/components/ColorGalleryModal.tsx`
+
+Modal z galerią miniaturek folii danego podtypu:
+- Grid zdjęć produktów z kolorowymi etykietami
+- Do wydruku w ofercie PDF jako załącznik
+- Generowanie obrazu/PDF z galerią
+
+#### 4.4 MaterialsCalculationTable (modyfikacja)
+**Plik:** `src/components/finishing/components/MaterialsTable.tsx`
+
+Zmodyfikowana tabela materiałów:
+- Materiały hardcoded w kodzie (nie z bazy)
+- Automatyczne wyliczanie ilości na podstawie powierzchni
+- Edycja ręczna z oznaczeniem "ręcznie zmienione"
+- Przycisk "Przywróć automatyczne"
 
 ---
 
-### Krok 6: Step4FoilOptimization.tsx
+### 5. Logika wyliczania materiałów (w kodzie)
 
-**Auto-trigger:** Po wejściu uruchamia algorytm optymalizacji
+**Plik:** `src/lib/finishingMaterials.ts` (nowy)
 
-**UI:**
-- Loading: "Optymalizuję rozkład folii..."
-- Wyniki: liczba rolek, powierzchnia, zgrzewy, score
-- Wizualizacja 2D (reużycie FoilLayoutVisualization)
-- Porównanie 1.65m vs 2.05m (jeśli dostępne)
-- Szczegóły planu cięcia (modal)
-
-**Folia strukturalna:**
-- Info box o zgrzewaniu doczołowym
-- Dodatkowe pozycje (folia podkładowa, usługa zgrzewania)
-
----
-
-### Krok 7: Step5InstallationMaterials.tsx
-
-**Tabela materiałów:**
-| Materiał | Ilość | Jednostka | Cena jedn. | Razem | Akcje |
-|----------|-------|-----------|------------|-------|-------|
-| Podkład zwykły 2m | 86 | m² | 12.50 | 1075 | Edytuj/Zmień |
-
-**Auto-wyliczanie z calculation_rule:**
 ```typescript
-function calculateMaterialQuantity(
-  material: InstallationMaterial,
-  poolAreas: CalculatedAreas
-): number {
-  const rule = material.calculation_rule;
-  switch (rule.type) {
-    case 'area_coverage':
-      return Math.ceil(poolAreas.total_area * rule.waste_factor);
-    case 'perimeter':
-      return Math.ceil(poolAreas.perimeter / rule.unit_length) * rule.unit_length;
-    case 'per_area':
-      return Math.ceil((poolAreas.total_area / 100) * rule.kg_per_100m2);
-    // ...
-  }
-}
-```
-
-**Usługi montażu:**
-- Auto-dobierane z installation_services
-- Podział: standardowy + schody + brodzik
-
----
-
-### Krok 8: Step6VariantGeneration.tsx
-
-**3 kolumny:**
-- Ekonomiczny: najtańsza folia + podkład zwykły
-- Standard: średnia cena + podkład zwykły
-- Premium: strukturalna + podkład impregnowany
-
-**Logika generowania:**
-```typescript
-function generateVariants(
-  selectionLevel: 'subtype' | 'series' | 'product',
-  materials: MaterialItem[],
-  services: ServiceItem[]
-): Variants {
-  // Dla podtypu: wybierz 3 produkty (min/mid/max cena)
-  // Dla serii: warianty z różnych serii
-  // Dla produktu: ten sam produkt, różne materiały
-}
-```
-
-**UI:**
-- Badge "DOMYŚLNY" na wybranym wariancie
-- Przycisk "Edytuj wariant" → modal
-- Porównanie cen z kolorami (zielony=taniej, czerwony=drożej)
-
----
-
-### Krok 9: Step7ReviewSave.tsx
-
-**Podsumowanie:**
-- Typ wykończenia
-- Wybrany produkt/seria/podtyp
-- Optymalizacja folii (jeśli folia)
-- Lista materiałów i usług
-- 3 warianty z cenami
-- Wariant domyślny
-
-**Akcje:**
-- "Zapisz jako draft"
-- "Zapisz i kontynuuj" → zapisuje do offer_variants i przechodzi do następnego modułu
-
----
-
-## Integracja z CoveringStep
-
-**Opcja 1 (zalecana):** Zastąpienie CoveringStep nowym wizardem
-```tsx
-// W steps/CoveringStep.tsx
-export function CoveringStep(props: CoveringStepProps) {
-  return <FinishingModuleWizard {...props} />;
-}
-```
-
-**Opcja 2:** Zachowanie CoveringStep jako wrapper
-```tsx
-// CoveringStep importuje i renderuje FinishingModuleWizard
+// Definicje materiałów (hardcoded)
+export const FINISHING_MATERIALS = {
+  foil: [
+    {
+      id: 'podklad-zwykly',
+      name: 'Podkład pod folię',
+      unit: 'm²',
+      calculate: (poolAreas) => Math.ceil(poolAreas.totalArea * 1.1), // +10% zapas
+      pricePerUnit: 12.50,
+    },
+    {
+      id: 'katownik-pvc',
+      name: 'Kątownik PVC',
+      unit: 'mb',
+      calculate: (poolAreas) => Math.ceil(poolAreas.perimeter),
+      pricePerUnit: 8.00,
+    },
+    {
+      id: 'klej-kontaktowy',
+      name: 'Klej kontaktowy',
+      unit: 'kg',
+      calculate: (poolAreas) => Math.ceil(poolAreas.totalArea / 20), // 1kg na 20m²
+      pricePerUnit: 45.00,
+    },
+    {
+      id: 'nity-montazowe',
+      name: 'Nity montażowe',
+      unit: 'szt',
+      calculate: (poolAreas) => Math.ceil(poolAreas.perimeter * 4), // 4 nity na mb
+      pricePerUnit: 0.50,
+    },
+  ],
+};
 ```
 
 ---
 
-## Hooki pomocnicze
+### 6. Ostrzeżenie o zmianie wymiarów
 
-### useInstallationMaterials.ts
-```typescript
-function useInstallationMaterials(finishingType: 'foil' | 'ceramic', poolAreas: CalculatedAreas) {
-  // Pobiera materiały z tabeli installation_materials
-  // Wylicza ilości na podstawie calculation_rule
-  // Zwraca materiały z auto-wyliczonymi ilościami
-}
-```
+**Mechanizm:**
+1. W `ConfiguratorContext` dodanie flagi `dimensionsChangedSinceFinishing`
+2. Przy zmianie wymiarów po wypełnieniu kroku wykończenia - ustawienie flagi
+3. W module wykończenia - wyświetlenie ostrzeżenia z przyciskiem "Przelicz ponownie"
+4. Opcjonalnie: automatyczne przeliczenie przy powrocie do kroku
 
-### useVariantGeneration.ts
-```typescript
-function useVariantGeneration(
-  selectionLevel: SelectionLevel,
-  selectedItem: Product | Series | Subtype,
-  materials: MaterialItem[],
-  services: ServiceItem[]
-) {
-  // Generuje 3 warianty cenowe
-  // Dla każdego wariantu: dobiera materiały odpowiedniego poziomu
-}
-```
+---
+
+### 7. Integracja z ofertą PDF
+
+**Zmiany:**
+1. Pozycja w ofercie: 
+   - Jeśli wybrano produkt: "Folia [nazwa produktu] - [symbol]"
+   - Jeśli nie wybrano: "Folia jednokolorowa - kolor do sprecyzowania wg załącznika"
+   
+2. Załącznik PDF z galerią kolorów:
+   - Grid miniaturek produktów danego podtypu
+   - Nazwa i kolor każdego produktu
 
 ---
 
@@ -335,73 +253,131 @@ function useVariantGeneration(
 
 | Plik | Opis |
 |------|------|
-| `src/components/finishing/FinishingWizardContext.tsx` | Context + reducer |
-| `src/components/finishing/FinishingModuleWizard.tsx` | Główny kontener |
-| `src/components/finishing/FinishingWizardNavigation.tsx` | Nawigacja breadcrumbs |
-| `src/components/finishing/steps/Step1TypeSelection.tsx` | Krok 1 |
-| `src/components/finishing/steps/Step2ProductFiltering.tsx` | Krok 2 |
-| `src/components/finishing/steps/Step3SelectionLevel.tsx` | Krok 3 |
-| `src/components/finishing/steps/Step4FoilOptimization.tsx` | Krok 4 |
-| `src/components/finishing/steps/Step5InstallationMaterials.tsx` | Krok 5 |
-| `src/components/finishing/steps/Step6VariantGeneration.tsx` | Krok 6 |
-| `src/components/finishing/steps/Step7ReviewSave.tsx` | Krok 7 |
-| `src/components/finishing/components/ProductFilterBar.tsx` | Filtry |
-| `src/components/finishing/components/ProductGrid.tsx` | Grid produktów |
-| `src/components/finishing/components/MaterialsTable.tsx` | Tabela materiałów |
-| `src/components/finishing/components/VariantCard.tsx` | Karta wariantu |
-| `src/components/finishing/hooks/useInstallationMaterials.ts` | Hook materiałów |
-| `src/components/finishing/hooks/useVariantGeneration.ts` | Hook wariantów |
+| `src/lib/finishingMaterials.ts` | Definicje materiałów i logika obliczeń |
+| `src/components/finishing/components/SubtypeCard.tsx` | Karta podtypu folii |
+| `src/components/finishing/components/FoilProductTable.tsx` | Tabela produktów z filtrami |
+| `src/components/finishing/components/ColorGalleryModal.tsx` | Modal galerii kolorów |
+
+## Pliki do modyfikacji
+
+| Plik | Zakres zmian |
+|------|--------------|
+| `src/components/finishing/FinishingWizardContext.tsx` | Nowy uproszczony state |
+| `src/components/finishing/FinishingModuleWizard.tsx` | Jednokrokowy layout |
+| `src/components/finishing/components/MaterialsTable.tsx` | Obsługa hardcoded materiałów |
+| `src/components/steps/DimensionsStep.tsx` | Usunięcie wyboru liningType |
+| `src/context/ConfiguratorContext.tsx` | Flaga dimensionsChanged |
+
+## Pliki do usunięcia
+
+| Plik | Powód |
+|------|-------|
+| `src/components/finishing/steps/Step1TypeSelection.tsx` | Zintegrowane w głównym komponencie |
+| `src/components/finishing/steps/Step2ProductFiltering.tsx` | Zastąpione FoilProductTable |
+| `src/components/finishing/steps/Step3SelectionLevel.tsx` | Niepotrzebne |
+| `src/components/finishing/steps/Step4FoilOptimization.tsx` | Uproszczone |
+| `src/components/finishing/steps/Step6VariantGeneration.tsx` | Warianty = podtypy |
+| `src/components/finishing/steps/Step7ReviewSave.tsx` | Zintegrowane |
+| `src/components/finishing/FinishingWizardNavigation.tsx` | Jednokrokowy = bez nawigacji |
 
 ---
 
-## Kolejność implementacji
+## Migracja bazy danych
 
-1. **FinishingWizardContext.tsx** - state management
-2. **FinishingModuleWizard.tsx** + **FinishingWizardNavigation.tsx** - struktura
-3. **Step1TypeSelection.tsx** - prosty start
-4. **ProductFilterBar.tsx** + **ProductGrid.tsx** - komponenty współdzielone
-5. **Step2ProductFiltering.tsx** - filtrowanie
-6. **Step3SelectionLevel.tsx** - taby wyboru
-7. **Step4FoilOptimization.tsx** - reużycie istniejącej logiki
-8. **useInstallationMaterials.ts** + **MaterialsTable.tsx**
-9. **Step5InstallationMaterials.tsx**
-10. **useVariantGeneration.ts** + **VariantCard.tsx**
-11. **Step6VariantGeneration.tsx**
-12. **Step7ReviewSave.tsx**
-13. Integracja z CoveringStep
+```sql
+-- Zamiana antyposlizgowa na strukturalna
+UPDATE products 
+SET foil_category = 'strukturalna' 
+WHERE foil_category = 'antyposlizgowa';
+```
 
 ---
 
-## Szacowany nakład
+## Szczegóły techniczne
+
+### Domyślne ceny podtypów
+
+```typescript
+const DEFAULT_SUBTYPE_PRICES = {
+  jednokolorowa: 107,  // Standard
+  nadruk: 145,         // Standard Plus  
+  strukturalna: 210,   // Premium
+};
+```
+
+### Etykiety wariantów
+
+```typescript
+const VARIANT_LABELS = {
+  jednokolorowa: 'STANDARD',
+  nadruk: 'STANDARD PLUS',
+  strukturalna: 'PREMIUM',
+};
+```
+
+### Materiały hardcoded
+
+Lista materiałów w kodzie (nie w bazie):
+1. **Folia** - ilość = powierzchnia całkowita, cena = cena podtypu
+2. **Podkład pod folię** - ilość = powierzchnia × 1.1, cena = 12.50 zł/m²
+3. **Kątownik PVC** - ilość = obwód, cena = 8.00 zł/mb
+4. **Klej kontaktowy** - ilość = powierzchnia / 20, cena = 45.00 zł/kg
+5. **Nity montażowe** - ilość = obwód × 4, cena = 0.50 zł/szt
+
+### Formuły obliczeniowe
+
+```typescript
+// Powierzchnia całkowita (dno + ściany)
+totalArea = bottomArea + wallArea + stairsArea + wadingPoolArea
+
+// Obwód
+perimeter = 2 × (length + width) + stairsPerimeter + wadingPoolPerimeter
+
+// Ilość folii w m²
+foilQuantity = totalArea
+```
+
+---
+
+## Przepływ użytkownika
+
+1. **Wejście do kroku "Wykończenie"**
+   - Wyświetlenie wyboru: Folia PVC / Ceramika
+
+2. **Wybór "Folia PVC"**
+   - Wyświetlenie 3 kart podtypów z cenami
+   - Możliwość edycji ceny każdego podtypu
+
+3. **Kliknięcie na podtyp (np. Jednokolorowa)**
+   - Rozwinięcie tabeli folii tego podtypu
+   - Filtry: producent, kolor, szukaj
+   - Możliwość wyboru konkretnego produktu LUB pozostawienie "do sprecyzowania"
+
+4. **Bez wyboru konkretnej folii**
+   - Pozycja: "Folia jednokolorowa - kolor do sprecyzowania"
+   - Przycisk "Zobacz dostępne kolory" → modal z galerią
+
+5. **Sekcja "Materiały i ilości"**
+   - Automatyczne wyliczenie na podstawie wymiarów
+   - Możliwość ręcznej edycji każdej ilości
+   - Ostrzeżenie przy zmianie wymiarów basenu
+
+6. **Przejście do następnego kroku**
+   - Zapisanie wyborów w stanie konfiguratora
+
+---
+
+## Szacowany nakład pracy
 
 | Element | Czas |
 |---------|------|
-| Context + struktura | 1h |
-| Krok 1-3 (wybór produktu) | 2h |
-| Krok 4 (optymalizacja) | 1.5h |
-| Krok 5 (materiały) | 2h |
-| Krok 6 (warianty) | 2h |
-| Krok 7 (przegląd) | 1h |
-| Integracja + testy | 1h |
-| **SUMA** | **~10-11h** |
-
----
-
-## Uwagi techniczne
-
-1. **Reużycie istniejącego kodu:**
-   - `FoilLayoutVisualization` - wizualizacja 2D
-   - `planStairsSurface`, `planPaddlingPoolSurface` - algorytmy
-   - `ProductCard` - karty produktów
-
-2. **Responsywność:**
-   - Mobile: kroki w pionie, karty wariantów stackowane
-   - Desktop: 3 kolumny dla wariantów, grid 4 produktów
-
-3. **Persistencja:**
-   - SessionStorage dla draftu
-   - Zapis do offer_variants przy zakończeniu
-
-4. **Walidacja:**
-   - Każdy krok ma własną walidację przed przejściem dalej
-   - Disabled "Dalej" gdy brak wymaganego wyboru
+| Migracja bazy (antyposlizgowa → strukturalna) | 0.5h |
+| Nowy state i context | 1h |
+| SubtypeCard + główny layout | 1.5h |
+| FoilProductTable z filtrami | 2h |
+| MaterialsCalculationTable (hardcoded) | 1.5h |
+| ColorGalleryModal | 1h |
+| Usunięcie liningType z DimensionsStep | 0.5h |
+| Ostrzeżenie o zmianie wymiarów | 0.5h |
+| Integracja i testy | 1h |
+| **SUMA** | **~9.5h** |
