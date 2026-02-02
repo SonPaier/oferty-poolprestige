@@ -3,7 +3,6 @@ import { useConfigurator } from '@/context/ConfiguratorContext';
 import { FinishingWizardProvider, useFinishingWizard, FinishingType } from './FinishingWizardContext';
 import { SubtypeCard } from './components/SubtypeCard';
 import { FoilProductTable } from './components/FoilProductTable';
-import { ColorGalleryModal } from './components/ColorGalleryModal';
 import { FinishingMaterialsTable } from './components/FinishingMaterialsTable';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -37,14 +36,6 @@ function WizardContent({ onNext, onBack }: FinishingModuleWizardProps) {
 
   const handleProductSelect = (productId: string | null, productName: string | null) => {
     dispatch({ type: 'SET_SELECTED_PRODUCT', payload: { id: productId, name: productName } });
-  };
-
-  const handleOpenGallery = () => {
-    dispatch({ type: 'SET_SHOW_COLOR_GALLERY', payload: true });
-  };
-
-  const handleCloseGallery = (open: boolean) => {
-    dispatch({ type: 'SET_SHOW_COLOR_GALLERY', payload: open });
   };
 
   const handleUpdateMaterial = (id: string, manualQty: number | null) => {
@@ -144,7 +135,6 @@ function WizardContent({ onNext, onBack }: FinishingModuleWizardProps) {
               subtype={state.selectedSubtype}
               selectedProductId={state.selectedProductId}
               onSelectProduct={handleProductSelect}
-              onOpenGallery={handleOpenGallery}
             />
           </CardContent>
         </Card>
@@ -219,14 +209,6 @@ function WizardContent({ onNext, onBack }: FinishingModuleWizardProps) {
         </CardContent>
       </Card>
 
-      {/* Color Gallery Modal */}
-      {state.selectedSubtype && (
-        <ColorGalleryModal
-          open={state.showColorGallery}
-          onOpenChange={handleCloseGallery}
-          subtype={state.selectedSubtype}
-        />
-      )}
     </div>
   );
 }
