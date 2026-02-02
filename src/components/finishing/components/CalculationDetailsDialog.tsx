@@ -188,7 +188,11 @@ export function CalculationDetailsDialog({
             {/* Roll Summary */}
             <section>
               <h3 className="font-semibold text-lg mb-3">📦 Podsumowanie rolek</h3>
-              <RollSummary config={mixConfig} isMainFoilStructural={foilSubtype === 'strukturalna'} />
+              <RollSummary 
+                config={mixConfig} 
+                isMainFoilStructural={foilSubtype === 'strukturalna'} 
+                foilAreaForPricing={poolAreas.totalArea}
+              />
             </section>
 
             {/* Roll Configuration Details (read-only) */}
