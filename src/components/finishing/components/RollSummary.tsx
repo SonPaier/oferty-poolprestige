@@ -12,6 +12,8 @@ interface RollSummaryProps {
   config: MixConfiguration;
   /** Whether main foil is structural (allows merging both pools) */
   isMainFoilStructural?: boolean;
+  /** Total foil area for pricing (from poolAreas.totalArea) */
+  foilAreaForPricing?: number;
 }
 
 interface FoilPoolSummaryProps {
@@ -21,6 +23,8 @@ interface FoilPoolSummaryProps {
   totalRolls205: number;
   colorClass: string;
   icon: React.ReactNode;
+  /** Override display area (for pricing alignment) */
+  displayArea?: number;
 }
 
 function FoilPoolSummary({ 
@@ -30,8 +34,10 @@ function FoilPoolSummary({
   totalRolls205, 
   colorClass,
   icon,
+  displayArea,
 }: FoilPoolSummaryProps) {
-  const totalArea = surfaces.reduce((sum, s) => sum + s.areaM2, 0);
+  const calculatedArea = surfaces.reduce((sum, s) => sum + s.areaM2, 0);
+  const totalArea = displayArea ?? calculatedArea;
   const totalWaste = surfaces.reduce((sum, s) => sum + s.wasteM2, 0);
   const totalRolls = totalRolls165 + totalRolls205;
   const totalRollArea = totalRolls165 * 1.65 * 25 + totalRolls205 * 2.05 * 25;
@@ -103,11 +109,11 @@ function FoilPoolSummary({
         <div className="grid grid-cols-3 gap-2 text-sm mb-3">
           <div>
             <span className="text-muted-foreground">Pokrycie:</span>
-            <span className="ml-1 font-medium">{totalArea.toFixed(1)} m²</span>
+            <span className="ml-1 font-medium">{totalArea.toFixed(2)} m²</span>
           </div>
           <div>
             <span className="text-muted-foreground">Odpad:</span>
-            <span className="ml-1 font-medium">{totalWaste.toFixed(1)} m²</span>
+            <span className="ml-1 font-medium">{totalWaste.toFixed(2)} m²</span>
           </div>
           <div>
             <span className="text-muted-foreground">Wykorzystanie:</span>
@@ -122,7 +128,7 @@ function FoilPoolSummary({
   );
 }
 
-export function RollSummary({ config, isMainFoilStructural = false }: RollSummaryProps) {
+export function RollSummary({ config, isMainFoilStructural = false, foilAreaForPricing }: RollSummaryProps) {
   const { main, structural } = partitionSurfacesByFoilType(config.surfaces);
   
   // Pack strips SEPARATELY for each foil type (not together!)
@@ -154,6 +160,7 @@ export function RollSummary({ config, isMainFoilStructural = false }: RollSummar
           totalRolls205={config.totalRolls205}
           colorClass="bg-purple-50 dark:bg-purple-900/20 border-purple-200 dark:border-purple-800"
           icon={<Layers className="h-5 w-5 text-purple-600 dark:text-purple-400" />}
+          displayArea={foilAreaForPricing}
         />
       </div>
     );
