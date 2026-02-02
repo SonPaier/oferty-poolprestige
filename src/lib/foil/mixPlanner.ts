@@ -5,10 +5,21 @@
  * - jednokolorowa: 1.65m or 2.05m
  * - nadruk: only 1.65m
  * - strukturalna: only 1.65m, butt joint on bottom (no overlap)
+ * 
+ * Foil Assignment:
+ * - MAIN: bottom, walls, dividing wall (user's choice)
+ * - STRUCTURAL: stairs, paddling pool bottom (always 1.65m structural)
  */
 
 import { PoolDimensions } from '@/types/configurator';
 import { FoilSubtype } from '@/lib/finishingMaterials';
+import { 
+  ExtendedSurfacePlan, 
+  FoilAssignment, 
+  SURFACE_FOIL_ASSIGNMENT,
+  WASTE_THRESHOLD,
+  OVERLAP_STRIPS,
+} from './types';
 
 export const ROLL_WIDTH_NARROW = 1.65;
 export const ROLL_WIDTH_WIDE = 2.05;
@@ -44,7 +55,7 @@ export function usesButtJoint(foilSubtype?: FoilSubtype | null): boolean {
   return foilSubtype === 'strukturalna';
 }
 
-export type SurfaceKey = 'bottom' | 'wall-long' | 'wall-short' | 'stairs' | 'paddling';
+export type SurfaceKey = 'bottom' | 'wall-long' | 'wall-short' | 'stairs' | 'paddling' | 'dividing-wall';
 
 export interface SurfaceRollConfig {
   surface: SurfaceKey;
@@ -56,6 +67,8 @@ export interface SurfaceRollConfig {
   isManualOverride: boolean;
   stripLength: number;
   coverWidth: number;
+  /** Which foil pool this surface belongs to */
+  foilAssignment: FoilAssignment;
 }
 
 export interface MixConfiguration {
@@ -65,6 +78,29 @@ export interface MixConfiguration {
   totalWaste: number;
   wastePercentage: number;
   isOptimized: boolean;
+}
+
+/**
+ * Foil calculation result with separate pools for main and structural foil
+ */
+export interface FoilCalculationResult {
+  mainPool: {
+    surfaces: SurfaceRollConfig[];
+    rolls: RollAllocation[];
+    totalRolls165: number;
+    totalRolls205: number;
+    coverageArea: number;
+    weldArea: number;
+    wasteArea: number;
+  };
+  structural: {
+    surfaces: SurfaceRollConfig[];
+    rolls: RollAllocation[];
+    totalRolls165: number;
+    coverageArea: number;
+    weldArea: number;
+    wasteArea: number;
+  };
 }
 
 export interface RollAllocation {
@@ -83,6 +119,7 @@ interface SurfaceDefinition {
   count: number; // e.g., 2 for walls (both sides)
   overlap: number;
   isButtJoint?: boolean; // For structural foil bottom
+  foilAssignment: FoilAssignment; // Which foil pool this belongs to
 }
 
 /**
@@ -166,7 +203,7 @@ function getSurfaceDefinitions(dimensions: PoolDimensions, foilSubtype?: FoilSub
   const isButtJointBottom = usesButtJoint(foilSubtype);
   const bottomOverlap = isButtJointBottom ? BUTT_JOINT_OVERLAP : MIN_OVERLAP_BOTTOM;
 
-  // Bottom - strips along longer side, cover shorter side
+  // Bottom - strips along longer side, cover shorter side (MAIN foil)
   surfaces.push({
     key: 'bottom',
     label: 'Dno',
@@ -175,9 +212,10 @@ function getSurfaceDefinitions(dimensions: PoolDimensions, foilSubtype?: FoilSub
     count: 1,
     overlap: bottomOverlap,
     isButtJoint: isButtJointBottom,
+    foilAssignment: 'main',
   });
 
-  // Long walls (2×) - strips along longer side, cover depth
+  // Long walls (2×) - strips along longer side, cover depth (MAIN foil)
   surfaces.push({
     key: 'wall-long',
     label: 'Ściany długie (2×)',
@@ -185,9 +223,10 @@ function getSurfaceDefinitions(dimensions: PoolDimensions, foilSubtype?: FoilSub
     coverWidth: depth + FOLD_AT_BOTTOM,
     count: 2,
     overlap: MIN_OVERLAP_WALL,
+    foilAssignment: 'main',
   });
 
-  // Short walls (2×) - strips along shorter side, cover depth
+  // Short walls (2×) - strips along shorter side, cover depth (MAIN foil)
   surfaces.push({
     key: 'wall-short',
     label: 'Ściany krótkie (2×)',
@@ -195,9 +234,10 @@ function getSurfaceDefinitions(dimensions: PoolDimensions, foilSubtype?: FoilSub
     coverWidth: depth + FOLD_AT_BOTTOM,
     count: 2,
     overlap: MIN_OVERLAP_WALL,
+    foilAssignment: 'main',
   });
 
-  // Stairs
+  // Stairs (STRUCTURAL foil - always anti-slip)
   if (dimensions.stairs?.enabled) {
     const stairs = dimensions.stairs;
     const stepWidth = typeof stairs.width === 'number' ? stairs.width : shorterSide;
@@ -210,22 +250,39 @@ function getSurfaceDefinitions(dimensions: PoolDimensions, foilSubtype?: FoilSub
       coverWidth: stepWidth,
       count: 1,
       overlap: MIN_OVERLAP_WALL,
+      foilAssignment: 'structural', // Always structural foil
     });
   }
 
-  // Paddling pool
+  // Paddling pool (STRUCTURAL foil for bottom)
   if (dimensions.wadingPool?.enabled) {
     const pool = dimensions.wadingPool;
-    const paddlingPerimeter = 2 * pool.length + 2 * pool.width + pool.depth * 4;
     
     surfaces.push({
       key: 'paddling',
-      label: 'Brodzik',
+      label: 'Brodzik (dno)',
       stripLength: Math.max(pool.length, pool.width),
       coverWidth: pool.depth + FOLD_AT_BOTTOM,
       count: 1,
       overlap: MIN_OVERLAP_WALL,
+      foilAssignment: 'structural', // Bottom always structural
     });
+    
+    // Dividing wall (if enabled) uses MAIN foil
+    if (pool.hasDividingWall && pool.dividingWallOffset && pool.dividingWallOffset > 0) {
+      const wallOffsetM = pool.dividingWallOffset / 100; // Convert cm to m
+      const wallHeight = depth - pool.depth + wallOffsetM;
+      
+      surfaces.push({
+        key: 'dividing-wall',
+        label: 'Murek brodzika',
+        stripLength: pool.width,
+        coverWidth: wallHeight,
+        count: 1,
+        overlap: MIN_OVERLAP_WALL,
+        foilAssignment: 'main', // Dividing wall uses main foil
+      });
+    }
   }
 
   return surfaces;
@@ -270,6 +327,7 @@ export function autoOptimizeMixConfig(dimensions: PoolDimensions, foilSubtype?: 
       isManualOverride: false,
       stripLength: def.stripLength,
       coverWidth: def.coverWidth,
+      foilAssignment: def.foilAssignment,
     });
   }
 
@@ -468,5 +526,18 @@ export function calculateComparison(dimensions: PoolDimensions): {
       wasteM2: mixConfig.totalWaste,
       wastePercent: mixConfig.wastePercentage,
     },
+  };
+}
+
+/**
+ * Partition surfaces by foil assignment type
+ * Returns surfaces grouped into main pool foil and structural foil
+ */
+export function partitionSurfacesByFoilType(
+  surfaces: SurfaceRollConfig[]
+): { main: SurfaceRollConfig[]; structural: SurfaceRollConfig[] } {
+  return {
+    main: surfaces.filter(s => s.foilAssignment === 'main'),
+    structural: surfaces.filter(s => s.foilAssignment === 'structural'),
   };
 }

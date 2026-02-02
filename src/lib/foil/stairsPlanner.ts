@@ -11,7 +11,7 @@
 
 import { StairsConfig, PoolDimensions } from '@/types/configurator';
 import { ROLL_WIDTH_NARROW } from '../foilPlanner';
-import { StairsPlanResult, ExtendedSurfaceType, ExtendedSurfacePlan } from './types';
+import { StairsPlanResult, ExtendedSurfaceType, ExtendedSurfacePlan, SURFACE_FOIL_ASSIGNMENT } from './types';
 import { calculateStairsArea, generateStairsGeometry } from '../stairsShapeGenerator';
 
 /**
@@ -99,27 +99,31 @@ export function planStairsSurface(
   const stepArea = calculateStepArea(stairs, dimensions);
   const riserArea = calculateRiserArea(stairs, dimensions);
   
-  // Create surface plans for steps and risers
+  // Create surface plans for steps and risers - all use STRUCTURAL foil
   const surfaces: ExtendedSurfacePlan[] = [];
   
-  // Step surface (horizontal, anti-slip)
+  // Step surface (horizontal, anti-slip) - STRUCTURAL foil
+  const stepType: ExtendedSurfaceType = 'stairs-step';
   surfaces.push({
-    type: 'stairs-step' as ExtendedSurfaceType,
+    type: stepType,
     width: stepDepth,                    // Each step width
     length: stairsWidth * stepCount,     // Total linear length of steps
     area: stepArea,
     strips: [],                          // Will be populated by main planner
     recommendedRollWidth: ROLL_WIDTH_NARROW,
+    foilAssignment: SURFACE_FOIL_ASSIGNMENT[stepType], // 'structural'
   });
   
-  // Riser surface (vertical, regular foil)
+  // Riser surface (vertical, regular foil) - STRUCTURAL foil
+  const riserType: ExtendedSurfaceType = 'stairs-riser';
   surfaces.push({
-    type: 'stairs-riser' as ExtendedSurfaceType,
+    type: riserType,
     width: stepHeight,                   // Each riser height
     length: stairsWidth * stepCount,     // Total linear length of risers
     area: riserArea,
     strips: [],
     recommendedRollWidth: ROLL_WIDTH_NARROW,
+    foilAssignment: SURFACE_FOIL_ASSIGNMENT[riserType], // 'structural'
   });
   
   return {

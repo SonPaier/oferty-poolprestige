@@ -33,7 +33,8 @@ import {
   DividingWallPlan, 
   ExtendedSurfaceType,
   ExtendedSurfacePlan,
-  DIVIDING_WALL_THICKNESS 
+  DIVIDING_WALL_THICKNESS,
+  SURFACE_FOIL_ASSIGNMENT,
 } from './types';
 
 /**
@@ -69,24 +70,28 @@ export function planPaddlingPoolSurface(
   // Create surface plans
   const surfaces: ExtendedSurfacePlan[] = [];
   
-  // Bottom surface (anti-slip)
+  // Bottom surface (anti-slip) - uses STRUCTURAL foil
+  const bottomType: ExtendedSurfaceType = 'paddling-bottom';
   surfaces.push({
-    type: 'paddling-bottom' as ExtendedSurfaceType,
+    type: bottomType,
     width: width,
     length: length,
     area: bottomArea,
     strips: [],
     recommendedRollWidth: ROLL_WIDTH_NARROW,
+    foilAssignment: SURFACE_FOIL_ASSIGNMENT[bottomType],
   });
   
-  // External walls surface (regular foil)
+  // External walls surface (regular foil) - uses STRUCTURAL foil
+  const wallType: ExtendedSurfaceType = 'paddling-wall';
   surfaces.push({
-    type: 'paddling-wall' as ExtendedSurfaceType,
+    type: wallType,
     width: paddlingDepth,                // Wall height
     length: 2 * length + width,          // Total perimeter of 3 walls
     area: wallsArea,
     strips: [],
     recommendedRollWidth: paddlingDepth <= 1.4 ? ROLL_WIDTH_NARROW : ROLL_WIDTH_WIDE,
+    foilAssignment: SURFACE_FOIL_ASSIGNMENT[wallType],
   });
   
   // DIVIDING WALL (if enabled)
@@ -138,38 +143,44 @@ export function planPaddlingPoolSurface(
       wallThickness,
     };
     
-    // Add dividing wall surfaces
+    // Add dividing wall surfaces - these use MAIN foil (same as pool walls)
     
-    // Pool side of dividing wall (regular foil)
+    // Pool side of dividing wall (MAIN foil)
+    const poolSideType: ExtendedSurfaceType = 'dividing-wall-pool';
     surfaces.push({
-      type: 'dividing-wall-pool' as ExtendedSurfaceType,
+      type: poolSideType,
       width: poolSideHeight,
       length: width,
       area: poolSideArea,
       strips: [],
       recommendedRollWidth: poolSideHeight <= 1.4 ? ROLL_WIDTH_NARROW : ROLL_WIDTH_WIDE,
+      foilAssignment: SURFACE_FOIL_ASSIGNMENT[poolSideType], // 'main'
     });
     
-    // Paddling side of dividing wall (regular foil)
+    // Paddling side of dividing wall (MAIN foil)
     if (paddlingSideHeight > 0) {
+      const paddlingSideType: ExtendedSurfaceType = 'dividing-wall-paddling';
       surfaces.push({
-        type: 'dividing-wall-paddling' as ExtendedSurfaceType,
+        type: paddlingSideType,
         width: paddlingSideHeight,
         length: width,
         area: paddlingSideArea,
         strips: [],
         recommendedRollWidth: ROLL_WIDTH_NARROW, // Usually small height
+        foilAssignment: SURFACE_FOIL_ASSIGNMENT[paddlingSideType], // 'main'
       });
     }
     
-    // Top of dividing wall (horizontal, regular foil - like a step)
+    // Top of dividing wall (horizontal, MAIN foil)
+    const topType: ExtendedSurfaceType = 'dividing-wall-top';
     surfaces.push({
-      type: 'dividing-wall-top' as ExtendedSurfaceType,
+      type: topType,
       width: wallThickness,
       length: width,
       area: topArea,
       strips: [],
       recommendedRollWidth: ROLL_WIDTH_NARROW,
+      foilAssignment: SURFACE_FOIL_ASSIGNMENT[topType], // 'main'
     });
   }
   

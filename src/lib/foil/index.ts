@@ -42,6 +42,7 @@ export {
   isNarrowOnlyFoil,
   getAvailableWidths,
   usesButtJoint,
+  partitionSurfacesByFoilType,
   ROLL_WIDTH_NARROW,
   ROLL_WIDTH_WIDE,
   ROLL_LENGTH,
@@ -54,4 +55,5 @@ export type {
   RollAllocation,
   SurfaceKey,
   RollWidth,
+  FoilCalculationResult,
 } from './mixPlanner';
