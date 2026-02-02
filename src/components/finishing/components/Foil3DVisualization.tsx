@@ -273,45 +273,50 @@ function FoilStrips({ dimensions, config }: FoilStripsProps) {
 function Scene({ dimensions, config }: Foil3DVisualizationProps) {
   const { length, width, depth } = dimensions;
   const maxDim = Math.max(length, width, depth);
-  const cameraDistance = maxDim * 2;
+  const cameraDistance = maxDim * 2.5;
 
   return (
     <>
       <PerspectiveCamera
         makeDefault
-        position={[cameraDistance, cameraDistance * 0.8, cameraDistance * 0.5]}
-        fov={45}
+        position={[cameraDistance * 0.8, cameraDistance * 0.6, cameraDistance * 0.8]}
+        fov={50}
       />
       <OrbitControls 
         enablePan={true}
         enableZoom={true}
         enableRotate={true}
-        minDistance={maxDim}
-        maxDistance={maxDim * 5}
+        minDistance={maxDim * 0.5}
+        maxDistance={maxDim * 8}
+        target={[0, 0, -depth / 2]}
       />
       
-      <ambientLight intensity={0.6} />
-      <directionalLight position={[10, 10, 10]} intensity={0.8} />
-      <directionalLight position={[-5, 5, -5]} intensity={0.3} />
+      <ambientLight intensity={0.7} />
+      <directionalLight position={[10, 10, 10]} intensity={0.9} />
+      <directionalLight position={[-5, 5, -5]} intensity={0.4} />
 
       <PoolShell dimensions={dimensions} />
       <FoilStrips dimensions={dimensions} config={config} />
 
-      {/* Ground plane */}
-      <mesh position={[0, 0, 0.01]} rotation={[0, 0, 0]}>
-        <planeGeometry args={[50, 50]} />
+      {/* Ground plane - positioned at z=0 (pool edge level) */}
+      <mesh position={[0, 0, 0.005]} rotation={[0, 0, 0]}>
+        <planeGeometry args={[length + 4, width + 4]} />
         <meshStandardMaterial color="#a8c8a0" />
       </mesh>
 
-      {/* Grid helper */}
-      <gridHelper args={[50, 50, '#666', '#888']} rotation={[Math.PI / 2, 0, 0]} position={[0, 0, 0.02]} />
+      {/* Grid helper on ground */}
+      <gridHelper 
+        args={[Math.max(length, width) + 4, Math.ceil(Math.max(length, width) + 4), '#666', '#888']} 
+        rotation={[Math.PI / 2, 0, 0]} 
+        position={[0, 0, 0.01]} 
+      />
     </>
   );
 }
 
 export function Foil3DVisualization({ dimensions, config }: Foil3DVisualizationProps) {
   return (
-    <div className="w-full h-[400px] rounded-lg border bg-background overflow-hidden">
+    <div className="relative w-full h-[400px] rounded-lg border bg-background overflow-hidden">
       <Canvas>
         <Scene dimensions={dimensions} config={config} />
       </Canvas>

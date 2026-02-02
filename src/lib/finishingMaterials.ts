@@ -5,12 +5,15 @@
 export type FoilSubtype = 'jednokolorowa' | 'nadruk' | 'strukturalna';
 
 export interface PoolAreas {
-  totalArea: number;      // Total surface area (bottom + walls + stairs + wading pool)
+  totalArea: number;      // Total surface area (net bottom + walls + stairs + wading pool)
   perimeter: number;      // Total perimeter
-  bottomArea: number;
+  bottomArea: number;     // Main pool bottom (GROSS, before subtracting stairs/wading)
+  netBottomArea: number;  // Main pool bottom (NET, after subtracting stairs/wading projections)
   wallArea: number;
   stairsArea?: number;
+  stairsProjection?: number;  // Floor area occupied by stairs (to subtract from bottom)
   wadingPoolArea?: number;
+  wadingPoolProjection?: number;  // Floor area occupied by wading pool (to subtract from bottom)
 }
 
 export interface MaterialDefinition {
@@ -141,12 +144,12 @@ export function calculatePoolAreas(dimensions: {
   depth: number;
   depthDeep?: number;
   hasSlope?: boolean;
-  stairs?: { enabled: boolean; width?: number; stepCount?: number; stepDepth?: number };
-  wadingPool?: { enabled: boolean; width?: number; length?: number; depth?: number };
+  stairs?: { enabled: boolean; width?: number | 'full'; stepCount?: number; stepDepth?: number; stepHeight?: number; direction?: string };
+  wadingPool?: { enabled: boolean; width?: number; length?: number; depth?: number; hasDividingWall?: boolean; dividingWallOffset?: number };
 }): PoolAreas {
   const { length, width, depth, depthDeep, hasSlope, stairs, wadingPool } = dimensions;
   
-  // Bottom area
+  // GROSS bottom area (before subtractions)
   const bottomArea = length * width;
   
   // Wall area (perimeter × average depth)
@@ -154,33 +157,78 @@ export function calculatePoolAreas(dimensions: {
   const perimeter = 2 * (length + width);
   const wallArea = perimeter * avgDepth;
   
-  // Stairs area (simplified)
+  // === STAIRS ===
+  // stairsProjection = floor footprint (width × total depth) - to subtract from main bottom
+  // stairsArea = actual foil needed (treads + risers)
   let stairsArea = 0;
+  let stairsProjection = 0;
   if (stairs?.enabled) {
-    const stairsWidth = stairs.width || 1.5;
+    const stairsWidth = typeof stairs.width === 'number' 
+      ? stairs.width 
+      : (stairs.width === 'full' ? (stairs.direction === 'along-length' ? length : width) : 1.5);
     const stepCount = stairs.stepCount || 4;
     const stepDepth = stairs.stepDepth || 0.30;
-    // Approximate: treads + risers
-    stairsArea = stairsWidth * stepCount * stepDepth * 2;
+    const stepHeight = stairs.stepHeight || (depth / (stepCount + 1));
+    
+    // Projection = floor area occupied by stairs block
+    stairsProjection = stairsWidth * stepDepth * stepCount;
+    
+    // Foil area = treads (horizontal) + risers (vertical)
+    const treadsArea = stairsWidth * stepDepth * stepCount;
+    const risersArea = stairsWidth * stepHeight * stepCount;
+    stairsArea = treadsArea + risersArea;
   }
   
-  // Wading pool area
+  // === WADING POOL ===
+  // wadingPoolProjection = floor footprint (width × length) - to subtract from main bottom
+  // wadingPoolArea = actual foil needed (bottom + 3 walls + dividing wall if present)
   let wadingPoolArea = 0;
+  let wadingPoolProjection = 0;
   if (wadingPool?.enabled) {
     const wpWidth = wadingPool.width || 2;
     const wpLength = wadingPool.length || 1.5;
     const wpDepth = wadingPool.depth || 0.4;
-    // Floor + walls
-    wadingPoolArea = wpWidth * wpLength + 2 * (wpWidth + wpLength) * wpDepth;
+    
+    // Projection = floor area occupied by wading pool
+    wadingPoolProjection = wpWidth * wpLength;
+    
+    // Foil area components:
+    // - Bottom (wpWidth × wpLength)
+    // - 3 external walls (2 side + 1 back)
+    const bottomWP = wpWidth * wpLength;
+    const sideWalls = 2 * wpLength * wpDepth;
+    const backWall = wpWidth * wpDepth;
+    
+    // Dividing wall (if enabled)
+    let dividingWallArea = 0;
+    if (wadingPool.hasDividingWall) {
+      const wallOffsetM = (wadingPool.dividingWallOffset || 0) / 100;
+      const poolSideHeight = depth - wpDepth;
+      const paddlingSideHeight = wallOffsetM;
+      const wallThickness = 0.15; // 15cm
+      
+      dividingWallArea = wpWidth * poolSideHeight + wpWidth * paddlingSideHeight + wpWidth * wallThickness;
+    }
+    
+    wadingPoolArea = bottomWP + sideWalls + backWall + dividingWallArea;
   }
   
+  // NET bottom area = gross bottom - stairs projection - wading pool projection
+  const netBottomArea = bottomArea - stairsProjection - wadingPoolProjection;
+  
+  // TOTAL area = net bottom + walls + stairs foil + wading pool foil
+  const totalArea = netBottomArea + wallArea + stairsArea + wadingPoolArea;
+  
   return {
-    totalArea: bottomArea + wallArea + stairsArea + wadingPoolArea,
+    totalArea,
     perimeter,
-    bottomArea,
+    bottomArea,      // Gross
+    netBottomArea,   // After subtracting projections
     wallArea,
     stairsArea,
+    stairsProjection,
     wadingPoolArea,
+    wadingPoolProjection,
   };
 }
 

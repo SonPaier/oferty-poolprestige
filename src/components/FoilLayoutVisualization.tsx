@@ -418,13 +418,19 @@ function SurfaceCard({ layout, rollWidth, showAntiSlipIndicators }: SurfaceCardP
   const stripColors = layout.isAntiSlip ? STRIP_COLORS.antiSlip : STRIP_COLORS.regular;
   let stripColorIndex = 0;
 
-  // Calculate SVG dimensions with proper scaling
-  const maxWidth = 400;
-  const maxHeight = 120;
+  // HORIZONTAL LAYOUT: swap width and height for display
+  // Surface is displayed with longer dimension horizontal
+  const displayWidth = Math.max(layout.realWidth, layout.realHeight);
+  const displayHeight = Math.min(layout.realWidth, layout.realHeight);
+  const isRotated = layout.realHeight > layout.realWidth;
+
+  // Calculate SVG dimensions with proper scaling for horizontal layout
+  const maxWidth = 450;
+  const maxHeight = 100;
   const padding = 20;
   
-  const rawWidth = layout.realWidth * SCALE;
-  const rawHeight = layout.realHeight * SCALE;
+  const rawWidth = displayWidth * SCALE;
+  const rawHeight = displayHeight * SCALE;
   
   const scaleRatio = Math.min(
     (maxWidth - padding * 2) / rawWidth,
@@ -452,7 +458,7 @@ function SurfaceCard({ layout, rollWidth, showAntiSlipIndicators }: SurfaceCardP
           )}
         </span>
         <span className="text-xs text-muted-foreground">
-          {layout.realWidth.toFixed(2)}m × {layout.realHeight.toFixed(2)}m = {(layout.realWidth * layout.realHeight).toFixed(2)}m²
+          {displayWidth.toFixed(2)}m × {displayHeight.toFixed(2)}m = {(layout.realWidth * layout.realHeight).toFixed(2)}m²
         </span>
       </div>
       
@@ -470,7 +476,7 @@ function SurfaceCard({ layout, rollWidth, showAntiSlipIndicators }: SurfaceCardP
             </pattern>
           </defs>
           
-          {/* Surface outline */}
+          {/* Surface outline - horizontal orientation */}
           <rect
             x="0"
             y="0"
@@ -481,16 +487,22 @@ function SurfaceCard({ layout, rollWidth, showAntiSlipIndicators }: SurfaceCardP
             strokeWidth="2"
           />
 
-          {/* Foil strips */}
+          {/* Foil strips - rotated if needed for horizontal display */}
           {layout.strips.map((strip, stripIndex) => {
+            // Transform coordinates for horizontal display
+            const displayX = isRotated ? strip.y : strip.x;
+            const displayY = isRotated ? strip.x : strip.y;
+            const displayStripWidth = isRotated ? strip.height : strip.width;
+            const displayStripHeight = isRotated ? strip.width : strip.height;
+            
             if (strip.isOverlap) {
               return (
                 <rect
                   key={stripIndex}
-                  x={strip.x}
-                  y={strip.y}
-                  width={strip.width}
-                  height={strip.height}
+                  x={displayX}
+                  y={displayY}
+                  width={displayStripWidth}
+                  height={displayStripHeight}
                   fill="none"
                   stroke="hsl(var(--destructive))"
                   strokeWidth="2"
@@ -503,37 +515,37 @@ function SurfaceCard({ layout, rollWidth, showAntiSlipIndicators }: SurfaceCardP
               return (
                 <g key={stripIndex}>
                   <rect
-                    x={strip.x}
-                    y={strip.y}
-                    width={strip.width}
-                    height={strip.height}
+                    x={displayX}
+                    y={displayY}
+                    width={displayStripWidth}
+                    height={displayStripHeight}
                     fill={color}
                     stroke={layout.isAntiSlip ? 'hsl(30 70% 40% / 0.6)' : 'hsl(var(--foreground) / 0.5)'}
                     strokeWidth="1"
                   />
                   {/* Strip width label */}
                   <text
-                    x={strip.x + strip.width / 2}
-                    y={strip.height / 2}
+                    x={displayX + displayStripWidth / 2}
+                    y={displayY + displayStripHeight / 2}
                     textAnchor="middle"
                     dominantBaseline="middle"
                     className="text-[8px] fill-foreground font-medium"
                   >
-                    {(strip.width / SCALE).toFixed(2)}m
+                    {(displayStripHeight / SCALE).toFixed(2)}m
                   </text>
                 </g>
               );
             }
           })}
 
-          {/* Dimension labels */}
+          {/* Dimension labels - horizontal layout */}
           <text
             x={rawWidth / 2}
             y={rawHeight + 12}
             textAnchor="middle"
             className="text-[10px] fill-muted-foreground"
           >
-            {layout.realWidth.toFixed(2)} m
+            {displayWidth.toFixed(2)} m
           </text>
           <text
             x={-10}
@@ -542,7 +554,7 @@ function SurfaceCard({ layout, rollWidth, showAntiSlipIndicators }: SurfaceCardP
             transform={`rotate(-90, -10, ${rawHeight / 2})`}
             className="text-[10px] fill-muted-foreground"
           >
-            {layout.realHeight.toFixed(2)} m
+            {displayHeight.toFixed(2)} m
           </text>
         </svg>
       </div>
