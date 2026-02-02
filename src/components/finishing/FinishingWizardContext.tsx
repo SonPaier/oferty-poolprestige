@@ -1,153 +1,98 @@
-import React, { createContext, useContext, useReducer, ReactNode, useMemo } from 'react';
-import { Tables } from '@/integrations/supabase/types';
+import React, { createContext, useContext, useReducer, ReactNode, useMemo, useEffect } from 'react';
+import { 
+  FoilSubtype, 
+  DEFAULT_SUBTYPE_PRICES, 
+  CalculatedMaterial, 
+  calculateMaterials, 
+  calculatePoolAreas,
+  getFoilLineItem 
+} from '@/lib/finishingMaterials';
+import { useConfigurator } from '@/context/ConfiguratorContext';
 
-// Types for the finishing wizard
+// Types
 export type FinishingType = 'foil' | 'ceramic' | null;
-export type SelectionLevel = 'subtype' | 'series' | 'product';
-export type VariantLevel = 'economy' | 'standard' | 'premium';
-
-export interface ProductFilters {
-  subtype: string | null;
-  colors: string[];
-  searchQuery: string;
-}
-
-export interface SelectedSeries {
-  manufacturer: string;
-  series: string;
-}
-
-export interface MaterialItem {
-  id: string;
-  name: string;
-  symbol: string;
-  unit: string;
-  suggestedQty: number;
-  manualQty: number | null;
-  pricePerUnit: number;
-  productId?: string;
-  isManual?: boolean;
-  category?: string;
-}
-
-export interface ServiceItem {
-  id: string;
-  name: string;
-  unit: string;
-  quantity: number;
-  pricePerUnit: number;
-  total: number;
-  category: string;
-  isOptional: boolean;
-  isEnabled: boolean;
-}
-
-export interface VariantData {
-  productId: string | null;
-  productName: string;
-  productPrice: number;
-  materials: MaterialItem[];
-  services: ServiceItem[];
-  totalMaterialsNet: number;
-  totalServicesNet: number;
-  totalNet: number;
-  totalGross: number;
-}
-
-export interface FoilOptimizationResultState {
-  rollWidth: 1.65 | 2.05;
-  totalAreaM2: number;
-  wastePercentage: number;
-  score: number;
-  cuttingPlan: any;
-  wastePieces: any[];
-  isRecommended: boolean;
-}
 
 export interface FinishingWizardState {
-  currentStep: number;
+  // Main selection
   finishingType: FinishingType;
-  filters: ProductFilters;
-  selectionLevel: SelectionLevel;
-  selectedSubtype: string | null;
-  selectedSeries: SelectedSeries | null;
+  
+  // Foil subtype (3 price variants)
+  selectedSubtype: FoilSubtype | null;
+  subtypePrices: Record<FoilSubtype, number>;
+  
+  // Specific product (optional)
   selectedProductId: string | null;
+  selectedProductName: string | null;
   
-  // Foil optimization
-  optimizationResults: FoilOptimizationResultState[];
-  selectedRollWidth: 1.65 | 2.05;
-  isOptimizing: boolean;
-  
-  // Materials and services
-  materials: MaterialItem[];
-  services: ServiceItem[];
-  
-  // Variants
-  variants: {
-    economy: VariantData | null;
-    standard: VariantData | null;
-    premium: VariantData | null;
+  // Table filters
+  filters: {
+    manufacturer: string | null;
+    shade: string | null;
+    searchQuery: string;
   };
-  defaultVariant: VariantLevel;
   
-  // Meta
-  isDraft: boolean;
+  // Foil quantity
+  poolAreas: {
+    totalArea: number;
+    perimeter: number;
+    bottomArea: number;
+    wallArea: number;
+    stairsArea: number;
+    wadingPoolArea: number;
+  };
+  manualFoilQty: number | null;
+  
+  // Materials (hardcoded, with manual overrides)
+  materials: CalculatedMaterial[];
+  
+  // UI state
+  showColorGallery: boolean;
+  showProductTable: boolean;
   requiresRecalculation: boolean;
-  isLoading: boolean;
 }
 
-// Action types
+// Actions
 type FinishingWizardAction =
-  | { type: 'SET_STEP'; payload: number }
   | { type: 'SET_FINISHING_TYPE'; payload: FinishingType }
-  | { type: 'SET_FILTERS'; payload: Partial<ProductFilters> }
-  | { type: 'SET_SELECTION_LEVEL'; payload: SelectionLevel }
-  | { type: 'SET_SELECTED_SUBTYPE'; payload: string | null }
-  | { type: 'SET_SELECTED_SERIES'; payload: SelectedSeries | null }
-  | { type: 'SET_SELECTED_PRODUCT'; payload: string | null }
-  | { type: 'SET_OPTIMIZATION_RESULTS'; payload: FoilOptimizationResultState[] }
-  | { type: 'SET_SELECTED_ROLL_WIDTH'; payload: 1.65 | 2.05 }
-  | { type: 'SET_IS_OPTIMIZING'; payload: boolean }
-  | { type: 'SET_MATERIALS'; payload: MaterialItem[] }
-  | { type: 'UPDATE_MATERIAL'; payload: { id: string; updates: Partial<MaterialItem> } }
-  | { type: 'ADD_MATERIAL'; payload: MaterialItem }
-  | { type: 'REMOVE_MATERIAL'; payload: string }
-  | { type: 'SET_SERVICES'; payload: ServiceItem[] }
-  | { type: 'UPDATE_SERVICE'; payload: { id: string; updates: Partial<ServiceItem> } }
-  | { type: 'SET_VARIANTS'; payload: { economy: VariantData | null; standard: VariantData | null; premium: VariantData | null } }
-  | { type: 'SET_DEFAULT_VARIANT'; payload: VariantLevel }
-  | { type: 'SET_IS_DRAFT'; payload: boolean }
+  | { type: 'SET_SELECTED_SUBTYPE'; payload: FoilSubtype | null }
+  | { type: 'SET_SUBTYPE_PRICE'; payload: { subtype: FoilSubtype; price: number } }
+  | { type: 'SET_SELECTED_PRODUCT'; payload: { id: string | null; name: string | null } }
+  | { type: 'SET_FILTERS'; payload: Partial<FinishingWizardState['filters']> }
+  | { type: 'SET_POOL_AREAS'; payload: FinishingWizardState['poolAreas'] }
+  | { type: 'SET_MANUAL_FOIL_QTY'; payload: number | null }
+  | { type: 'SET_MATERIALS'; payload: CalculatedMaterial[] }
+  | { type: 'UPDATE_MATERIAL'; payload: { id: string; manualQty: number | null } }
+  | { type: 'SET_SHOW_COLOR_GALLERY'; payload: boolean }
+  | { type: 'SET_SHOW_PRODUCT_TABLE'; payload: boolean }
   | { type: 'SET_REQUIRES_RECALCULATION'; payload: boolean }
-  | { type: 'SET_IS_LOADING'; payload: boolean }
+  | { type: 'RECALCULATE_MATERIALS' }
   | { type: 'RESET' };
 
 // Initial state
 const initialState: FinishingWizardState = {
-  currentStep: 1,
   finishingType: null,
+  selectedSubtype: null,
+  subtypePrices: { ...DEFAULT_SUBTYPE_PRICES },
+  selectedProductId: null,
+  selectedProductName: null,
   filters: {
-    subtype: null,
-    colors: [],
+    manufacturer: null,
+    shade: null,
     searchQuery: '',
   },
-  selectionLevel: 'product',
-  selectedSubtype: null,
-  selectedSeries: null,
-  selectedProductId: null,
-  optimizationResults: [],
-  selectedRollWidth: 1.65,
-  isOptimizing: false,
-  materials: [],
-  services: [],
-  variants: {
-    economy: null,
-    standard: null,
-    premium: null,
+  poolAreas: {
+    totalArea: 0,
+    perimeter: 0,
+    bottomArea: 0,
+    wallArea: 0,
+    stairsArea: 0,
+    wadingPoolArea: 0,
   },
-  defaultVariant: 'standard',
-  isDraft: true,
+  manualFoilQty: null,
+  materials: [],
+  showColorGallery: false,
+  showProductTable: false,
   requiresRecalculation: false,
-  isLoading: false,
 };
 
 // Reducer
@@ -156,107 +101,105 @@ function finishingWizardReducer(
   action: FinishingWizardAction
 ): FinishingWizardState {
   switch (action.type) {
-    case 'SET_STEP':
-      return { ...state, currentStep: action.payload };
-    
     case 'SET_FINISHING_TYPE':
-      // Reset selections when type changes
       return {
         ...state,
         finishingType: action.payload,
         selectedSubtype: null,
-        selectedSeries: null,
         selectedProductId: null,
-        optimizationResults: [],
-        materials: [],
-        services: [],
-        variants: { economy: null, standard: null, premium: null },
-        requiresRecalculation: true,
+        selectedProductName: null,
+        showProductTable: false,
       };
-    
+
+    case 'SET_SELECTED_SUBTYPE':
+      return {
+        ...state,
+        selectedSubtype: action.payload,
+        selectedProductId: null,
+        selectedProductName: null,
+        showProductTable: action.payload !== null,
+      };
+
+    case 'SET_SUBTYPE_PRICE':
+      return {
+        ...state,
+        subtypePrices: {
+          ...state.subtypePrices,
+          [action.payload.subtype]: action.payload.price,
+        },
+      };
+
+    case 'SET_SELECTED_PRODUCT':
+      return {
+        ...state,
+        selectedProductId: action.payload.id,
+        selectedProductName: action.payload.name,
+      };
+
     case 'SET_FILTERS':
       return {
         ...state,
         filters: { ...state.filters, ...action.payload },
       };
-    
-    case 'SET_SELECTION_LEVEL':
+
+    case 'SET_POOL_AREAS':
       return {
         ...state,
-        selectionLevel: action.payload,
-        // Reset specific selection when level changes
-        selectedProductId: action.payload === 'product' ? state.selectedProductId : null,
-        selectedSeries: action.payload === 'series' ? state.selectedSeries : null,
-        selectedSubtype: action.payload === 'subtype' ? state.selectedSubtype : null,
+        poolAreas: action.payload,
+        requiresRecalculation: false,
       };
-    
-    case 'SET_SELECTED_SUBTYPE':
-      return { ...state, selectedSubtype: action.payload, requiresRecalculation: true };
-    
-    case 'SET_SELECTED_SERIES':
-      return { ...state, selectedSeries: action.payload, requiresRecalculation: true };
-    
-    case 'SET_SELECTED_PRODUCT':
-      return { ...state, selectedProductId: action.payload, requiresRecalculation: true };
-    
-    case 'SET_OPTIMIZATION_RESULTS':
-      return { ...state, optimizationResults: action.payload };
-    
-    case 'SET_SELECTED_ROLL_WIDTH':
-      return { ...state, selectedRollWidth: action.payload };
-    
-    case 'SET_IS_OPTIMIZING':
-      return { ...state, isOptimizing: action.payload };
-    
+
+    case 'SET_MANUAL_FOIL_QTY':
+      return {
+        ...state,
+        manualFoilQty: action.payload,
+      };
+
     case 'SET_MATERIALS':
-      return { ...state, materials: action.payload };
-    
+      return {
+        ...state,
+        materials: action.payload,
+      };
+
     case 'UPDATE_MATERIAL':
       return {
         ...state,
-        materials: state.materials.map(m =>
-          m.id === action.payload.id ? { ...m, ...action.payload.updates } : m
+        materials: state.materials.map((m) =>
+          m.id === action.payload.id
+            ? { ...m, manualQty: action.payload.manualQty }
+            : m
         ),
       };
-    
-    case 'ADD_MATERIAL':
-      return { ...state, materials: [...state.materials, action.payload] };
-    
-    case 'REMOVE_MATERIAL':
+
+    case 'SET_SHOW_COLOR_GALLERY':
       return {
         ...state,
-        materials: state.materials.filter(m => m.id !== action.payload),
+        showColorGallery: action.payload,
       };
-    
-    case 'SET_SERVICES':
-      return { ...state, services: action.payload };
-    
-    case 'UPDATE_SERVICE':
+
+    case 'SET_SHOW_PRODUCT_TABLE':
       return {
         ...state,
-        services: state.services.map(s =>
-          s.id === action.payload.id ? { ...s, ...action.payload.updates } : s
-        ),
+        showProductTable: action.payload,
       };
-    
-    case 'SET_VARIANTS':
-      return { ...state, variants: action.payload };
-    
-    case 'SET_DEFAULT_VARIANT':
-      return { ...state, defaultVariant: action.payload };
-    
-    case 'SET_IS_DRAFT':
-      return { ...state, isDraft: action.payload };
-    
+
     case 'SET_REQUIRES_RECALCULATION':
-      return { ...state, requiresRecalculation: action.payload };
-    
-    case 'SET_IS_LOADING':
-      return { ...state, isLoading: action.payload };
-    
+      return {
+        ...state,
+        requiresRecalculation: action.payload,
+      };
+
+    case 'RECALCULATE_MATERIALS':
+      return {
+        ...state,
+        materials: calculateMaterials(state.poolAreas),
+        manualFoilQty: null,
+        requiresRecalculation: false,
+      };
+
     case 'RESET':
       return initialState;
-    
+
     default:
       return state;
   }
@@ -266,10 +209,10 @@ function finishingWizardReducer(
 interface FinishingWizardContextType {
   state: FinishingWizardState;
   dispatch: React.Dispatch<FinishingWizardAction>;
-  // Helper functions
-  canProceedToStep: (step: number) => boolean;
-  getStepLabel: (step: number) => string;
-  totalSteps: number;
+  // Computed values
+  foilLineItem: ReturnType<typeof getFoilLineItem> | null;
+  totalNet: number;
+  canProceed: boolean;
 }
 
 const FinishingWizardContext = createContext<FinishingWizardContextType | undefined>(undefined);
@@ -280,80 +223,108 @@ interface FinishingWizardProviderProps {
   initialFinishingType?: FinishingType;
 }
 
-export function FinishingWizardProvider({ 
-  children, 
-  initialFinishingType 
+export function FinishingWizardProvider({
+  children,
+  initialFinishingType,
 }: FinishingWizardProviderProps) {
+  const { state: configuratorState } = useConfigurator();
   const [state, dispatch] = useReducer(finishingWizardReducer, {
     ...initialState,
     finishingType: initialFinishingType ?? null,
   });
-  
-  // Step labels for navigation
-  const stepLabels: Record<number, string> = {
-    1: 'Typ wykończenia',
-    2: 'Filtrowanie',
-    3: 'Wybór produktu',
-    4: 'Optymalizacja',
-    5: 'Materiały',
-    6: 'Warianty',
-    7: 'Podsumowanie',
-  };
-  
-  const totalSteps = state.finishingType === 'foil' ? 7 : 6; // Skip optimization for ceramic
-  
-  // Check if user can proceed to a specific step
-  const canProceedToStep = (step: number): boolean => {
-    switch (step) {
-      case 1:
-        return true;
-      case 2:
-        return state.finishingType !== null;
-      case 3:
-        return state.finishingType !== null;
-      case 4:
-        // For foil: need product/series/subtype selected
-        // For ceramic: skip this step
-        if (state.finishingType === 'ceramic') return true;
-        return (
-          state.selectedProductId !== null ||
-          state.selectedSeries !== null ||
-          state.selectedSubtype !== null
-        );
-      case 5:
-        if (state.finishingType === 'ceramic') {
-          return (
-            state.selectedProductId !== null ||
-            state.selectedSeries !== null ||
-            state.selectedSubtype !== null
-          );
-        }
-        return state.optimizationResults.length > 0;
-      case 6:
-        return state.materials.length > 0;
-      case 7:
-        return (
-          state.variants.economy !== null ||
-          state.variants.standard !== null ||
-          state.variants.premium !== null
-        );
-      default:
-        return false;
-    }
-  };
-  
-  const getStepLabel = (step: number): string => {
-    return stepLabels[step] || `Krok ${step}`;
-  };
-  
-  const contextValue = useMemo(() => ({
-    state,
-    dispatch,
-    canProceedToStep,
-    getStepLabel,
-    totalSteps,
-  }), [state, totalSteps]);
-  
+
+  // Calculate pool areas from configurator dimensions
+  useEffect(() => {
+    const dimensions = configuratorState.dimensions;
+    const stairsWidth = dimensions.stairs?.width === 'full' 
+      ? dimensions.width 
+      : dimensions.stairs?.width;
+    const areas = calculatePoolAreas({
+      length: dimensions.length,
+      width: dimensions.width,
+      depth: dimensions.depth,
+      depthDeep: dimensions.depthDeep,
+      hasSlope: dimensions.hasSlope,
+      stairs: dimensions.stairs ? {
+        enabled: dimensions.stairs.enabled,
+        width: stairsWidth,
+        stepCount: dimensions.stairs.stepCount,
+        stepDepth: dimensions.stairs.stepDepth,
+      } : undefined,
+      wadingPool: dimensions.wadingPool,
+    });
+
+    dispatch({
+      type: 'SET_POOL_AREAS',
+      payload: {
+        totalArea: areas.totalArea,
+        perimeter: areas.perimeter,
+        bottomArea: areas.bottomArea,
+        wallArea: areas.wallArea,
+        stairsArea: areas.stairsArea || 0,
+        wadingPoolArea: areas.wadingPoolArea || 0,
+      },
+    });
+
+    // Calculate materials
+    dispatch({
+      type: 'SET_MATERIALS',
+      payload: calculateMaterials(areas),
+    });
+  }, [
+    configuratorState.dimensions.length,
+    configuratorState.dimensions.width,
+    configuratorState.dimensions.depth,
+    configuratorState.dimensions.depthDeep,
+    configuratorState.dimensions.hasSlope,
+    configuratorState.dimensions.stairs?.enabled,
+    configuratorState.dimensions.wadingPool?.enabled,
+  ]);
+
+  // Computed: foil line item
+  const foilLineItem = useMemo(() => {
+    if (!state.selectedSubtype) return null;
+    const foilQty = state.manualFoilQty ?? state.poolAreas.totalArea;
+    return getFoilLineItem(
+      state.selectedSubtype,
+      foilQty,
+      state.subtypePrices[state.selectedSubtype],
+      state.selectedProductName
+    );
+  }, [
+    state.selectedSubtype,
+    state.manualFoilQty,
+    state.poolAreas.totalArea,
+    state.subtypePrices,
+    state.selectedProductName,
+  ]);
+
+  // Computed: total net price
+  const totalNet = useMemo(() => {
+    if (!foilLineItem) return 0;
+    const materialsTotal = state.materials.reduce((sum, m) => {
+      const qty = m.manualQty ?? m.suggestedQty;
+      return sum + qty * m.pricePerUnit;
+    }, 0);
+    return foilLineItem.total + materialsTotal;
+  }, [foilLineItem, state.materials]);
+
+  // Can proceed to next step
+  const canProceed = useMemo(() => {
+    return state.finishingType !== null && state.selectedSubtype !== null;
+  }, [state.finishingType, state.selectedSubtype]);
+
+  const contextValue = useMemo(
+    () => ({
+      state,
+      dispatch,
+      foilLineItem,
+      totalNet,
+      canProceed,
+    }),
+    [state, foilLineItem, totalNet, canProceed]
+  );
+
   return (
     <FinishingWizardContext.Provider value={contextValue}>
       {children}
@@ -369,3 +340,6 @@ export function useFinishingWizard() {
   }
   return context;
 }
+
+// Re-export types for convenience
+export type { CalculatedMaterial, FoilSubtype } from '@/lib/finishingMaterials';
