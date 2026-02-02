@@ -19,7 +19,7 @@ import {
 } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Search, X, Palette } from 'lucide-react';
+import { Search, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { formatPrice } from '@/lib/calculations';
 import { FoilSubtype, SUBTYPE_TO_FOIL_CATEGORY } from '@/lib/finishingMaterials';
@@ -40,33 +40,70 @@ interface FoilProductTableProps {
   subtype: FoilSubtype;
   selectedProductId: string | null;
   onSelectProduct: (productId: string | null, productName: string | null) => void;
-  onOpenGallery: () => void;
 }
 
 export function FoilProductTable({
   subtype,
   selectedProductId,
   onSelectProduct,
-  onOpenGallery,
 }: FoilProductTableProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [manufacturerFilter, setManufacturerFilter] = useState<string>('all');
   const [shadeFilter, setShadeFilter] = useState<string>('all');
 
   // Fetch foil products for this subtype
+  // Currently products may not have foil_category set, so we search by name patterns
   const { data: products = [], isLoading } = useQuery({
     queryKey: ['foil-products', subtype],
     queryFn: async () => {
+      // Try to find by foil_category first
       const foilCategory = SUBTYPE_TO_FOIL_CATEGORY[subtype];
-      const { data, error } = await supabase
+      let query = supabase
         .from('products')
         .select('id, symbol, name, manufacturer, series, shade, extracted_hex, foil_width, price')
-        .eq('category', 'Folie basenowe')
-        .eq('foil_category', foilCategory)
         .order('name');
 
-      if (error) throw error;
-      return data as FoilProduct[];
+      // If foil_category exists, filter by it. Otherwise search by name pattern
+      // For now, search for foils by name containing "Folia Alkorplan" or "Folia ELBE"
+      const { data: byCategory } = await supabase
+        .from('products')
+        .select('id')
+        .eq('category', 'Folie basenowe')
+        .eq('foil_category', foilCategory)
+        .limit(1);
+
+      if (byCategory && byCategory.length > 0) {
+        // Use category-based filtering
+        const { data, error } = await supabase
+          .from('products')
+          .select('id, symbol, name, manufacturer, series, shade, extracted_hex, foil_width, price')
+          .eq('category', 'Folie basenowe')
+          .eq('foil_category', foilCategory)
+          .order('name');
+        if (error) throw error;
+        return data as FoilProduct[];
+      } else {
+        // Fallback: search by name pattern for foils
+        // Filter by subtype based on name patterns
+        let nameFilter = '';
+        if (subtype === 'jednokolorowa') {
+          nameFilter = 'Alkorplan 2000';
+        } else if (subtype === 'nadruk') {
+          nameFilter = 'Alkorplan 3000';
+        } else {
+          nameFilter = 'Relief';
+        }
+        
+        const { data, error } = await supabase
+          .from('products')
+          .select('id, symbol, name, manufacturer, series, shade, extracted_hex, foil_width, price')
+          .or(`name.ilike.%Folia%,name.ilike.%Alkorplan%,name.ilike.%ELBE%`)
+          .ilike('name', `%${nameFilter}%`)
+          .order('name');
+        
+        if (error) throw error;
+        return data as FoilProduct[];
+      }
     },
   });
 
@@ -178,14 +215,10 @@ export function FoilProductTable({
 
       {/* Info about no selection */}
       {!selectedProductId && (
-        <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+        <div className="p-3 bg-muted/50 rounded-lg">
           <p className="text-sm text-muted-foreground">
-            ℹ️ Bez wyboru konkretnej folii: pozycja "Folia - kolor do sprecyzowania"
+            ℹ️ Bez wyboru konkretnej folii: pozycja "Folia - kolor do sprecyzowania" z galerią kolorów w ofercie
           </p>
-          <Button variant="outline" size="sm" onClick={onOpenGallery}>
-            <Palette className="w-4 h-4 mr-2" />
-            Zobacz dostępne kolory
-          </Button>
         </div>
       )}
 
