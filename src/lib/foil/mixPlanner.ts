@@ -1,8 +1,14 @@
 /**
  * MIX Roll Planner - Allows different roll widths per surface with auto-optimization
+ * 
+ * Width restrictions by foil type:
+ * - jednokolorowa: 1.65m or 2.05m
+ * - nadruk: only 1.65m
+ * - strukturalna: only 1.65m, butt joint on bottom (no overlap)
  */
 
 import { PoolDimensions } from '@/types/configurator';
+import { FoilSubtype } from '@/lib/finishingMaterials';
 
 export const ROLL_WIDTH_NARROW = 1.65;
 export const ROLL_WIDTH_WIDE = 2.05;
@@ -10,8 +16,33 @@ export const ROLL_LENGTH = 25;
 export const MIN_OVERLAP_BOTTOM = 0.05;
 export const MIN_OVERLAP_WALL = 0.10;
 export const FOLD_AT_BOTTOM = 0.15;
+export const BUTT_JOINT_OVERLAP = 0; // Structural foil uses butt joint (no overlap)
 
 export type RollWidth = typeof ROLL_WIDTH_NARROW | typeof ROLL_WIDTH_WIDE;
+
+/**
+ * Check if foil type only supports narrow (1.65m) width
+ */
+export function isNarrowOnlyFoil(foilSubtype?: FoilSubtype | null): boolean {
+  return foilSubtype === 'nadruk' || foilSubtype === 'strukturalna';
+}
+
+/**
+ * Get available widths for a given foil subtype
+ */
+export function getAvailableWidths(foilSubtype?: FoilSubtype | null): RollWidth[] {
+  if (isNarrowOnlyFoil(foilSubtype)) {
+    return [ROLL_WIDTH_NARROW];
+  }
+  return [ROLL_WIDTH_NARROW, ROLL_WIDTH_WIDE];
+}
+
+/**
+ * Check if foil uses butt joint (no overlap on bottom)
+ */
+export function usesButtJoint(foilSubtype?: FoilSubtype | null): boolean {
+  return foilSubtype === 'strukturalna';
+}
 
 export type SurfaceKey = 'bottom' | 'wall-long' | 'wall-short' | 'stairs' | 'paddling';
 
@@ -51,6 +82,7 @@ interface SurfaceDefinition {
   coverWidth: number;
   count: number; // e.g., 2 for walls (both sides)
   overlap: number;
+  isButtJoint?: boolean; // For structural foil bottom
 }
 
 /**
@@ -122,13 +154,17 @@ function compareRollWidths(
 /**
  * Get surface definitions from pool dimensions
  */
-function getSurfaceDefinitions(dimensions: PoolDimensions): SurfaceDefinition[] {
+function getSurfaceDefinitions(dimensions: PoolDimensions, foilSubtype?: FoilSubtype | null): SurfaceDefinition[] {
   const surfaces: SurfaceDefinition[] = [];
   const { length, width, depth } = dimensions;
 
   // Longer and shorter sides
   const longerSide = Math.max(length, width);
   const shorterSide = Math.min(length, width);
+
+  // Determine if structural foil (butt joint on bottom)
+  const isButtJointBottom = usesButtJoint(foilSubtype);
+  const bottomOverlap = isButtJointBottom ? BUTT_JOINT_OVERLAP : MIN_OVERLAP_BOTTOM;
 
   // Bottom - strips along longer side, cover shorter side
   surfaces.push({
@@ -137,7 +173,8 @@ function getSurfaceDefinitions(dimensions: PoolDimensions): SurfaceDefinition[] 
     stripLength: longerSide,
     coverWidth: shorterSide,
     count: 1,
-    overlap: MIN_OVERLAP_BOTTOM,
+    overlap: bottomOverlap,
+    isButtJoint: isButtJointBottom,
   });
 
   // Long walls (2×) - strips along longer side, cover depth
@@ -197,18 +234,31 @@ function getSurfaceDefinitions(dimensions: PoolDimensions): SurfaceDefinition[] 
 /**
  * Auto-optimize roll width selection for all surfaces
  */
-export function autoOptimizeMixConfig(dimensions: PoolDimensions): MixConfiguration {
-  const surfaceDefinitions = getSurfaceDefinitions(dimensions);
+export function autoOptimizeMixConfig(dimensions: PoolDimensions, foilSubtype?: FoilSubtype | null): MixConfiguration {
+  const surfaceDefinitions = getSurfaceDefinitions(dimensions, foilSubtype);
   const surfaces: SurfaceRollConfig[] = [];
+  const availableWidths = getAvailableWidths(foilSubtype);
+  const narrowOnly = isNarrowOnlyFoil(foilSubtype);
 
   for (const def of surfaceDefinitions) {
-    const comparison = compareRollWidths(def.coverWidth, def.stripLength, def.overlap);
-    const optimalWidth = comparison.optimal;
-    const calc = calculateStripsForWidth(def.coverWidth, optimalWidth, def.overlap);
+    let optimalWidth: RollWidth;
+    let wastePerSurface: number;
 
+    if (narrowOnly) {
+      // Nadruk and strukturalna can only use 1.65m
+      optimalWidth = ROLL_WIDTH_NARROW;
+      const calc = calculateStripsForWidth(def.coverWidth, ROLL_WIDTH_NARROW, def.overlap);
+      wastePerSurface = calc.wasteArea * def.stripLength;
+    } else {
+      // Jednokolorowa can use either width - pick optimal
+      const comparison = compareRollWidths(def.coverWidth, def.stripLength, def.overlap);
+      optimalWidth = comparison.optimal;
+      wastePerSurface = optimalWidth === ROLL_WIDTH_NARROW ? comparison.narrow.waste : comparison.wide.waste;
+    }
+
+    const calc = calculateStripsForWidth(def.coverWidth, optimalWidth, def.overlap);
     const areaPerSurface = def.stripLength * def.coverWidth;
     const totalArea = areaPerSurface * def.count;
-    const wastePerSurface = optimalWidth === ROLL_WIDTH_NARROW ? comparison.narrow.waste : comparison.wide.waste;
 
     surfaces.push({
       surface: def.key,
@@ -223,7 +273,7 @@ export function autoOptimizeMixConfig(dimensions: PoolDimensions): MixConfigurat
     });
   }
 
-  return calculateTotals(surfaces, true);
+  return calculateTotals(surfaces, true, foilSubtype);
 }
 
 /**
@@ -233,9 +283,13 @@ export function updateSurfaceRollWidth(
   currentConfig: MixConfiguration,
   surfaceKey: SurfaceKey,
   newWidth: RollWidth,
-  dimensions: PoolDimensions
+  dimensions: PoolDimensions,
+  foilSubtype?: FoilSubtype | null
 ): MixConfiguration {
-  const surfaceDefinitions = getSurfaceDefinitions(dimensions);
+  // For nadruk/strukturalna, only allow 1.65m width
+  const allowedWidth = isNarrowOnlyFoil(foilSubtype) ? ROLL_WIDTH_NARROW : newWidth;
+  
+  const surfaceDefinitions = getSurfaceDefinitions(dimensions, foilSubtype);
   
   const updatedSurfaces = currentConfig.surfaces.map((surface) => {
     if (surface.surface !== surfaceKey) {
@@ -245,20 +299,20 @@ export function updateSurfaceRollWidth(
     const def = surfaceDefinitions.find(d => d.key === surfaceKey);
     if (!def) return surface;
 
-    const calc = calculateStripsForWidth(def.coverWidth, newWidth, def.overlap);
+    const calc = calculateStripsForWidth(def.coverWidth, allowedWidth, def.overlap);
     const comparison = compareRollWidths(def.coverWidth, def.stripLength, def.overlap);
-    const wastePerSurface = newWidth === ROLL_WIDTH_NARROW ? comparison.narrow.waste : comparison.wide.waste;
+    const wastePerSurface = allowedWidth === ROLL_WIDTH_NARROW ? comparison.narrow.waste : comparison.wide.waste;
 
     return {
       ...surface,
-      rollWidth: newWidth,
+      rollWidth: allowedWidth,
       stripCount: calc.count * def.count,
       wasteM2: wastePerSurface * def.count,
-      isManualOverride: true,
+      isManualOverride: !isNarrowOnlyFoil(foilSubtype), // Only mark as manual if width choice exists
     };
   });
 
-  return calculateTotals(updatedSurfaces, false);
+  return calculateTotals(updatedSurfaces, false, foilSubtype);
 }
 
 /**
@@ -325,7 +379,7 @@ export function packStripsIntoRolls(config: MixConfiguration): RollAllocation[] 
 /**
  * Calculate totals for the mix configuration
  */
-function calculateTotals(surfaces: SurfaceRollConfig[], isOptimized: boolean): MixConfiguration {
+function calculateTotals(surfaces: SurfaceRollConfig[], isOptimized: boolean, foilSubtype?: FoilSubtype | null): MixConfiguration {
   const rolls = packStripsIntoRolls({ surfaces, totalRolls165: 0, totalRolls205: 0, totalWaste: 0, wastePercentage: 0, isOptimized });
   
   const rolls165 = rolls.filter(r => r.rollWidth === ROLL_WIDTH_NARROW).length;

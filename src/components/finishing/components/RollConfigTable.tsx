@@ -1,4 +1,4 @@
-import { RotateCcw, Settings } from 'lucide-react';
+import { RotateCcw, Settings, Info } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -21,21 +21,26 @@ import {
   SurfaceKey, 
   RollWidth,
   ROLL_WIDTH_NARROW,
-  ROLL_WIDTH_WIDE 
+  ROLL_WIDTH_WIDE,
+  isNarrowOnlyFoil,
 } from '@/lib/foil/mixPlanner';
+import { FoilSubtype } from '@/lib/finishingMaterials';
 
 interface RollConfigTableProps {
   config: MixConfiguration;
+  foilSubtype?: FoilSubtype | null;
   onSurfaceRollWidthChange: (surfaceKey: SurfaceKey, newWidth: RollWidth) => void;
   onResetToOptimal: () => void;
 }
 
 export function RollConfigTable({ 
   config, 
+  foilSubtype,
   onSurfaceRollWidthChange, 
   onResetToOptimal 
 }: RollConfigTableProps) {
   const hasManualOverrides = config.surfaces.some(s => s.isManualOverride);
+  const narrowOnly = isNarrowOnlyFoil(foilSubtype);
 
   return (
     <div className="space-y-4">
@@ -71,6 +76,17 @@ export function RollConfigTable({
         </div>
       </div>
 
+      {/* Info about width restrictions */}
+      {narrowOnly && (
+        <div className="flex items-center gap-2 p-3 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800">
+          <Info className="h-4 w-4 text-blue-600 dark:text-blue-400 flex-shrink-0" />
+          <span className="text-sm text-blue-700 dark:text-blue-300">
+            Folia {foilSubtype === 'nadruk' ? 'z nadrukiem' : 'strukturalna'} jest dostępna tylko w szerokości 1.65m
+            {foilSubtype === 'strukturalna' && ' (dno łączone doczołowo bez zakładu)'}
+          </span>
+        </div>
+      )}
+
       {/* Configuration table */}
       <div className="border rounded-lg overflow-hidden">
         <Table>
@@ -98,31 +114,38 @@ export function RollConfigTable({
                   </div>
                 </TableCell>
                 <TableCell>
-                  <Select
-                    value={surface.rollWidth.toString()}
-                    onValueChange={(value) => {
-                      const newWidth = parseFloat(value) as RollWidth;
-                      onSurfaceRollWidthChange(surface.surface, newWidth);
-                    }}
-                  >
-                    <SelectTrigger className="w-28 h-8">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value={ROLL_WIDTH_NARROW.toString()}>
-                        <span className="flex items-center gap-2">
-                          <span className="w-2 h-2 rounded-full bg-blue-500" />
-                          1.65m
-                        </span>
-                      </SelectItem>
-                      <SelectItem value={ROLL_WIDTH_WIDE.toString()}>
-                        <span className="flex items-center gap-2">
-                          <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                          2.05m
-                        </span>
-                      </SelectItem>
-                    </SelectContent>
-                  </Select>
+                  {narrowOnly ? (
+                    <span className="px-3 py-1.5 text-sm bg-muted rounded inline-flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-blue-500" />
+                      1.65m
+                    </span>
+                  ) : (
+                    <Select
+                      value={surface.rollWidth.toString()}
+                      onValueChange={(value) => {
+                        const newWidth = parseFloat(value) as RollWidth;
+                        onSurfaceRollWidthChange(surface.surface, newWidth);
+                      }}
+                    >
+                      <SelectTrigger className="w-28 h-8">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={ROLL_WIDTH_NARROW.toString()}>
+                          <span className="flex items-center gap-2">
+                            <span className="w-2 h-2 rounded-full bg-blue-500" />
+                            1.65m
+                          </span>
+                        </SelectItem>
+                        <SelectItem value={ROLL_WIDTH_WIDE.toString()}>
+                          <span className="flex items-center gap-2">
+                            <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                            2.05m
+                          </span>
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                  )}
                 </TableCell>
                 <TableCell className="text-right font-medium">
                   {surface.stripCount}

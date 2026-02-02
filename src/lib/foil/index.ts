@@ -39,9 +39,13 @@ export {
   updateSurfaceRollWidth,
   packStripsIntoRolls,
   calculateComparison,
+  isNarrowOnlyFoil,
+  getAvailableWidths,
+  usesButtJoint,
   ROLL_WIDTH_NARROW,
   ROLL_WIDTH_WIDE,
   ROLL_LENGTH,
+  BUTT_JOINT_OVERLAP,
 } from './mixPlanner';
 
 export type {

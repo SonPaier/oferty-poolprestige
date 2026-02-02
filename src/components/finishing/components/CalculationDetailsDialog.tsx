@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -14,13 +14,15 @@ import { PoolDimensions } from '@/types/configurator';
 import { RollSummary } from './RollSummary';
 import { RollConfigTable } from './RollConfigTable';
 import { MaterialFormulasTable } from './MaterialFormulasTable';
-import { Foil3DVisualization } from './Foil3DVisualization';
+import { Pool3DVisualization } from '@/components/Pool3DVisualization';
 import { 
   autoOptimizeMixConfig, 
   updateSurfaceRollWidth,
   MixConfiguration,
   SurfaceKey,
-  RollWidth
+  RollWidth,
+  isNarrowOnlyFoil,
+  usesButtJoint,
 } from '@/lib/foil/mixPlanner';
 
 interface CalculationDetailsDialogProps {
@@ -47,20 +49,29 @@ export function CalculationDetailsDialog({
   const foilQty = manualFoilQty ?? poolAreas.totalArea;
   const foilTotal = foilQty * foilPricePerM2;
 
-  // Initialize MIX configuration with auto-optimization
+  // Initialize MIX configuration with auto-optimization (respecting foil type constraints)
   const [mixConfig, setMixConfig] = useState<MixConfiguration>(() => 
-    autoOptimizeMixConfig(dimensions)
+    autoOptimizeMixConfig(dimensions, foilSubtype)
   );
+
+  // Re-optimize when foil subtype changes
+  useEffect(() => {
+    setMixConfig(autoOptimizeMixConfig(dimensions, foilSubtype));
+  }, [foilSubtype, dimensions]);
 
   // Handle surface roll width change
   const handleSurfaceRollWidthChange = (surfaceKey: SurfaceKey, newWidth: RollWidth) => {
-    setMixConfig(prev => updateSurfaceRollWidth(prev, surfaceKey, newWidth, dimensions));
+    setMixConfig(prev => updateSurfaceRollWidth(prev, surfaceKey, newWidth, dimensions, foilSubtype));
   };
 
   // Handle reset to optimal
   const handleResetToOptimal = () => {
-    setMixConfig(autoOptimizeMixConfig(dimensions));
+    setMixConfig(autoOptimizeMixConfig(dimensions, foilSubtype));
   };
+
+  // Determine if foil type limits width options
+  const narrowOnly = isNarrowOnlyFoil(foilSubtype);
+  const isButtJoint = usesButtJoint(foilSubtype);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -203,6 +214,7 @@ export function CalculationDetailsDialog({
             <section>
               <RollConfigTable 
                 config={mixConfig}
+                foilSubtype={foilSubtype}
                 onSurfaceRollWidthChange={handleSurfaceRollWidthChange}
                 onResetToOptimal={handleResetToOptimal}
               />
@@ -220,12 +232,18 @@ export function CalculationDetailsDialog({
                 </TabsList>
                 
                 <TabsContent value="3d">
-                  <div className="relative">
-                    <Foil3DVisualization dimensions={dimensions} config={mixConfig} />
-                    <p className="text-xs text-muted-foreground mt-2">
-                      💡 Kliknij i przeciągnij, aby obracać. Scroll, aby powiększyć/pomniejszyć.
-                    </p>
+                  <div className="relative h-[400px] border rounded-lg overflow-hidden">
+                    <Pool3DVisualization 
+                      dimensions={dimensions}
+                      calculations={null}
+                      rollWidth={mixConfig.surfaces[0]?.rollWidth || 1.65}
+                      showFoilLayout={true}
+                      height={400}
+                    />
                   </div>
+                  <p className="text-xs text-muted-foreground mt-2">
+                    💡 Kliknij i przeciągnij, aby obracać. Scroll, aby powiększyć/pomniejszyć.
+                  </p>
                 </TabsContent>
 
                 <TabsContent value="2d">
