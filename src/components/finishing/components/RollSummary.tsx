@@ -1,19 +1,7 @@
-import { useState } from 'react';
-import { ChevronDown, ChevronUp, Package, Layers } from 'lucide-react';
+import { Package, Layers } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
-import { Button } from '@/components/ui/button';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
 import { 
   MixConfiguration, 
-  RollAllocation, 
   packStripsIntoRolls, 
   partitionSurfacesByFoilType,
   SurfaceRollConfig,
@@ -29,7 +17,6 @@ interface RollSummaryProps {
 interface FoilPoolSummaryProps {
   title: string;
   surfaces: SurfaceRollConfig[];
-  rolls: RollAllocation[];
   totalRolls165: number;
   totalRolls205: number;
   colorClass: string;
@@ -39,14 +26,11 @@ interface FoilPoolSummaryProps {
 function FoilPoolSummary({ 
   title, 
   surfaces, 
-  rolls, 
   totalRolls165, 
   totalRolls205, 
   colorClass,
   icon,
 }: FoilPoolSummaryProps) {
-  const [isOpen, setIsOpen] = useState(false);
-  
   const totalArea = surfaces.reduce((sum, s) => sum + s.areaM2, 0);
   const totalWaste = surfaces.reduce((sum, s) => sum + s.wasteM2, 0);
   const totalRolls = totalRolls165 + totalRolls205;
@@ -115,71 +99,6 @@ function FoilPoolSummary({
         {/* Utilization bar */}
         <Progress value={utilizationPercent} className="h-2" />
       </div>
-
-      {/* Collapsible roll details */}
-      {rolls.length > 0 && (
-        <Collapsible open={isOpen} onOpenChange={setIsOpen}>
-          <CollapsibleTrigger asChild>
-            <Button variant="ghost" size="sm" className="w-full justify-between">
-              <span className="flex items-center gap-2">
-                {isOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                {isOpen ? 'Ukryj szczegóły' : 'Pokaż szczegóły rolek'}
-              </span>
-              <span className="text-xs text-muted-foreground">{rolls.length} rolek</span>
-            </Button>
-          </CollapsibleTrigger>
-
-          <CollapsibleContent>
-            <div className="border rounded-lg overflow-hidden mt-2">
-              <Table>
-                <TableHeader>
-                  <TableRow className="bg-muted/50">
-                    <TableHead className="w-16">Rolka</TableHead>
-                    <TableHead className="w-20">Szer.</TableHead>
-                    <TableHead className="w-24">Użyte</TableHead>
-                    <TableHead className="w-20">Odpad</TableHead>
-                    <TableHead>Pasy</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {rolls.map((roll) => (
-                    <TableRow key={roll.rollNumber}>
-                      <TableCell className="font-medium">#{roll.rollNumber}</TableCell>
-                      <TableCell>
-                        <Badge variant="outline" className={
-                          roll.rollWidth === 1.65
-                            ? 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-900/30 dark:text-blue-300'
-                            : 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-300'
-                        }>
-                          {roll.rollWidth}m
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          <Progress value={(roll.usedLength / 25) * 100} className="h-1.5 w-12" />
-                          <span className="text-sm">{roll.usedLength.toFixed(1)}m</span>
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-muted-foreground text-sm">
-                        {roll.wasteLength.toFixed(1)}m
-                      </TableCell>
-                      <TableCell className="text-xs text-muted-foreground">
-                        {roll.strips.slice(0, 3).map((s, i) => (
-                          <span key={i}>
-                            {s.surface} #{s.stripIndex}
-                            {i < Math.min(roll.strips.length - 1, 2) ? ', ' : ''}
-                          </span>
-                        ))}
-                        {roll.strips.length > 3 && <span> +{roll.strips.length - 3}</span>}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          </CollapsibleContent>
-        </Collapsible>
-      )}
     </div>
   );
 }
@@ -201,8 +120,6 @@ export function RollSummary({ config, isMainFoilStructural = false }: RollSummar
 
   // If main foil is structural, show combined view (pack all together)
   if (isMainFoilStructural) {
-    const allRolls = packStripsIntoRolls(config);
-    
     return (
       <div className="space-y-4">
         <div className="flex items-center gap-2 mb-2">
@@ -214,7 +131,6 @@ export function RollSummary({ config, isMainFoilStructural = false }: RollSummar
         <FoilPoolSummary
           title="Wszystkie powierzchnie (strukturalna)"
           surfaces={config.surfaces}
-          rolls={allRolls}
           totalRolls165={config.totalRolls165}
           totalRolls205={config.totalRolls205}
           colorClass="bg-purple-50 dark:bg-purple-900/20 border-purple-200 dark:border-purple-800"
@@ -236,7 +152,6 @@ export function RollSummary({ config, isMainFoilStructural = false }: RollSummar
       <FoilPoolSummary
         title="Folia główna (dno + ściany + murek)"
         surfaces={main}
-        rolls={mainRolls}
         totalRolls165={mainRolls165}
         totalRolls205={mainRolls205}
         colorClass="bg-blue-50/50 dark:bg-blue-900/10 border-blue-200 dark:border-blue-800"
@@ -248,7 +163,6 @@ export function RollSummary({ config, isMainFoilStructural = false }: RollSummar
         <FoilPoolSummary
           title="Folia strukturalna (schody + brodzik)"
           surfaces={structural}
-          rolls={structuralRolls}
           totalRolls165={structuralRolls165}
           totalRolls205={0}
           colorClass="bg-amber-50/50 dark:bg-amber-900/10 border-amber-200 dark:border-amber-800"

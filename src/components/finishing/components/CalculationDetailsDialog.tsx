@@ -12,17 +12,11 @@ import { PoolAreas, CalculatedMaterial, FoilSubtype, SUBTYPE_NAMES } from '@/lib
 import { formatPrice } from '@/lib/calculations';
 import { PoolDimensions } from '@/types/configurator';
 import { RollSummary } from './RollSummary';
-import { RollConfigTable } from './RollConfigTable';
 import { MaterialFormulasTable } from './MaterialFormulasTable';
 import { Pool3DVisualization } from '@/components/Pool3DVisualization';
 import { 
   autoOptimizeMixConfig, 
-  updateSurfaceRollWidth,
   MixConfiguration,
-  SurfaceKey,
-  RollWidth,
-  isNarrowOnlyFoil,
-  usesButtJoint,
 } from '@/lib/foil/mixPlanner';
 
 interface CalculationDetailsDialogProps {
@@ -58,20 +52,6 @@ export function CalculationDetailsDialog({
   useEffect(() => {
     setMixConfig(autoOptimizeMixConfig(dimensions, foilSubtype));
   }, [foilSubtype, dimensions]);
-
-  // Handle surface roll width change
-  const handleSurfaceRollWidthChange = (surfaceKey: SurfaceKey, newWidth: RollWidth) => {
-    setMixConfig(prev => updateSurfaceRollWidth(prev, surfaceKey, newWidth, dimensions, foilSubtype));
-  };
-
-  // Handle reset to optimal
-  const handleResetToOptimal = () => {
-    setMixConfig(autoOptimizeMixConfig(dimensions, foilSubtype));
-  };
-
-  // Determine if foil type limits width options
-  const narrowOnly = isNarrowOnlyFoil(foilSubtype);
-  const isButtJoint = usesButtJoint(foilSubtype);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -207,17 +187,7 @@ export function CalculationDetailsDialog({
             {/* Roll Summary */}
             <section>
               <h3 className="font-semibold text-lg mb-3">📦 Podsumowanie rolek</h3>
-              <RollSummary config={mixConfig} />
-            </section>
-
-            {/* Roll Configuration (MIX) */}
-            <section>
-              <RollConfigTable 
-                config={mixConfig}
-                foilSubtype={foilSubtype}
-                onSurfaceRollWidthChange={handleSurfaceRollWidthChange}
-                onResetToOptimal={handleResetToOptimal}
-              />
+              <RollSummary config={mixConfig} isMainFoilStructural={foilSubtype === 'strukturalna'} />
             </section>
 
             {/* Foil strip visualization with tabs */}
