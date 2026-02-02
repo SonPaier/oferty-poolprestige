@@ -4,10 +4,11 @@ import { FinishingWizardProvider, useFinishingWizard, FinishingType } from './Fi
 import { SubtypeCard } from './components/SubtypeCard';
 import { FoilProductTable } from './components/FoilProductTable';
 import { FinishingMaterialsTable } from './components/FinishingMaterialsTable';
+import { CalculationDetailsDialog } from './components/CalculationDetailsDialog';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { ChevronLeft, ChevronRight, Layers, Grid3X3, AlertTriangle, RefreshCw } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Layers, Grid3X3, AlertTriangle, RefreshCw, Calculator } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { FoilSubtype, SUBTYPE_NAMES } from '@/lib/finishingMaterials';
 
@@ -19,6 +20,7 @@ interface FinishingModuleWizardProps {
 function WizardContent({ onNext, onBack }: FinishingModuleWizardProps) {
   const { state, dispatch, foilLineItem, totalNet, canProceed } = useFinishingWizard();
   const { state: configuratorState } = useConfigurator();
+  const [showDetailsDialog, setShowDetailsDialog] = useState(false);
   
   const subtypes: FoilSubtype[] = ['jednokolorowa', 'nadruk', 'strukturalna'];
 
@@ -152,12 +154,18 @@ function WizardContent({ onNext, onBack }: FinishingModuleWizardProps) {
                   Obwód: {state.poolAreas.perimeter.toFixed(2)} mb
                 </CardDescription>
               </div>
-              {state.requiresRecalculation && (
-                <Button variant="outline" size="sm" onClick={handleRecalculate}>
-                  <RefreshCw className="w-4 h-4 mr-2" />
-                  Przelicz ponownie
+              <div className="flex items-center gap-2">
+                {state.requiresRecalculation && (
+                  <Button variant="outline" size="sm" onClick={handleRecalculate}>
+                    <RefreshCw className="w-4 h-4 mr-2" />
+                    Przelicz ponownie
+                  </Button>
+                )}
+                <Button variant="outline" size="sm" onClick={() => setShowDetailsDialog(true)}>
+                  <Calculator className="w-4 h-4 mr-2" />
+                  Szczegóły kalkulacji
                 </Button>
-              )}
+              </div>
             </div>
           </CardHeader>
           <CardContent>
@@ -209,6 +217,19 @@ function WizardContent({ onNext, onBack }: FinishingModuleWizardProps) {
         </CardContent>
       </Card>
 
+      {/* Calculation Details Dialog */}
+      {state.selectedSubtype && (
+        <CalculationDetailsDialog
+          open={showDetailsDialog}
+          onOpenChange={setShowDetailsDialog}
+          poolAreas={state.poolAreas}
+          dimensions={configuratorState.dimensions}
+          materials={state.materials}
+          foilSubtype={state.selectedSubtype}
+          foilPricePerM2={state.subtypePrices[state.selectedSubtype]}
+          manualFoilQty={state.manualFoilQty}
+        />
+      )}
     </div>
   );
 }
