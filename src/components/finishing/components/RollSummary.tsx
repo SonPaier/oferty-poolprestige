@@ -186,26 +186,23 @@ function FoilPoolSummary({
 
 export function RollSummary({ config, isMainFoilStructural = false }: RollSummaryProps) {
   const { main, structural } = partitionSurfacesByFoilType(config.surfaces);
-  const rolls = packStripsIntoRolls(config);
-
-  // Partition rolls by surface assignment
-  const mainSurfaceLabels = new Set(main.map(s => s.surfaceLabel));
-  const structuralSurfaceLabels = new Set(structural.map(s => s.surfaceLabel));
   
-  const mainRolls = rolls.filter(r => 
-    r.strips.some(s => mainSurfaceLabels.has(s.surface))
-  );
-  const structuralRolls = rolls.filter(r => 
-    r.strips.some(s => structuralSurfaceLabels.has(s.surface))
-  );
+  // Pack strips SEPARATELY for each foil type (not together!)
+  const mainConfig = { ...config, surfaces: main };
+  const structuralConfig = { ...config, surfaces: structural };
+  
+  const mainRolls = packStripsIntoRolls(mainConfig);
+  const structuralRolls = packStripsIntoRolls(structuralConfig);
 
   // Calculate roll counts per pool
   const mainRolls165 = mainRolls.filter(r => r.rollWidth === 1.65).length;
   const mainRolls205 = mainRolls.filter(r => r.rollWidth === 2.05).length;
   const structuralRolls165 = structuralRolls.filter(r => r.rollWidth === 1.65).length;
 
-  // If main foil is structural, show combined view
+  // If main foil is structural, show combined view (pack all together)
   if (isMainFoilStructural) {
+    const allRolls = packStripsIntoRolls(config);
+    
     return (
       <div className="space-y-4">
         <div className="flex items-center gap-2 mb-2">
@@ -217,7 +214,7 @@ export function RollSummary({ config, isMainFoilStructural = false }: RollSummar
         <FoilPoolSummary
           title="Wszystkie powierzchnie (strukturalna)"
           surfaces={config.surfaces}
-          rolls={rolls}
+          rolls={allRolls}
           totalRolls165={config.totalRolls165}
           totalRolls205={config.totalRolls205}
           colorClass="bg-purple-50 dark:bg-purple-900/20 border-purple-200 dark:border-purple-800"
