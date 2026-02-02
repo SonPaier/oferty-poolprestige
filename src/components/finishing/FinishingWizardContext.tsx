@@ -36,9 +36,12 @@ export interface FinishingWizardState {
     totalArea: number;
     perimeter: number;
     bottomArea: number;
+    netBottomArea: number;
     wallArea: number;
     stairsArea: number;
+    stairsProjection: number;
     wadingPoolArea: number;
+    wadingPoolProjection: number;
   };
   manualFoilQty: number | null;
   
@@ -84,9 +87,12 @@ const initialState: FinishingWizardState = {
     totalArea: 0,
     perimeter: 0,
     bottomArea: 0,
+    netBottomArea: 0,
     wallArea: 0,
     stairsArea: 0,
+    stairsProjection: 0,
     wadingPoolArea: 0,
+    wadingPoolProjection: 0,
   },
   manualFoilQty: null,
   materials: [],
@@ -260,9 +266,12 @@ export function FinishingWizardProvider({
         totalArea: areas.totalArea,
         perimeter: areas.perimeter,
         bottomArea: areas.bottomArea,
+        netBottomArea: areas.netBottomArea,
         wallArea: areas.wallArea,
         stairsArea: areas.stairsArea || 0,
+        stairsProjection: areas.stairsProjection || 0,
         wadingPoolArea: areas.wadingPoolArea || 0,
+        wadingPoolProjection: areas.wadingPoolProjection || 0,
       },
     });
 

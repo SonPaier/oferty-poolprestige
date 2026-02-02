@@ -79,8 +79,24 @@ export function CalculationDetailsDialog({
                   <h4 className="font-medium mb-2">Niecka basenu</h4>
                   <div className="space-y-1 text-sm">
                     <div className="flex justify-between">
-                      <span className="text-muted-foreground">Dno:</span>
+                      <span className="text-muted-foreground">Dno (brutto):</span>
                       <span>{poolAreas.bottomArea.toFixed(2)} m²</span>
+                    </div>
+                    {(poolAreas.stairsProjection || 0) > 0 && (
+                      <div className="flex justify-between text-orange-600">
+                        <span>− Rzut schodów:</span>
+                        <span>−{(poolAreas.stairsProjection || 0).toFixed(2)} m²</span>
+                      </div>
+                    )}
+                    {(poolAreas.wadingPoolProjection || 0) > 0 && (
+                      <div className="flex justify-between text-blue-600">
+                        <span>− Rzut brodzika:</span>
+                        <span>−{(poolAreas.wadingPoolProjection || 0).toFixed(2)} m²</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between font-medium border-t pt-1">
+                      <span>Dno (netto):</span>
+                      <span>{poolAreas.netBottomArea.toFixed(2)} m²</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Ściany (4×):</span>
@@ -99,7 +115,11 @@ export function CalculationDetailsDialog({
                     </h4>
                     <div className="space-y-1 text-sm">
                       <div className="flex justify-between">
-                        <span className="text-muted-foreground">Powierzchnia schodów:</span>
+                        <span className="text-muted-foreground">Rzut (na dnie):</span>
+                        <span className="text-orange-600">−{(poolAreas.stairsProjection || 0).toFixed(2)} m²</span>
+                      </div>
+                      <div className="flex justify-between font-medium">
+                        <span>Powierzchnia folii:</span>
                         <span>{(poolAreas.stairsArea || 0).toFixed(2)} m²</span>
                       </div>
                     </div>
@@ -116,7 +136,11 @@ export function CalculationDetailsDialog({
                     </h4>
                     <div className="space-y-1 text-sm">
                       <div className="flex justify-between">
-                        <span className="text-muted-foreground">Powierzchnia brodzika:</span>
+                        <span className="text-muted-foreground">Rzut (na dnie):</span>
+                        <span className="text-blue-600">−{(poolAreas.wadingPoolProjection || 0).toFixed(2)} m²</span>
+                      </div>
+                      <div className="flex justify-between font-medium">
+                        <span>Powierzchnia folii:</span>
                         <span>{(poolAreas.wadingPoolArea || 0).toFixed(2)} m²</span>
                       </div>
                     </div>
@@ -125,10 +149,15 @@ export function CalculationDetailsDialog({
 
                 <div className="p-4 rounded-lg bg-primary/10 border border-primary/30 col-span-2">
                   <div className="flex justify-between items-center">
-                    <span className="font-medium">Powierzchnia całkowita:</span>
+                    <span className="font-medium">Powierzchnia całkowita folii:</span>
                     <span className="text-xl font-bold">{poolAreas.totalArea.toFixed(2)} m²</span>
                   </div>
-                  <div className="flex justify-between text-sm text-muted-foreground mt-1">
+                  <div className="text-xs text-muted-foreground mt-1">
+                    = Dno netto ({poolAreas.netBottomArea.toFixed(2)}) + Ściany ({poolAreas.wallArea.toFixed(2)}) 
+                    {(poolAreas.stairsArea || 0) > 0 && ` + Schody (${(poolAreas.stairsArea || 0).toFixed(2)})`}
+                    {(poolAreas.wadingPoolArea || 0) > 0 && ` + Brodzik (${(poolAreas.wadingPoolArea || 0).toFixed(2)})`}
+                  </div>
+                  <div className="flex justify-between text-sm text-muted-foreground mt-2">
                     <span>Obwód basenu:</span>
                     <span>{poolAreas.perimeter.toFixed(2)} mb</span>
                   </div>
