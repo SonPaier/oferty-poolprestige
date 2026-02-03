@@ -788,8 +788,8 @@ export function calculateSurfaceDetails(
     const wallRollWidth = coverHeight <= ROLL_WIDTH_NARROW ? ROLL_WIDTH_NARROW : ROLL_WIDTH_WIDE;
     
     // Calculate how many strips we need based on roll length
-    const joinOverlap = MIN_OVERLAP_WALL; // 10cm for joining ends
-    const totalLengthNeeded = perimeter + joinOverlap; // Include joining overlap
+    const stripJoinOverlap = MIN_OVERLAP_WALL; // 10cm for joining strip ends
+    const totalLengthNeeded = perimeter + stripJoinOverlap; // Include joining overlap
     
     // Number of strips needed (each strip can be at most ROLL_LENGTH)
     const stripCount = Math.ceil(totalLengthNeeded / ROLL_LENGTH);
@@ -806,7 +806,7 @@ export function calculateSurfaceDetails(
       const baseLength = Math.floor(totalLengthNeeded / stripCount * 10) / 10;
       for (let i = 0; i < stripCount - 1; i++) {
         // Try to use full roll length for efficiency, or split evenly
-        const thisLength = Math.min(ROLL_LENGTH, baseLength + (i === 0 ? joinOverlap : 0));
+        const thisLength = Math.min(ROLL_LENGTH, baseLength + (i === 0 ? stripJoinOverlap : 0));
         stripLengths.push(thisLength);
         remainingLength -= thisLength;
       }
@@ -825,9 +825,8 @@ export function calculateSurfaceDetails(
       wallLabels?: string[];
     }> = [];
     
-    // Build wall label mapping
-    let currentWallIdx = 0;
-    let positionInWall = 0;
+    // Build wall label mapping with CORRECT continuous assignment
+    // If strip 1 covers A-B-C, strip 2 should cover C-D-A (continuing from C)
     let cumulativeLength = 0;
     
     for (let i = 0; i < stripLengths.length; i++) {
@@ -844,27 +843,57 @@ export function calculateSurfaceDetails(
       // Determine which walls this strip covers
       const startLength = cumulativeLength;
       const endLength = cumulativeLength + stripLen;
-      const coveredLabels: string[] = [];
+      const coveredCorners: string[] = [];
       
-      // Find starting wall
+      // Walk through walls to find which corners are covered
       let len = 0;
       for (let wIdx = 0; wIdx < walls.length; wIdx++) {
+        const wallStart = len;
         const wallEnd = len + walls[wIdx].length;
-        if (startLength < wallEnd && endLength > len) {
-          coveredLabels.push(walls[wIdx].label);
+        
+        // If this strip starts within this wall or before it
+        if (startLength <= wallStart && wallStart < endLength) {
+          // Strip includes the start of this wall (corner at start)
+          const startCorner = walls[wIdx].label.split('-')[0];
+          if (coveredCorners.length === 0 || coveredCorners[coveredCorners.length - 1] !== startCorner) {
+            coveredCorners.push(startCorner);
+          }
         }
+        
+        // If strip ends within or after this wall
+        if (startLength < wallEnd && endLength >= wallEnd) {
+          // Strip includes the end of this wall (corner at end)
+          const endCorner = walls[wIdx].label.split('-')[1];
+          if (coveredCorners.length === 0 || coveredCorners[coveredCorners.length - 1] !== endCorner) {
+            coveredCorners.push(endCorner);
+          }
+        }
+        
         len = wallEnd;
       }
-      // Handle wrap-around for last strip
-      if (endLength > perimeter) {
-        coveredLabels.push(walls[0].label);
+      
+      // Handle wrap-around for last strip going back to A
+      if (endLength >= perimeter) {
+        if (coveredCorners.length === 0 || coveredCorners[coveredCorners.length - 1] !== 'A') {
+          coveredCorners.push('A');
+        }
       }
       
-      // Create combined label
-      const uniqueLabels = [...new Set(coveredLabels)];
-      const combinedLabel = uniqueLabels.length > 0 
-        ? uniqueLabels.map(l => l.split('-')[0]).join('-') + '-' + uniqueLabels[uniqueLabels.length - 1].split('-')[1]
-        : 'A-B';
+      // If still empty, determine from position
+      if (coveredCorners.length === 0) {
+        let currentLen = 0;
+        for (let wIdx = 0; wIdx < walls.length; wIdx++) {
+          if (startLength < currentLen + walls[wIdx].length) {
+            coveredCorners.push(walls[wIdx].label.split('-')[0]);
+            coveredCorners.push(walls[wIdx].label.split('-')[1]);
+            break;
+          }
+          currentLen += walls[wIdx].length;
+        }
+      }
+      
+      // Create label like "A-B-C" from corners [A, B, C]
+      const combinedLabel = coveredCorners.join('-') || 'A-B';
       
       strips.push({
         count: 1,
@@ -880,11 +909,19 @@ export function calculateSurfaceDetails(
     // Net cover area = perimeter × height
     const coverArea = perimeter * coverHeight;
     
-    // Total weld area includes join overlaps between strips
-    const weldArea = stripCount * joinOverlap * wallRollWidth;
+    // Wall weld/overlap area calculation:
+    // 1. Each strip has TOP overlap (0.1m × length) and BOTTOM overlap (0.1m × length)
+    // 2. Plus strip-to-strip joins where strips meet horizontally
+    const topBottomOverlap = MIN_OVERLAP_WALL; // 10cm top and bottom
+    const topBottomWeldArea = perimeter * topBottomOverlap * 2; // top + bottom across entire perimeter
     
-    // Total foil area = used area + unusable waste
-    const totalFoilAreaRaw = totalUsedFoilArea + totalUnusableWaste;
+    // Strip join overlap (where strips meet end-to-end)
+    const stripJoinWeldArea = stripCount > 1 ? (stripCount - 1) * stripJoinOverlap * wallRollWidth : 0;
+    
+    const totalWeldArea = topBottomWeldArea + stripJoinWeldArea;
+    
+    // Total foil area = used area (includes overlaps)
+    const totalFoilAreaRaw = totalUsedFoilArea;
     
     results.push({
       surfaceKey: 'walls',
@@ -892,7 +929,7 @@ export function calculateSurfaceDetails(
       strips,
       coverArea: Math.round(coverArea * 10) / 10,
       totalFoilArea: Math.ceil(totalFoilAreaRaw),
-      weldArea: Math.round(weldArea * 10) / 10,
+      weldArea: Math.round(totalWeldArea * 10) / 10,
       wasteArea: Math.round(totalUnusableWaste * 10) / 10,
     });
   }
