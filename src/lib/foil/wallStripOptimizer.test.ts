@@ -68,6 +68,62 @@ function makeConfigForBottom10mMixedWidths(): MixConfiguration {
   };
 }
 
+function makeDimensions8x4x15(): PoolDimensions {
+  return {
+    shape: "prostokatny",
+    location: "wewnetrzny",
+    liningType: "foliowany",
+    length: 8,
+    width: 4,
+    depth: 1.5,
+    hasSlope: false,
+    isIrregular: false,
+    overflowType: "skimmerowy",
+    attractions: 0,
+    stairs: defaultStairsConfig,
+    wadingPool: defaultWadingPoolConfig,
+  };
+}
+
+function makeConfigForBottom8m(): MixConfiguration {
+  return {
+    surfaces: [
+      {
+        surface: "bottom",
+        surfaceLabel: "Dno",
+        rollWidth: ROLL_WIDTH_WIDE,
+        stripMix: [
+          { rollWidth: ROLL_WIDTH_WIDE, count: 2 },
+        ],
+        stripCount: 2,
+        areaM2: 0,
+        wasteM2: 0,
+        isManualOverride: false,
+        stripLength: 8,
+        coverWidth: 4,
+        foilAssignment: "main",
+      },
+      {
+        surface: "walls",
+        surfaceLabel: "Ściany",
+        rollWidth: ROLL_WIDTH_NARROW,
+        stripCount: 0,
+        areaM2: 0,
+        wasteM2: 0,
+        isManualOverride: false,
+        stripLength: 0,
+        coverWidth: 1.5,
+        foilAssignment: "main",
+      },
+    ],
+    totalRolls165: 0,
+    totalRolls205: 0,
+    totalWaste: 0,
+    wastePercentage: 0,
+    isOptimized: true,
+  };
+}
+
 describe("wallStripOptimizer priority behavior", () => {
   it("minWaste should prefer symmetric 15m + 15.2m strips for 10x5x1.5m", () => {
     const dimensions = makeDimensions10x5x15();
@@ -111,5 +167,19 @@ describe("wallStripOptimizer priority behavior", () => {
     // For 10x5x1.5 with jednokolorowa and bottom offcuts 15m available,
     // minRolls should prefer a configuration that uses 2.05m strips to match offcuts.
     expect(rollsPlan!.strips.some((s) => s.rollWidth === ROLL_WIDTH_WIDE)).toBe(true);
+  });
+
+  it("minWaste should prefer 1 continuous strip for 8x4x1.5m pool (perimeter 24m fits in 25m roll)", () => {
+    const dimensions = makeDimensions8x4x15();
+    const config = makeConfigForBottom8m();
+
+    const wastePlan = getOptimalWallStripPlan(dimensions, config, "jednokolorowa", "minWaste");
+
+    expect(wastePlan).toBeTruthy();
+    
+    // 24m perimeter + 0.1m overlap = 24.1m, fits in one 25m roll
+    // Should prefer 1 strip (fewer welds) over 4 strips
+    expect(wastePlan!.totalStripCount).toBe(1);
+    expect(wastePlan!.strips[0].totalLength).toBeCloseTo(24.1, 1);
   });
 });
