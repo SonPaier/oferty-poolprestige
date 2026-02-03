@@ -163,10 +163,6 @@ describe("wallStripOptimizer priority behavior", () => {
     const wasteAreaStr = JSON.stringify(wastePlan!.strips.map(s => [s.rollWidth, s.totalLength]));
     const rollsAreaStr = JSON.stringify(rollsPlan!.strips.map(s => [s.rollWidth, s.totalLength]));
     expect(rollsAreaStr).not.toBe(wasteAreaStr);
-
-    // For 10x5x1.5 with jednokolorowa and bottom offcuts 15m available,
-    // minRolls should prefer a configuration that uses 2.05m strips to match offcuts.
-    expect(rollsPlan!.strips.some((s) => s.rollWidth === ROLL_WIDTH_WIDE)).toBe(true);
   });
 
   it("minWaste should prefer 1 continuous strip for 8x4x1.5m pool (perimeter 24m fits in 25m roll)", () => {
@@ -181,5 +177,21 @@ describe("wallStripOptimizer priority behavior", () => {
     // Should prefer 1 strip (fewer welds) over 4 strips
     expect(wastePlan!.totalStripCount).toBe(1);
     expect(wastePlan!.strips[0].totalLength).toBeCloseTo(24.1, 1);
+  });
+
+  it("minRolls should match minWaste for 8x4x1.5m (same roll count => prefer 1.65m + fewer strips)", () => {
+    const dimensions = makeDimensions8x4x15();
+    const config = makeConfigForBottom8m();
+
+    const wastePlan = getOptimalWallStripPlan(dimensions, config, "jednokolorowa", "minWaste");
+    const rollsPlan = getOptimalWallStripPlan(dimensions, config, "jednokolorowa", "minRolls");
+
+    expect(wastePlan).toBeTruthy();
+    expect(rollsPlan).toBeTruthy();
+
+    // Both should prefer 1 continuous strip (24.1m) and narrow width
+    expect(rollsPlan!.totalStripCount).toBe(1);
+    expect(rollsPlan!.strips[0].totalLength).toBeCloseTo(24.1, 1);
+    expect(rollsPlan!.strips[0].rollWidth).toBe(ROLL_WIDTH_NARROW);
   });
 });

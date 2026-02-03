@@ -58,8 +58,8 @@ export interface WallStripPlan {
 /** Bottom strip info for pairing */
 interface BottomStripInfo {
   rollWidth: RollWidth;
-  length: number;
-  offcutLength: number;  // ROLL_LENGTH - length
+  usedLength: number;    // total bottom length already consumed in this physical roll
+  offcutLength: number;  // remaining length available for pairing: ROLL_LENGTH - usedLength
 }
 
 /**
@@ -96,16 +96,50 @@ function getBottomStripsInfo(config: MixConfiguration): BottomStripInfo[] {
     ? bottom.stripMix
     : [{ rollWidth: bottom.rollWidth, count: bottom.stripCount }];
   
-  const result: BottomStripInfo[] = [];
+  // IMPORTANT:
+  // `stripMix.count` represents number of BOTTOM STRIPS (not necessarily number of ordered rolls).
+  // Multiple bottom strips of the same width can be cut from one physical roll (25m).
+  // For cross-surface pairing (bottom -> walls) we must therefore model *physical bottom rolls*
+  // and compute the remaining length (offcut) after cutting all bottom strips assigned to that roll.
+
+  // Build a list of strip lengths per width
+  const stripsByWidth = new Map<RollWidth, number[]>();
   for (const group of mix) {
-    for (let i = 0; i < group.count; i++) {
+    const arr = stripsByWidth.get(group.rollWidth) || [];
+    for (let i = 0; i < group.count; i++) arr.push(bottom.stripLength);
+    stripsByWidth.set(group.rollWidth, arr);
+  }
+
+  const result: BottomStripInfo[] = [];
+
+  // Pack bottom strips into physical rolls per width (First Fit Decreasing)
+  for (const [rollWidth, stripLengths] of stripsByWidth) {
+    const sorted = [...stripLengths].sort((a, b) => b - a);
+    const rolls: number[] = []; // used length per roll
+
+    for (const len of sorted) {
+      let placed = false;
+      for (let i = 0; i < rolls.length; i++) {
+        if (ROLL_LENGTH - rolls[i] >= len - 0.001) {
+          rolls[i] += len;
+          placed = true;
+          break;
+        }
+      }
+      if (!placed) {
+        rolls.push(len);
+      }
+    }
+
+    for (const usedLength of rolls) {
       result.push({
-        rollWidth: group.rollWidth,
-        length: bottom.stripLength,
-        offcutLength: ROLL_LENGTH - bottom.stripLength,
+        rollWidth,
+        usedLength,
+        offcutLength: Math.max(0, ROLL_LENGTH - usedLength),
       });
     }
   }
+
   return result;
 }
 
@@ -295,7 +329,7 @@ function calculateWasteForPlan(
   wasteArea = packing.nonReusableWaste * dominantWidth;
   reusableArea = packing.reusableWaste * dominantWidth;
   
-  // Check if wall strips can pair with bottom offcuts (cross-surface optimization)
+  // Check if wall strips can pair with bottom OFFCUTS (cross-surface optimization)
   const usedBottomIndices = new Set<number>();
   for (const strip of strips) {
     for (let bi = 0; bi < bottomStrips.length; bi++) {
@@ -303,10 +337,11 @@ function calculateWasteForPlan(
       const bottom = bottomStrips[bi];
       if (bottom.rollWidth !== strip.rollWidth) continue;
       
-      if (strip.totalLength + bottom.length <= ROLL_LENGTH + 0.001) {
+      // bottom.offcutLength is what is actually left in that physical bottom roll
+      if (strip.totalLength <= bottom.offcutLength + 0.001) {
         usedBottomIndices.add(bi);
-        const leftover = ROLL_LENGTH - strip.totalLength - bottom.length;
-        pairedLeftover += leftover;
+        const leftover = bottom.offcutLength - strip.totalLength;
+        pairedLeftover += Math.max(0, leftover);
         break;
       }
     }
@@ -505,6 +540,62 @@ function estimateAdditionalWallRollArea(
 }
 
 /**
+ * Exact additional ordered roll area for WALLS when we can consume bottom offcuts.
+ * Works per width, using First Fit Decreasing bin packing:
+ * - bins start with bottom offcuts (capacity = offcutLength)
+ * - if strip doesn't fit, we open a new roll bin (capacity = 25m)
+ */
+function calculateAdditionalWallOrderedArea(
+  strips: WallStripConfig[],
+  bottomRolls: BottomStripInfo[]
+): number {
+  const stripsByWidth = new Map<RollWidth, number[]>();
+  for (const s of strips) {
+    const arr = stripsByWidth.get(s.rollWidth) || [];
+    arr.push(s.totalLength);
+    stripsByWidth.set(s.rollWidth, arr);
+  }
+
+  let additionalArea = 0;
+
+  for (const [width, lengths] of stripsByWidth) {
+    const bins: number[] = bottomRolls
+      .filter(b => b.rollWidth === width)
+      .map(b => b.offcutLength)
+      .filter(cap => cap > 0.001)
+      .sort((a, b) => b - a);
+
+    const sortedLengths = [...lengths].sort((a, b) => b - a);
+
+    let newRolls = 0;
+    const capacities = [...bins];
+
+    for (const len of sortedLengths) {
+      let placed = false;
+
+      // try existing bins first (bottom offcuts or previously opened rolls)
+      for (let i = 0; i < capacities.length; i++) {
+        if (capacities[i] >= len - 0.001) {
+          capacities[i] -= len;
+          placed = true;
+          break;
+        }
+      }
+
+      if (!placed) {
+        // open a new roll (25m)
+        newRolls++;
+        capacities.push(ROLL_LENGTH - len);
+      }
+    }
+
+    additionalArea += newRolls * width * ROLL_LENGTH;
+  }
+
+  return additionalArea;
+}
+
+/**
  * Calculate "width waste" - excess roll width beyond wall depth
  * This penalizes using 2.05m rolls when 1.65m would suffice
  */
@@ -547,40 +638,30 @@ export function selectOptimalWallPlan(
       // Calculate if waste difference is significant (> 1m²)
       const wasteSignificance = wasteArea > 1 ? wasteArea * 10_000 : 0;
       
+      // Prefer more balanced strip lengths when strip count is the same
+      // (e.g. 15m + 15.2m over 10m + 20.2m)
+      const lengths = plan.strips.map((s) => s.totalLength);
+      const imbalance = lengths.length >= 2 ? Math.max(...lengths) - Math.min(...lengths) : 0;
+
       score = actualRollsNeeded * 100_000_000  // Primary: minimize rolls
             + wasteSignificance                 // Secondary: only if waste > 1m²
             + plan.totalStripCount * 10_000     // Tertiary: minimize welds
+            + imbalance * 1_000                 // Tie-break: more balanced splits
             + pairedLeftover * 100
             + plan.totalFoilArea * 0.01;
     } else {
-      // minRolls: minimize total foil COST (m² ordered from manufacturer)
-      // 
-      // Key insight: At the same roll count, prefer narrower rolls (cheaper per roll).
-      // - Roll 1.65m × 25m = 41.25m² 
-      // - Roll 2.05m × 25m = 51.25m²
-      // 
-      // For 8x4 pool with 1.5m depth:
-      // Both options need ~2 rolls total (1 bottom + 1 walls), but:
-      // - 1.65m walls: 2 rolls = 82.50m² ordered
-      // - 2.05m walls: 2 rolls = 102.50m² ordered (or 92.50m² if mixed)
-      // 
-      // So at equal roll count, 1.65m is always cheaper!
-      //
-      // Calculate total roll area that would need to be ordered
-      const additionalWallRollArea = estimateAdditionalWallRollArea(plan, bottomStrips);
-      
-      // Count rolls by width to calculate actual m² to order
-      const rollsBy165 = plan.strips.filter(s => s.rollWidth === 1.65).length > 0;
-      const rollsBy205 = plan.strips.filter(s => s.rollWidth === 2.05).length > 0;
-      
-      // Primary: minimize additional rolls needed
-      // Secondary: minimize total foil area (accounts for roll width cost difference)
-      // This ensures that at same roll count, narrower (cheaper) rolls win
-      score = additionalWallRollArea * 1_000_000   // Primary: minimize extra rolls (in m²)
-            + plan.totalFoilArea * 10_000          // Secondary: minimize total foil needed
-            + widthWaste * 1_000                   // Tertiary: penalize excess width  
+      // minRolls: minimize additional ORDERED m² for walls (roll width × 25m),
+      // after consuming bottom offcuts (same width) wherever possible.
+      // If two plans require the same ordered m², prefer fewer strips (fewer zgrzewów).
+
+      const additionalOrderedArea = calculateAdditionalWallOrderedArea(plan.strips, bottomStrips);
+
+      score = additionalOrderedArea * 1_000_000 // Primary: minimize ordered m² for walls
+            + plan.totalStripCount * 10_000     // Secondary: fewer strips / joins
+            + plan.totalFoilArea * 100          // Tertiary: slightly prefer less used foil
+            + widthWaste * 10                   // Tie-break: avoid excessive width
             + wasteArea * 10
-            + plan.totalStripCount;
+            + pairedLeftover;                   // Tie-break: tighter pairing with offcuts
     }
     
     return { ...plan, score };
