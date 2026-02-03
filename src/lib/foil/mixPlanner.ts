@@ -950,12 +950,13 @@ export function calculateSurfaceDetails(
     const depth = dimensions.depth;
     
     // ===== 1. ROLL WIDTH SELECTION =====
-    // Allow mixed widths per wall strip (e.g. 1.65 + 2.05) in minRolls.
+    // All wall strips use the same width based on depth (installation constraint)
     const wLong = wallSurfaces.find((s) => s.surface === 'wall-long')?.rollWidth as RollWidth | undefined;
-    const wShort = wallSurfaces.find((s) => s.surface === 'wall-short')?.rollWidth as RollWidth | undefined;
     const fallbackWidth = getPreferredWallRollWidth(dimensions, foilSubtype);
-    const wallWidthsForStrips: RollWidth[] = [wLong ?? fallbackWidth, wShort ?? wLong ?? fallbackWidth];
-    const isMixed = wallWidthsForStrips[0] !== wallWidthsForStrips[1];
+    const wallRollWidth = wLong ?? fallbackWidth;
+    // All wall strips use the same width (no mixed wall widths)
+    const wallWidthsForStrips: RollWidth[] = [wallRollWidth, wallRollWidth];
+    const isMixed = false;
     
     // ===== 2. HORIZONTAL OVERLAP CALCULATION (top/bottom) =====
     const getHorizontalOverlapForWidth = (w: RollWidth): { overlap: number; edgeWastePerSide: number } => {
@@ -1268,31 +1269,32 @@ export function autoOptimizeMixConfig(
   const narrowOnlyMain = isNarrowOnlyFoil(foilSubtype);
   const depth = dimensions.depth;
 
+  // Determine wall width based on depth (installation constraint, not optimization)
+  // - depth <= 1.55m: must use 1.65m
+  // - 1.55m < depth <= 1.95m: must use 2.05m
+  // - depth > 1.95m: must use 1.65m (2 strips stacked)
+  const wallRollWidth: RollWidth = narrowOnlyMain
+    ? ROLL_WIDTH_NARROW
+    : depth <= DEPTH_THRESHOLD_FOR_WIDE
+      ? ROLL_WIDTH_NARROW
+      : depth <= DEPTH_THRESHOLD_FOR_DOUBLE_NARROW
+        ? ROLL_WIDTH_WIDE
+        : ROLL_WIDTH_NARROW;
+
   for (const def of surfaceDefinitions) {
     let optimalWidth: RollWidth;
     let wastePerSurface: number;
+    let stripMix: Array<{ rollWidth: RollWidth; count: number }> | undefined;
 
     // CRITICAL: Structural surfaces (stairs, paddling bottom) ALWAYS use 1.65m only
     const isStructuralSurface = def.foilAssignment === 'structural';
     const forceNarrow = narrowOnlyMain || isStructuralSurface;
 
     const isWall = def.key === 'wall-long' || def.key === 'wall-short';
-    // Installation constraint for walls:
-    // - depth <= 1.55m: both widths allowed
-    // - 1.55m < depth <= 1.95m: must be 2.05m
-    // - depth > 1.95m: must be 1.65m (in multiple strips)
-    const forcedWallWidth: RollWidth | null = isWall
-      ? (forceNarrow
-          ? ROLL_WIDTH_NARROW
-          : depth > DEPTH_THRESHOLD_FOR_DOUBLE_NARROW
-            ? ROLL_WIDTH_NARROW
-            : depth > DEPTH_THRESHOLD_FOR_WIDE
-              ? ROLL_WIDTH_WIDE
-              : null)
-      : null;
 
-    if (forcedWallWidth) {
-      optimalWidth = forcedWallWidth;
+    if (isWall) {
+      // Walls use depth-based width (not optimization-based)
+      optimalWidth = wallRollWidth;
       const calc = calculateStripsForWidth(def.coverWidth, optimalWidth, def.overlap);
       wastePerSurface = calc.wasteArea * def.stripLength;
     } else if (forceNarrow) {
@@ -1300,38 +1302,18 @@ export function autoOptimizeMixConfig(
       optimalWidth = ROLL_WIDTH_NARROW;
       const calc = calculateStripsForWidth(def.coverWidth, ROLL_WIDTH_NARROW, def.overlap);
       wastePerSurface = calc.wasteArea * def.stripLength;
-    } else if (priority === 'minRolls') {
-      // "Min rolls" = minimize total m² ordered from manufacturer.
-      // Total m² for a surface = stripCount × stripLength × rollWidth
-      // We compare both widths and choose the one with lower total foil consumption.
-      const narrowCalc = calculateStripsForWidth(def.coverWidth, ROLL_WIDTH_NARROW, def.overlap);
-      const wideCalc = calculateStripsForWidth(def.coverWidth, ROLL_WIDTH_WIDE, def.overlap);
+    } else if (def.key === 'bottom') {
+      // Bottom: try mixed widths to optimize based on priority
+      // For minRolls: prefer mix that allows pairing with wall strips of same width
+      // For minWaste: prefer mix with least edge waste
       
-      // Total foil ordered = strips × length × width
-      const narrowTotalM2 = narrowCalc.count * def.stripLength * ROLL_WIDTH_NARROW;
-      const wideTotalM2 = wideCalc.count * def.stripLength * ROLL_WIDTH_WIDE;
+      const candidates: Array<{ 
+        mix: Array<{ rollWidth: RollWidth; count: number }>; 
+        eval: MixedStripEval;
+        narrowCount: number;
+        wideCount: number;
+      }> = [];
       
-      // Choose the option with less total m² ordered
-      if (wideTotalM2 <= narrowTotalM2) {
-        optimalWidth = ROLL_WIDTH_WIDE;
-        wastePerSurface = wideCalc.wasteArea * def.stripLength;
-      } else {
-        optimalWidth = ROLL_WIDTH_NARROW;
-        wastePerSurface = narrowCalc.wasteArea * def.stripLength;
-      }
-    } else {
-      // Default: minimize waste
-      const optimalResult = findOptimalMixedWidths(def.coverWidth, def.stripLength, def.overlap);
-      optimalWidth = optimalResult.primaryWidth;
-      wastePerSurface = optimalResult.totalWaste;
-    }
-
-    // Special-case: bottom can be optimally covered with mixed widths (e.g. 2×1.65 + 1×2.05)
-    // When main foil supports both widths:
-    // - minWaste: choose mix that minimizes edge waste
-    // - minRolls: choose mix that minimizes total m² of strips (width-sum × length)
-    if (!forceNarrow && def.key === 'bottom' && (priority === 'minWaste' || priority === 'minRolls')) {
-      const candidates: Array<{ mix: Array<{ rollWidth: RollWidth; count: number }>; eval: MixedStripEval }> = [];
       const maxWidth = ROLL_WIDTH_WIDE;
       const minWidth = ROLL_WIDTH_NARROW;
       const minStrips = Math.max(1, Math.ceil(def.coverWidth / maxWidth));
@@ -1348,24 +1330,36 @@ export function autoOptimizeMixConfig(
           const widths = buildWidthsFromMix(mix);
           const evalRes = evaluateMixedStrips(def.coverWidth, widths, def.overlap);
           if (!evalRes.isValid) continue;
-          candidates.push({ mix, eval: evalRes });
+          candidates.push({ mix, eval: evalRes, narrowCount, wideCount });
         }
       }
 
-      // Pick best based on optimization priority
+      // Sort based on priority
       candidates.sort((a, b) => {
         if (priority === 'minRolls') {
-          const aM2 = a.eval.materialWidthUsed * def.stripLength;
-          const bM2 = b.eval.materialWidthUsed * def.stripLength;
-          if (Math.abs(aM2 - bM2) > 1e-6) return aM2 - bM2;
-
-          // Tie-breakers: fewer strips, then less edge waste
-          if (a.eval.stripCount !== b.eval.stripCount) return a.eval.stripCount - b.eval.stripCount;
-          const aWaste = a.eval.edgeWasteWidth * def.stripLength;
-          const bWaste = b.eval.edgeWasteWidth * def.stripLength;
-          return aWaste - bWaste;
+          // minRolls: prioritize configurations that maximize pairing with walls
+          // Walls use wallRollWidth, so we want bottom strips of matching width
+          
+          // Calculate how many bottom strips can pair with wall strips
+          // Wall strips are at wallRollWidth
+          const aMatchingStrips = wallRollWidth === ROLL_WIDTH_NARROW ? a.narrowCount : a.wideCount;
+          const bMatchingStrips = wallRollWidth === ROLL_WIDTH_NARROW ? b.narrowCount : b.wideCount;
+          
+          // Calculate total m² ordered for bottom
+          const aBottomM2 = a.eval.materialWidthUsed * def.stripLength;
+          const bBottomM2 = b.eval.materialWidthUsed * def.stripLength;
+          
+          // Primary: minimize total bottom m² (fewer/narrower strips = less material)
+          if (Math.abs(aBottomM2 - bBottomM2) > 0.1) return aBottomM2 - bBottomM2;
+          
+          // Secondary: prefer more strips matching wall width (better pairing)
+          if (aMatchingStrips !== bMatchingStrips) return bMatchingStrips - aMatchingStrips;
+          
+          // Tertiary: fewer strips
+          return a.eval.stripCount - b.eval.stripCount;
         }
 
+        // minWaste: minimize edge waste, then fewer strips
         const aWaste = a.eval.edgeWasteWidth * def.stripLength;
         const bWaste = b.eval.edgeWasteWidth * def.stripLength;
         if (Math.abs(aWaste - bWaste) > 1e-6) return aWaste - bWaste;
@@ -1379,18 +1373,20 @@ export function autoOptimizeMixConfig(
         const totalStrips = best.eval.stripCount * def.count;
         const edgeWasteArea = best.eval.edgeWasteWidth * def.stripLength * def.count;
 
-        // Choose a representative width for legacy fields (prefer wide if present)
+        // Choose representative width for legacy fields
         const hasWide = best.mix.some((m) => m.rollWidth === ROLL_WIDTH_WIDE);
         optimalWidth = hasWide ? ROLL_WIDTH_WIDE : ROLL_WIDTH_NARROW;
+        stripMix = best.mix;
+        wastePerSurface = edgeWasteArea;
 
         surfaces.push({
           surface: def.key,
           surfaceLabel: def.label,
           rollWidth: optimalWidth,
-          stripMix: best.mix,
+          stripMix,
           stripCount: totalStrips,
           areaM2: totalArea,
-          wasteM2: edgeWasteArea,
+          wasteM2: wastePerSurface,
           isManualOverride: false,
           stripLength: def.stripLength,
           coverWidth: def.coverWidth,
@@ -1398,6 +1394,32 @@ export function autoOptimizeMixConfig(
         });
 
         continue;
+      }
+
+      // Fallback if no valid mix found
+      optimalWidth = ROLL_WIDTH_NARROW;
+      const calc = calculateStripsForWidth(def.coverWidth, optimalWidth, def.overlap);
+      wastePerSurface = calc.wasteArea * def.stripLength;
+    } else {
+      // Other surfaces (dividing wall, etc.) - use standard optimization
+      if (priority === 'minRolls') {
+        const narrowCalc = calculateStripsForWidth(def.coverWidth, ROLL_WIDTH_NARROW, def.overlap);
+        const wideCalc = calculateStripsForWidth(def.coverWidth, ROLL_WIDTH_WIDE, def.overlap);
+        
+        const narrowTotalM2 = narrowCalc.count * def.stripLength * ROLL_WIDTH_NARROW;
+        const wideTotalM2 = wideCalc.count * def.stripLength * ROLL_WIDTH_WIDE;
+        
+        if (wideTotalM2 <= narrowTotalM2) {
+          optimalWidth = ROLL_WIDTH_WIDE;
+          wastePerSurface = wideCalc.wasteArea * def.stripLength;
+        } else {
+          optimalWidth = ROLL_WIDTH_NARROW;
+          wastePerSurface = narrowCalc.wasteArea * def.stripLength;
+        }
+      } else {
+        const optimalResult = findOptimalMixedWidths(def.coverWidth, def.stripLength, def.overlap);
+        optimalWidth = optimalResult.primaryWidth;
+        wastePerSurface = optimalResult.totalWaste;
       }
     }
 
@@ -1409,6 +1431,7 @@ export function autoOptimizeMixConfig(
       surface: def.key,
       surfaceLabel: def.label,
       rollWidth: optimalWidth,
+      stripMix,
       stripCount: calc.count * def.count,
       areaM2: totalArea,
       wasteM2: wastePerSurface * def.count,
@@ -1417,65 +1440,6 @@ export function autoOptimizeMixConfig(
       coverWidth: def.coverWidth,
       foilAssignment: def.foilAssignment,
     });
-  }
-
-  // For minRolls, allow a small local search for wall width combinations when both widths are allowed.
-  // This enables mixed (1.65/2.05) wall strips to reduce total ordered m² in cases like 10×5.
-  if (priority === 'minRolls' && !narrowOnlyMain && depth <= DEPTH_THRESHOLD_FOR_WIDE) {
-    const wallLongDef = surfaceDefinitions.find((d) => d.key === 'wall-long');
-    const wallShortDef = surfaceDefinitions.find((d) => d.key === 'wall-short');
-    if (wallLongDef && wallShortDef) {
-      const combos: Array<{ wLong: RollWidth; wShort: RollWidth }> = [
-        { wLong: ROLL_WIDTH_NARROW, wShort: ROLL_WIDTH_NARROW },
-        { wLong: ROLL_WIDTH_WIDE, wShort: ROLL_WIDTH_WIDE },
-        { wLong: ROLL_WIDTH_NARROW, wShort: ROLL_WIDTH_WIDE },
-        { wLong: ROLL_WIDTH_WIDE, wShort: ROLL_WIDTH_NARROW },
-      ];
-
-      const applyWalls = (wLong: RollWidth, wShort: RollWidth): SurfaceRollConfig[] => {
-        return surfaces.map((s) => {
-          if (s.surface !== 'wall-long' && s.surface !== 'wall-short') return s;
-          const def = s.surface === 'wall-long' ? wallLongDef : wallShortDef;
-          const w = s.surface === 'wall-long' ? wLong : wShort;
-          const calc = calculateStripsForWidth(def.coverWidth, w, def.overlap);
-          const areaPerSurface = def.stripLength * def.coverWidth;
-          const totalArea = areaPerSurface * def.count;
-          const wastePerSurface = calc.wasteArea * def.stripLength;
-          return {
-            ...s,
-            rollWidth: w,
-            stripMix: undefined,
-            stripCount: calc.count * def.count,
-            areaM2: totalArea,
-            wasteM2: wastePerSurface * def.count,
-            isManualOverride: false,
-            stripLength: def.stripLength,
-            coverWidth: def.coverWidth,
-          };
-        });
-      };
-
-      let best: MixConfiguration | null = null;
-      let bestOrderedM2 = Infinity;
-
-      for (const c of combos) {
-        const candidateConfig = calculateTotals(applyWalls(c.wLong, c.wShort), true, foilSubtype, dimensions);
-        const orderedM2 =
-          candidateConfig.totalRolls165 * ROLL_WIDTH_NARROW * ROLL_LENGTH +
-          candidateConfig.totalRolls205 * ROLL_WIDTH_WIDE * ROLL_LENGTH;
-
-        if (orderedM2 < bestOrderedM2 - 1e-6) {
-          bestOrderedM2 = orderedM2;
-          best = candidateConfig;
-        } else if (Math.abs(orderedM2 - bestOrderedM2) <= 1e-6 && best) {
-          if (candidateConfig.totalWaste < best.totalWaste - 1e-6) {
-            best = candidateConfig;
-          }
-        }
-      }
-
-      if (best) return best;
-    }
   }
 
   return calculateTotals(surfaces, true, foilSubtype, dimensions);
@@ -1636,26 +1600,21 @@ export function packStripsIntoRolls(
   // Inject continuous wall strips (perimeter-based) so packing matches UI wall plan.
   if (shouldUseContinuousWallStrips && dimensions) {
     const wallLong = wallSurfaces.find((s) => s.surface === 'wall-long');
-    const wallShort = wallSurfaces.find((s) => s.surface === 'wall-short');
 
     const wLong = wallLong?.rollWidth as RollWidth | undefined;
-    const wShort = wallShort?.rollWidth as RollWidth | undefined;
     const fallbackWidth = getPreferredWallRollWidth(dimensions);
-    const wallWidthsForStrips: RollWidth[] = [wLong ?? fallbackWidth, wShort ?? wLong ?? fallbackWidth];
+    // All wall strips use the same width (based on depth)
+    const wallRollWidth = wLong ?? fallbackWidth;
 
     const perimeter = getWallSegments(dimensions).reduce((sum, w) => sum + w.length, 0);
-    const wallPlan = computeWallStripPlanFromPerimeter(perimeter, config, wallWidthsForStrips);
+    const wallPlan = computeWallStripPlanFromPerimeter(perimeter, config, [wallRollWidth, wallRollWidth]);
 
     for (let i = 0; i < wallPlan.stripLengths.length; i++) {
-      const rollWidthForThisStrip: RollWidth =
-        wallPlan.stripLengths.length === 2
-          ? (wallWidthsForStrips[i] ?? wallWidthsForStrips[0])
-          : wallWidthsForStrips[0];
       allStrips.push({
         surface: 'Ściany',
         stripIndex: i + 1,
         length: wallPlan.stripLengths[i],
-        rollWidth: rollWidthForThisStrip,
+        rollWidth: wallRollWidth,
       });
     }
   }
