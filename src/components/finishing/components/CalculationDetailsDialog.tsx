@@ -20,6 +20,7 @@ import {
   MixConfiguration,
   calculateFoilAreaForPricing,
   OptimizationPriority,
+  calculateSurfaceDetails,
 } from '@/lib/foil/mixPlanner';
 
 interface CalculationDetailsDialogProps {
@@ -60,6 +61,17 @@ export function CalculationDetailsDialog({
     () => calculateFoilAreaForPricing(mixConfig, dimensions, foilSubtype),
     [mixConfig, dimensions, foilSubtype]
   );
+
+  // Get detailed surface calculations from the table
+  const surfaceDetails = useMemo(
+    () => calculateSurfaceDetails(mixConfig, dimensions, foilSubtype, optimizationPriority),
+    [mixConfig, dimensions, foilSubtype, optimizationPriority]
+  );
+
+  // Extract stairs data from surface details (matches table)
+  const stairsSurface = surfaceDetails.find(s => s.surfaceKey === 'stairs');
+  const stairsFoilArea = stairsSurface?.totalFoilArea ?? 0;
+  const stairsCoverArea = stairsSurface?.coverArea ?? 0;
 
   // For unified structural foil, use totalArea; otherwise main + structural shown separately
   const mainFoilQty = manualFoilQty ?? pricingResult.mainFoilArea;
@@ -125,8 +137,14 @@ export function CalculationDetailsDialog({
                       </div>
                       <div className="flex justify-between font-medium">
                         <span>Powierzchnia folii:</span>
-                        <span>{(poolAreas.stairsArea || 0).toFixed(2)} m²</span>
+                        <span>{stairsFoilArea} m²</span>
                       </div>
+                      {stairsSurface?.wasteArea && stairsSurface.wasteArea > 0 && (
+                        <div className="flex justify-between text-muted-foreground">
+                          <span>w tym odpad:</span>
+                          <span>{stairsSurface.wasteArea.toFixed(2)} m²</span>
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}
@@ -155,11 +173,13 @@ export function CalculationDetailsDialog({
                 <div className="p-4 rounded-lg bg-primary/10 border border-primary/30 col-span-2">
                   <div className="flex justify-between items-center">
                     <span className="font-medium">Powierzchnia całkowita folii:</span>
-                    <span className="text-xl font-bold">{poolAreas.totalArea.toFixed(2)} m²</span>
+                    <span className="text-xl font-bold">
+                      {(poolAreas.netBottomArea + poolAreas.wallArea + stairsFoilArea + (poolAreas.wadingPoolArea || 0)).toFixed(2)} m²
+                    </span>
                   </div>
                   <div className="text-xs text-muted-foreground mt-1">
                     = Dno netto ({poolAreas.netBottomArea.toFixed(2)}) + Ściany ({poolAreas.wallArea.toFixed(2)}) 
-                    {(poolAreas.stairsArea || 0) > 0 && ` + Schody (${(poolAreas.stairsArea || 0).toFixed(2)})`}
+                    {stairsFoilArea > 0 && ` + Schody (${stairsFoilArea})`}
                     {(poolAreas.wadingPoolArea || 0) > 0 && ` + Brodzik (${(poolAreas.wadingPoolArea || 0).toFixed(2)})`}
                   </div>
                   <div className="flex justify-between text-sm text-muted-foreground mt-2">
