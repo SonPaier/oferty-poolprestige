@@ -129,6 +129,9 @@ interface SurfaceDefinition {
  * Key insight: The overlap between strips can be adjusted (within reason) to minimize edge waste.
  * If the actual overlap needed to exactly cover the width is >= minOverlap and <= maxOverlap,
  * there's no edge waste.
+ * 
+ * IMPORTANT: Overlap is NOT waste - it's required material for welding. Only edge excess beyond
+ * what's needed is counted as waste.
  */
 function calculateStripsForWidth(
   coverWidth: number,
@@ -143,10 +146,12 @@ function calculateStripsForWidth(
   }
 
   if (coverWidth <= rollWidth) {
+    // Single strip - edge waste only (excess beyond needed width)
+    const edgeWaste = rollWidth - coverWidth;
     return {
       count: 1,
-      coveredWidth: rollWidth,
-      wasteArea: rollWidth - coverWidth,
+      coveredWidth: coverWidth,
+      wasteArea: edgeWaste,
       totalCoveredWidth: rollWidth,
       materialWidthUsed: rollWidth,
       actualOverlap: 0,
@@ -159,7 +164,7 @@ function calculateStripsForWidth(
   const additionalStrips = Math.ceil(remainingAfterFirst / effectiveWidthWithMinOverlap);
   const totalStrips = 1 + additionalStrips;
 
-  // Total material width used (what we pay for)
+  // Total material width used (what we pay for) - includes all overlaps
   const materialWidthUsed = totalStrips * rollWidth;
   
   // Calculate actual overlap that would give exact coverage (if possible)
@@ -167,22 +172,22 @@ function calculateStripsForWidth(
   // Solving: actualOverlap = (totalStrips * rollWidth - coverWidth) / (totalStrips - 1)
   const actualOverlapForExactFit = (materialWidthUsed - coverWidth) / (totalStrips - 1);
   
-  let wasteWidth: number;
+  let edgeWaste: number;
   let actualOverlap: number;
   
   if (actualOverlapForExactFit >= minOverlap && actualOverlapForExactFit <= MAX_OVERLAP) {
     // We can adjust overlap to get exact coverage - no edge waste!
-    wasteWidth = 0;
+    edgeWaste = 0;
     actualOverlap = actualOverlapForExactFit;
   } else if (actualOverlapForExactFit > MAX_OVERLAP) {
-    // Even with max overlap, we have excess material (waste on edges)
+    // Even with max overlap, we have excess material on edges (this IS waste)
     const coveredWithMaxOverlap = materialWidthUsed - (totalStrips - 1) * MAX_OVERLAP;
-    wasteWidth = coveredWithMaxOverlap - coverWidth;
+    edgeWaste = coveredWithMaxOverlap - coverWidth;
     actualOverlap = MAX_OVERLAP;
   } else {
     // actualOverlapForExactFit < minOverlap - use minimum and accept edge waste
     const coveredWithMinOverlap = materialWidthUsed - (totalStrips - 1) * minOverlap;
-    wasteWidth = coveredWithMinOverlap - coverWidth;
+    edgeWaste = coveredWithMinOverlap - coverWidth;
     actualOverlap = minOverlap;
   }
 
@@ -190,8 +195,8 @@ function calculateStripsForWidth(
 
   return { 
     count: totalStrips, 
-    coveredWidth: totalCoveredWidth,
-    wasteArea: Math.max(0, wasteWidth),
+    coveredWidth: coverWidth,
+    wasteArea: Math.max(0, edgeWaste), // Only edge excess is waste, NOT overlaps
     totalCoveredWidth,
     materialWidthUsed,
     actualOverlap,
@@ -238,15 +243,16 @@ function calculateAreaForSurfaces(
     const stripsPerSingle = calc.count;
     const totalStrips = stripsPerSingle * def.count;
 
-    // Full strip area consumed (includes overlaps)
+    // Full strip area consumed (includes overlaps - this is NOT waste!)
     totalStripsArea += totalStrips * def.stripLength * surface.rollWidth;
 
-    // Width waste exists only on the last strip; treat it as one offcut per surface side
-    const wasteWidth = calc.wasteArea;
-    const widthWasteArea = wasteWidth * def.stripLength * def.count;
-    const isReusable = wasteWidth >= WASTE_THRESHOLD && def.stripLength >= MIN_REUSABLE_OFFCUT_LENGTH;
+    // Edge waste only (excess material on last strip beyond what's needed)
+    // Note: overlap area is NOT waste - it's required for welding
+    const edgeWasteWidth = calc.wasteArea;
+    const edgeWasteArea = edgeWasteWidth * def.stripLength * def.count;
+    const isReusable = edgeWasteWidth >= WASTE_THRESHOLD && def.stripLength >= MIN_REUSABLE_OFFCUT_LENGTH;
     if (isReusable) {
-      reusableWidthWasteArea += widthWasteArea;
+      reusableWidthWasteArea += edgeWasteArea;
     }
   }
 
@@ -271,6 +277,7 @@ function calculateAreaForSurfaces(
  * - liczymy pełną powierzchnię pasów (z zakładami = pełna szerokość rolki na pas)
  * - odejmujemy odpad, który *może* być użyty ponownie (>= 30cm szer. oraz >= 2m dł.)
  * - dodajemy odpad z końcówek rolek, którego nie da się użyć (dł. < 2m)
+ * - zaokrąglamy w GÓRĘ do 0.1 m²
  */
 export function calculateFoilAreaForPricing(
   config: MixConfiguration,
@@ -282,8 +289,12 @@ export function calculateFoilAreaForPricing(
   // Structural surfaces: stairs, paddling
   const structuralKeys: SurfaceKey[] = ['stairs', 'paddling'];
 
-  const mainFoilArea = calculateAreaForSurfaces(mainKeys, config, dimensions, foilSubtype);
-  const structuralFoilArea = calculateAreaForSurfaces(structuralKeys, config, dimensions, foilSubtype);
+  const mainRaw = calculateAreaForSurfaces(mainKeys, config, dimensions, foilSubtype);
+  const structuralRaw = calculateAreaForSurfaces(structuralKeys, config, dimensions, foilSubtype);
+
+  // Round UP to nearest 0.1 m² for pricing
+  const mainFoilArea = Math.ceil(mainRaw * 10) / 10;
+  const structuralFoilArea = Math.ceil(structuralRaw * 10) / 10;
 
   return {
     mainFoilArea,
