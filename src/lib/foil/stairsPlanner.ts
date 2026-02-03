@@ -2,11 +2,10 @@
  * Stairs Surface Foil Planner
  * 
  * Plans foil coverage for pool stairs:
- * - Step treads (horizontal) → anti-slip foil required
- * - Step risers (vertical) → regular foil
+ * - Only counts horizontal footprint (stepDepth × stepCount)
+ * - Risers (vertical fronts) are NOT covered with anti-slip foil
  * 
- * Note: Anti-slip is only for STEPS (horizontal surfaces).
- * Risers (vertical fronts of steps) use regular pool foil.
+ * The anti-slip foil covers only the TREADS (horizontal walking surfaces).
  */
 
 import { StairsConfig, PoolDimensions } from '@/types/configurator';
@@ -26,10 +25,12 @@ function getStairsWidth(stairs: StairsConfig, dimensions: PoolDimensions): numbe
 }
 
 /**
- * Calculate total step (tread) area - horizontal surfaces
- * These require anti-slip foil
+ * Calculate horizontal footprint area (projection on pool bottom)
+ * This is the ONLY area that requires anti-slip foil
+ * 
+ * Formula: width × (stepDepth × stepCount)
  */
-function calculateStepArea(stairs: StairsConfig, dimensions: PoolDimensions): number {
+function calculateStairFootprintArea(stairs: StairsConfig, dimensions: PoolDimensions): number {
   const stairsWidth = getStairsWidth(stairs, dimensions);
   const stepCount = stairs.stepCount || 4;
   const stepDepth = stairs.stepDepth || 0.30;
@@ -40,10 +41,8 @@ function calculateStepArea(stairs: StairsConfig, dimensions: PoolDimensions): nu
   }
   
   // For diagonal 45° stairs: use geometry to get projection area
-  // Steps are still horizontal but follow the diagonal shape
   const geometry = generateStairsGeometry(dimensions.length, dimensions.width, stairs);
   if (geometry) {
-    // For diagonal stairs, projection area ≈ step area
     return calculateStairsArea(geometry.vertices);
   }
   
@@ -51,38 +50,14 @@ function calculateStepArea(stairs: StairsConfig, dimensions: PoolDimensions): nu
 }
 
 /**
- * Calculate total riser area - vertical surfaces
- * These use regular pool foil
- */
-function calculateRiserArea(stairs: StairsConfig, dimensions: PoolDimensions): number {
-  const stairsWidth = getStairsWidth(stairs, dimensions);
-  const stepCount = stairs.stepCount || 4;
-  const stepHeight = stairs.stepHeight || 0.20;
-  
-  // For rectangular stairs: width × height × count
-  if (stairs.shapeType === 'rectangular' || !stairs.shapeType) {
-    return stepCount * stepHeight * stairsWidth;
-  }
-  
-  // For diagonal 45° stairs: risers follow the diagonal
-  // Approximate by using diagonal length × height × count
-  // Each riser runs along the hypotenuse direction
-  const stepDepth = stairs.stepDepth || 0.30;
-  const diagonalSize = stepCount * stepDepth;
-  const hypotenuseLength = diagonalSize * Math.SQRT2;
-  
-  // Riser area = hypotenuse length × step height × (stepCount)
-  // Note: For 45° stairs, the "width" is the hypotenuse, not stairsWidth
-  return stepCount * stepHeight * (hypotenuseLength / stepCount);
-}
-
-/**
  * Plan foil layout for stairs
+ * 
+ * Only covers horizontal footprint (treads) - risers are NOT included
  * 
  * @param stairs Stairs configuration
  * @param poolDepth Pool depth at stairs location
  * @param dimensions Pool dimensions
- * @returns Stairs plan with separate step and riser surfaces
+ * @returns Stairs plan with footprint surface only
  */
 export function planStairsSurface(
   stairs: StairsConfig,
@@ -94,53 +69,39 @@ export function planStairsSurface(
   const stairsWidth = getStairsWidth(stairs, dimensions);
   const stepCount = stairs.stepCount || 4;
   const stepDepth = stairs.stepDepth || 0.30;
-  const stepHeight = stairs.stepHeight || 0.20;
   
-  const stepArea = calculateStepArea(stairs, dimensions);
-  const riserArea = calculateRiserArea(stairs, dimensions);
+  // Only calculate footprint area (no risers)
+  const footprintArea = calculateStairFootprintArea(stairs, dimensions);
+  const footprintLength = stepCount * stepDepth;
   
-  // Create surface plans for steps and risers - all use STRUCTURAL foil
+  // Create surface plan for stairs footprint only
   const surfaces: ExtendedSurfacePlan[] = [];
   
-  // Step surface (horizontal, anti-slip) - STRUCTURAL foil
+  // Stair footprint (horizontal treads) - STRUCTURAL anti-slip foil
   const stepType: ExtendedSurfaceType = 'stairs-step';
   surfaces.push({
     type: stepType,
-    width: stepDepth,                    // Each step width
-    length: stairsWidth * stepCount,     // Total linear length of steps
-    area: stepArea,
+    width: footprintLength,              // Total depth of all steps
+    length: stairsWidth,                 // Width of stairs
+    area: footprintArea,
     strips: [],                          // Will be populated by main planner
     recommendedRollWidth: ROLL_WIDTH_NARROW,
     foilAssignment: SURFACE_FOIL_ASSIGNMENT[stepType], // 'structural'
   });
   
-  // Riser surface (vertical, regular foil) - STRUCTURAL foil
-  const riserType: ExtendedSurfaceType = 'stairs-riser';
-  surfaces.push({
-    type: riserType,
-    width: stepHeight,                   // Each riser height
-    length: stairsWidth * stepCount,     // Total linear length of risers
-    area: riserArea,
-    strips: [],
-    recommendedRollWidth: ROLL_WIDTH_NARROW,
-    foilAssignment: SURFACE_FOIL_ASSIGNMENT[riserType], // 'structural'
-  });
-  
   return {
     surfaces,
-    stepArea,
-    riserArea,
+    stepArea: footprintArea,
+    riserArea: 0,  // Risers are NOT covered with anti-slip foil
   };
 }
 
 /**
- * Calculate total stairs foil area (both steps and risers)
+ * Calculate total stairs foil area (horizontal footprint only)
  */
 export function calculateTotalStairsArea(stairs: StairsConfig, dimensions: PoolDimensions): number {
   if (!stairs.enabled) return 0;
   
-  const stepArea = calculateStepArea(stairs, dimensions);
-  const riserArea = calculateRiserArea(stairs, dimensions);
-  
-  return stepArea + riserArea;
+  // Only footprint area - no risers
+  return calculateStairFootprintArea(stairs, dimensions);
 }

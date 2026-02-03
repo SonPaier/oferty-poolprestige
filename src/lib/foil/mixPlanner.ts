@@ -748,15 +748,18 @@ function getSurfaceDefinitions(dimensions: PoolDimensions, foilSubtype?: FoilSub
   });
 
   // Stairs (STRUCTURAL foil - always anti-slip)
+  // Only count horizontal footprint (stepDepth × stepCount) - risers are NOT covered with anti-slip foil
   if (dimensions.stairs?.enabled) {
     const stairs = dimensions.stairs;
     const stepWidth = typeof stairs.width === 'number' ? stairs.width : shorterSide;
-    const stairsLength = (stairs.stepDepth + stairs.stepHeight) * stairs.stepCount;
+    // Stairs foil only covers treads (horizontal) - NOT risers (vertical)
+    // Total footprint length = stepDepth × stepCount
+    const stairsFootprintLength = stairs.stepDepth * stairs.stepCount;
     
     surfaces.push({
       key: 'stairs',
       label: 'Schody',
-      stripLength: stairsLength,
+      stripLength: stairsFootprintLength,
       coverWidth: stepWidth,
       count: 1,
       overlap: MIN_OVERLAP_WALL,
@@ -1147,7 +1150,8 @@ export function calculateSurfaceDetails(
   if (stairsSurfaces.length > 0) {
     const surface = stairsSurfaces[0];
     const def = defs.find(d => d.key === 'stairs');
-    if (def) {
+    if (def && dimensions.stairs) {
+      const stairs = dimensions.stairs;
       const calc = calculateStripsForWidth(def.coverWidth, surface.rollWidth, def.overlap);
       const rollNumbers = getRollNumbersForSurface(surface.surfaceLabel);
       
@@ -1156,9 +1160,14 @@ export function calculateSurfaceDetails(
       const weldArea = overlapsCount * calc.actualOverlap * def.stripLength;
       const coverArea = totalFoilAreaRaw - weldArea;
       
+      // Build detailed label with stair parameters
+      const stairsWidth = typeof stairs.width === 'number' ? stairs.width : Math.min(dimensions.length, dimensions.width);
+      const stairsLength = stairs.stepDepth * stairs.stepCount;
+      const stairsLabel = `Schody (${stairsWidth.toFixed(2)}m × ${stairsLength.toFixed(2)}m, ${stairs.stepCount} stopni × ${(stairs.stepDepth * 100).toFixed(0)}cm)`;
+      
       results.push({
         surfaceKey: 'stairs',
-        surfaceLabel: 'Schody',
+        surfaceLabel: stairsLabel,
         strips: [{
           count: surface.stripCount,
           rollWidth: surface.rollWidth,
