@@ -550,7 +550,7 @@ function calculateAreaForSurfaces(
     ...config,
     surfaces: relevantSurfaces,
   };
-  const rolls = packStripsIntoRolls(subConfig);
+  const rolls = packStripsIntoRolls(subConfig, dimensions);
   const unusableRollEndWasteArea = rolls.reduce((sum, r) => {
     if (r.wasteLength > 0 && r.wasteLength < MIN_REUSABLE_OFFCUT_LENGTH) {
       return sum + r.wasteLength * r.rollWidth;
@@ -827,7 +827,7 @@ export function calculateSurfaceDetails(
 ): SurfaceDetailedResult[] {
   const results: SurfaceDetailedResult[] = [];
   const defs = getSurfaceDefinitions(dimensions, foilSubtype);
-  const rolls = packStripsIntoRolls(config);
+  const rolls = packStripsIntoRolls(config, dimensions);
 
   const rollBySurfaceStrip = new Map<string, number>();
   for (const r of rolls) {
@@ -1174,6 +1174,9 @@ export function calculateSurfaceDetails(
  * Get reusable offcuts from rolls (pieces >= 30cm width and >= 2m length)
  */
 export function getReusableOffcuts(config: MixConfiguration): ReusableOffcut[] {
+  // We need dimensions-aware packing for correct wall perimeter reuse/offcuts.
+  // Callers that don't have dimensions can still call packStripsIntoRolls without it,
+  // but UI should always pass dimensions.
   const rolls = packStripsIntoRolls(config);
   const offcuts: ReusableOffcut[] = [];
   
@@ -1189,6 +1192,28 @@ export function getReusableOffcuts(config: MixConfiguration): ReusableOffcut[] {
     }
   }
   
+  return offcuts;
+}
+
+/** Dimensions-aware reusable offcuts (preferred). */
+export function getReusableOffcutsWithDimensions(
+  config: MixConfiguration,
+  dimensions: PoolDimensions
+): ReusableOffcut[] {
+  const rolls = packStripsIntoRolls(config, dimensions);
+  const offcuts: ReusableOffcut[] = [];
+
+  for (const roll of rolls) {
+    if (roll.wasteLength >= MIN_REUSABLE_OFFCUT_LENGTH) {
+      offcuts.push({
+        rollNumber: roll.rollNumber,
+        rollWidth: roll.rollWidth,
+        length: Math.round(roll.wasteLength * 10) / 10,
+        area: Math.round(roll.wasteLength * roll.rollWidth * 100) / 100,
+      });
+    }
+  }
+
   return offcuts;
 }
 
@@ -1316,7 +1341,7 @@ export function autoOptimizeMixConfig(
     });
   }
 
-  return calculateTotals(surfaces, true, foilSubtype);
+  return calculateTotals(surfaces, true, foilSubtype, dimensions);
 }
 
 /**
@@ -1423,13 +1448,16 @@ export function updateSurfaceRollWidth(
     };
   });
 
-  return calculateTotals(updatedSurfaces, false, foilSubtype);
+  return calculateTotals(updatedSurfaces, false, foilSubtype, dimensions);
 }
 
 /**
  * Pack strips into rolls using first-fit decreasing algorithm
  */
-export function packStripsIntoRolls(config: MixConfiguration): RollAllocation[] {
+export function packStripsIntoRolls(
+  config: MixConfiguration,
+  dimensions?: PoolDimensions
+): RollAllocation[] {
   interface StripToPack {
     surface: string;
     stripIndex: number;
@@ -1438,8 +1466,18 @@ export function packStripsIntoRolls(config: MixConfiguration): RollAllocation[] 
   }
 
   const allStrips: StripToPack[] = [];
+
+  const wallSurfaces = config.surfaces.filter(
+    (s) => s.surface === 'wall-long' || s.surface === 'wall-short'
+  );
+  const shouldUseContinuousWallStrips = Boolean(dimensions) && wallSurfaces.length > 0;
   
   config.surfaces.forEach((surface) => {
+    // NOTE: When we pack with dimensions-aware mode we inject a single "Ściany" surface
+    // based on perimeter and skip the legacy wall-long/wall-short strips to avoid double counting.
+    if (shouldUseContinuousWallStrips && (surface.surface === 'wall-long' || surface.surface === 'wall-short')) {
+      return;
+    }
     const mix = surface.stripMix && surface.stripMix.length > 0
       ? surface.stripMix
       : [{ rollWidth: surface.rollWidth, count: surface.stripCount }];
@@ -1458,36 +1496,115 @@ export function packStripsIntoRolls(config: MixConfiguration): RollAllocation[] 
     }
   });
 
-  // Sort by length descending
-  allStrips.sort((a, b) => b.length - a.length);
+  // Inject continuous wall strips (perimeter-based) so packing matches UI wall plan.
+  if (shouldUseContinuousWallStrips && dimensions) {
+    const wallLong = wallSurfaces.find((s) => s.surface === 'wall-long');
+    const wallShort = wallSurfaces.find((s) => s.surface === 'wall-short');
 
-  const rolls: RollAllocation[] = [];
+    const wallRollWidth: RollWidth =
+      (wallLong?.rollWidth as RollWidth | undefined) ??
+      (wallShort?.rollWidth as RollWidth | undefined) ??
+      (dimensions.depth <= DEPTH_THRESHOLD_FOR_WIDE ? ROLL_WIDTH_NARROW : ROLL_WIDTH_WIDE);
 
-  for (const strip of allStrips) {
-    // Find a roll with same width and enough space
-    let placed = false;
-    for (const roll of rolls) {
-      if (roll.rollWidth === strip.rollWidth && roll.usedLength + strip.length <= ROLL_LENGTH) {
-        roll.strips.push({ surface: strip.surface, stripIndex: strip.stripIndex, length: strip.length });
-        roll.usedLength += strip.length;
-        roll.wasteLength = ROLL_LENGTH - roll.usedLength;
-        placed = true;
-        break;
-      }
-    }
+    const perimeter = getWallSegments(dimensions).reduce((sum, w) => sum + w.length, 0);
+    const wallPlan = computeWallStripPlanFromPerimeter(perimeter, config, wallRollWidth);
 
-    if (!placed) {
-      rolls.push({
-        rollNumber: rolls.length + 1,
-        rollWidth: strip.rollWidth,
-        usedLength: strip.length,
-        wasteLength: ROLL_LENGTH - strip.length,
-        strips: [{ surface: strip.surface, stripIndex: strip.stripIndex, length: strip.length }],
+    for (let i = 0; i < wallPlan.stripLengths.length; i++) {
+      allStrips.push({
+        surface: 'Ściany',
+        stripIndex: i + 1,
+        length: wallPlan.stripLengths[i],
+        rollWidth: wallRollWidth,
       });
     }
   }
 
-  // Re-number rolls
+  // Group by roll width
+  const byWidth = new Map<RollWidth, StripToPack[]>();
+  for (const strip of allStrips) {
+    const arr = byWidth.get(strip.rollWidth) ?? [];
+    arr.push(strip);
+    byWidth.set(strip.rollWidth, arr);
+  }
+
+  const widthCandidates: RollWidth[] = [ROLL_WIDTH_WIDE, ROLL_WIDTH_NARROW];
+  const widthOrder: RollWidth[] = widthCandidates.filter((w) => byWidth.has(w));
+  const rolls: RollAllocation[] = [];
+
+  for (const width of widthOrder) {
+    const group = byWidth.get(width) ?? [];
+    const groupRolls: RollAllocation[] = [];
+
+    const bottoms = group.filter((s) => s.surface === 'Dno');
+    const walls = group.filter((s) => s.surface === 'Ściany');
+    const others = group.filter((s) => s.surface !== 'Dno' && s.surface !== 'Ściany');
+
+    // Cross-surface optimization: pair bottom + wall if it fills a roll (e.g. 10 + 15 = 25)
+    const findBestPair = (): { wi: number; bi: number; sum: number } | null => {
+      let best: { wi: number; bi: number; sum: number } | null = null;
+      for (let wi = 0; wi < walls.length; wi++) {
+        for (let bi = 0; bi < bottoms.length; bi++) {
+          const sum = walls[wi].length + bottoms[bi].length;
+          if (sum <= ROLL_LENGTH + 1e-9) {
+            if (!best || sum > best.sum + 1e-9) {
+              best = { wi, bi, sum };
+            }
+          }
+        }
+      }
+      return best;
+    };
+
+    while (walls.length > 0 && bottoms.length > 0) {
+      const best = findBestPair();
+      if (!best) break;
+
+      const wall = walls.splice(best.wi, 1)[0];
+      const bottom = bottoms.splice(best.bi, 1)[0];
+
+      const usedLength = wall.length + bottom.length;
+      groupRolls.push({
+        rollNumber: 0,
+        rollWidth: width,
+        usedLength,
+        wasteLength: ROLL_LENGTH - usedLength,
+        strips: [
+          { surface: bottom.surface, stripIndex: bottom.stripIndex, length: bottom.length },
+          { surface: wall.surface, stripIndex: wall.stripIndex, length: wall.length },
+        ],
+      });
+    }
+
+    const remaining: StripToPack[] = [...walls, ...bottoms, ...others];
+    remaining.sort((a, b) => b.length - a.length);
+
+    for (const strip of remaining) {
+      let placed = false;
+      for (const roll of groupRolls) {
+        if (roll.usedLength + strip.length <= ROLL_LENGTH + 1e-9) {
+          roll.strips.push({ surface: strip.surface, stripIndex: strip.stripIndex, length: strip.length });
+          roll.usedLength += strip.length;
+          roll.wasteLength = ROLL_LENGTH - roll.usedLength;
+          placed = true;
+          break;
+        }
+      }
+
+      if (!placed) {
+        groupRolls.push({
+          rollNumber: 0,
+          rollWidth: width,
+          usedLength: strip.length,
+          wasteLength: ROLL_LENGTH - strip.length,
+          strips: [{ surface: strip.surface, stripIndex: strip.stripIndex, length: strip.length }],
+        });
+      }
+    }
+
+    rolls.push(...groupRolls);
+  }
+
+  // Re-number rolls sequentially
   rolls.forEach((roll, idx) => {
     roll.rollNumber = idx + 1;
   });
@@ -1498,8 +1615,16 @@ export function packStripsIntoRolls(config: MixConfiguration): RollAllocation[] 
 /**
  * Calculate totals for the mix configuration
  */
-function calculateTotals(surfaces: SurfaceRollConfig[], isOptimized: boolean, foilSubtype?: FoilSubtype | null): MixConfiguration {
-  const rolls = packStripsIntoRolls({ surfaces, totalRolls165: 0, totalRolls205: 0, totalWaste: 0, wastePercentage: 0, isOptimized });
+function calculateTotals(
+  surfaces: SurfaceRollConfig[],
+  isOptimized: boolean,
+  foilSubtype?: FoilSubtype | null,
+  dimensions?: PoolDimensions
+): MixConfiguration {
+  const rolls = packStripsIntoRolls(
+    { surfaces, totalRolls165: 0, totalRolls205: 0, totalWaste: 0, wastePercentage: 0, isOptimized },
+    dimensions
+  );
   
   const rolls165 = rolls.filter(r => r.rollWidth === ROLL_WIDTH_NARROW).length;
   const rolls205 = rolls.filter(r => r.rollWidth === ROLL_WIDTH_WIDE).length;
