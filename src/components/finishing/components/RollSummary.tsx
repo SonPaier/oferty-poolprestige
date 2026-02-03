@@ -16,6 +16,8 @@ import {
   partitionSurfacesByFoilType,
   SurfaceRollConfig,
   OptimizationPriority,
+  ROLL_WIDTH_NARROW,
+  ROLL_WIDTH_WIDE,
   SurfaceDetailedResult,
   ReusableOffcut,
   calculateSurfaceDetails,
@@ -265,9 +267,9 @@ export function RollSummary({
   const structuralRolls = packStripsIntoRolls(structuralConfig, dimensions);
 
   // Calculate roll counts per pool
-  const mainRolls165 = mainRolls.filter(r => r.rollWidth === 1.65).length;
-  const mainRolls205 = mainRolls.filter(r => r.rollWidth === 2.05).length;
-  const structuralRolls165 = structuralRolls.filter(r => r.rollWidth === 1.65).length;
+  const mainRolls165 = mainRolls.filter(r => r.rollWidth === ROLL_WIDTH_NARROW).length;
+  const mainRolls205 = mainRolls.filter(r => r.rollWidth === ROLL_WIDTH_WIDE).length;
+  const structuralRolls165 = structuralRolls.filter(r => r.rollWidth === ROLL_WIDTH_NARROW).length;
 
   // Calculate detailed surface info
   const surfaceDetails = calculateSurfaceDetails(config, dimensions, foilSubtype);
