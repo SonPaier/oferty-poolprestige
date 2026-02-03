@@ -171,6 +171,119 @@ export interface RollAllocation {
   strips: { surface: string; stripIndex: number; length: number }[];
 }
 
+function approxEq(a: number, b: number, eps = 0.05) {
+  return Math.abs(a - b) <= eps;
+}
+
+function computeWallStripCount(perimeter: number, overlapPerJoin: number): number {
+  let c = 1;
+  while (perimeter + c * overlapPerJoin > c * ROLL_LENGTH) c += 1;
+  return c;
+}
+
+function pickVerticalJoinOverlap(perimeter: number): { stripCount: number; overlapPerJoin: number } {
+  const overlapDefault = Math.max(
+    MIN_VERTICAL_JOIN_OVERLAP,
+    Math.min(MAX_VERTICAL_JOIN_OVERLAP, DEFAULT_VERTICAL_JOIN_OVERLAP)
+  );
+  const overlapMin = MIN_VERTICAL_JOIN_OVERLAP;
+
+  const stripCountDefault = computeWallStripCount(perimeter, overlapDefault);
+  const stripCountMin = computeWallStripCount(perimeter, overlapMin);
+
+  if (stripCountMin < stripCountDefault) {
+    return { stripCount: stripCountMin, overlapPerJoin: overlapMin };
+  }
+
+  return { stripCount: stripCountDefault, overlapPerJoin: overlapDefault };
+}
+
+function getBottomStripLengthsByWidth(config: MixConfiguration): Array<{ rollWidth: RollWidth; length: number }> {
+  const bottom = config.surfaces.find((s) => s.surface === 'bottom');
+  if (!bottom) return [];
+
+  const mix = bottom.stripMix && bottom.stripMix.length > 0
+    ? bottom.stripMix
+    : [{ rollWidth: bottom.rollWidth, count: bottom.stripCount }];
+
+  const out: Array<{ rollWidth: RollWidth; length: number }> = [];
+  for (const group of mix) {
+    for (let i = 0; i < group.count; i++) {
+      out.push({ rollWidth: group.rollWidth, length: bottom.stripLength });
+    }
+  }
+  return out;
+}
+
+function hasBottomOffcutCandidate(
+  config: MixConfiguration,
+  wallRollWidth: RollWidth,
+  desiredOffcutLength: number
+): boolean {
+  const bottomStrips = getBottomStripLengthsByWidth(config)
+    .filter((s) => s.rollWidth === wallRollWidth);
+
+  return bottomStrips.some((s) => {
+    const offcut = ROLL_LENGTH - s.length;
+    return offcut >= MIN_REUSABLE_OFFCUT_LENGTH && approxEq(offcut, desiredOffcutLength, 0.05);
+  });
+}
+
+function computeWallStripPlanFromPerimeter(
+  perimeter: number,
+  config: MixConfiguration,
+  wallRollWidth: RollWidth
+): {
+  stripCount: number;
+  overlapPerJoin: number;
+  totalVerticalOverlap: number;
+  totalLengthNeeded: number;
+  stripLengths: number[];
+  preferOffcutSplit: boolean;
+  basePerimeterPerStrip: number;
+} {
+  const { stripCount, overlapPerJoin } = pickVerticalJoinOverlap(perimeter);
+  const totalVerticalOverlap = stripCount * overlapPerJoin;
+  const totalLengthNeeded = perimeter + totalVerticalOverlap;
+
+  const basePerimeterPerStrip = perimeter / stripCount;
+
+  let preferOffcutSplit = false;
+  const stripLengths: number[] = [];
+
+  if (stripCount === 1) {
+    stripLengths.push(perimeter + overlapPerJoin);
+  } else if (stripCount === 2) {
+    // Prefer: 15.0 + 15.2 style split when we can create/reuse an offcut.
+    // (Default overlap per join = 10cm unless it changes strip count)
+    preferOffcutSplit =
+      basePerimeterPerStrip + totalVerticalOverlap <= ROLL_LENGTH &&
+      hasBottomOffcutCandidate(config, wallRollWidth, basePerimeterPerStrip);
+
+    if (preferOffcutSplit) {
+      stripLengths.push(basePerimeterPerStrip);
+      stripLengths.push(basePerimeterPerStrip + totalVerticalOverlap);
+    } else {
+      stripLengths.push(basePerimeterPerStrip + overlapPerJoin);
+      stripLengths.push(basePerimeterPerStrip + overlapPerJoin);
+    }
+  } else {
+    for (let i = 0; i < stripCount; i++) {
+      stripLengths.push(basePerimeterPerStrip + overlapPerJoin);
+    }
+  }
+
+  return {
+    stripCount,
+    overlapPerJoin,
+    totalVerticalOverlap,
+    totalLengthNeeded,
+    stripLengths,
+    preferOffcutSplit,
+    basePerimeterPerStrip,
+  };
+}
+
 interface SurfaceDefinition {
   key: SurfaceKey;
   label: string;
@@ -715,6 +828,13 @@ export function calculateSurfaceDetails(
   const results: SurfaceDetailedResult[] = [];
   const defs = getSurfaceDefinitions(dimensions, foilSubtype);
   const rolls = packStripsIntoRolls(config);
+
+  const rollBySurfaceStrip = new Map<string, number>();
+  for (const r of rolls) {
+    for (const s of r.strips) {
+      rollBySurfaceStrip.set(`${s.surface}__${s.stripIndex}`, r.rollNumber);
+    }
+  }
   
   // Group surfaces by type for display
   const bottomSurfaces = config.surfaces.filter(s => s.surface === 'bottom');
@@ -735,7 +855,7 @@ export function calculateSurfaceDetails(
     const surface = bottomSurfaces[0];
     const def = defs.find(d => d.key === 'bottom');
     if (def) {
-      const rollNumbers = getRollNumbersForSurface(surface.surfaceLabel);
+      const bottomLabel = surface.surfaceLabel;
 
       const coverArea = def.stripLength * def.coverWidth;
 
@@ -751,18 +871,28 @@ export function calculateSurfaceDetails(
         weldArea = Math.max(0, evalRes.stripCount - 1) * evalRes.actualOverlap * def.stripLength;
         wasteArea = Math.max(0, totalFoilAreaRaw - coverArea - weldArea);
 
-        // Display as grouped by width
-        const byWidth = new Map<RollWidth, number>();
-        for (const w of widths) byWidth.set(w, (byWidth.get(w) ?? 0) + 1);
-        const ordered = ([
-          ROLL_WIDTH_WIDE as RollWidth,
-          ROLL_WIDTH_NARROW as RollWidth,
-        ]).filter((w) => byWidth.has(w));
-        strips = ordered.map((w) => ({
-          count: byWidth.get(w) ?? 0,
-          rollWidth: w,
+        // Display per roll number (so we don't incorrectly show 2×10m as coming from one roll)
+        const perRoll: Array<{ rollNumber: number; rollWidth: RollWidth; count: number }> = [];
+        for (const r of rolls) {
+          const bottomStripsInRoll = r.strips.filter((s) => s.surface === bottomLabel);
+          if (bottomStripsInRoll.length === 0) continue;
+          perRoll.push({
+            rollNumber: r.rollNumber,
+            rollWidth: r.rollWidth,
+            count: bottomStripsInRoll.length,
+          });
+        }
+
+        perRoll.sort((a, b) => {
+          if (a.rollWidth !== b.rollWidth) return b.rollWidth - a.rollWidth;
+          return a.rollNumber - b.rollNumber;
+        });
+
+        strips = perRoll.map((p) => ({
+          count: p.count,
+          rollWidth: p.rollWidth,
           stripLength: surface.stripLength,
-          rollNumber: rollNumbers[0],
+          rollNumber: p.rollNumber,
         }));
       } else {
         const calc = calculateStripsForWidth(def.coverWidth, surface.rollWidth, def.overlap);
@@ -774,7 +904,7 @@ export function calculateSurfaceDetails(
           count: surface.stripCount,
           rollWidth: surface.rollWidth,
           stripLength: surface.stripLength,
-          rollNumber: rollNumbers[0],
+          rollNumber: getRollNumbersForSurface(bottomLabel)[0],
         }];
       }
 
@@ -823,63 +953,14 @@ export function calculateSurfaceDetails(
     }
     
     // ===== 3. STRIP COUNT AND LENGTHS =====
-    // Vertical join overlap per join: 7–15cm (default 10cm).
-    // Default = 10cm, but if using 7cm reduces strip/roll count for this perimeter,
-    // we automatically pick 7cm.
-    const computeStripCount = (overlap: number) => {
-      let c = 1;
-      while (perimeter + c * overlap > c * ROLL_LENGTH) c += 1;
-      return c;
-    };
-
-    const overlapDefault = Math.max(
-      MIN_VERTICAL_JOIN_OVERLAP,
-      Math.min(MAX_VERTICAL_JOIN_OVERLAP, DEFAULT_VERTICAL_JOIN_OVERLAP)
-    );
-    const overlapMin = MIN_VERTICAL_JOIN_OVERLAP;
-
-    const stripCountDefault = computeStripCount(overlapDefault);
-    const stripCountMin = computeStripCount(overlapMin);
-
-    const verticalJoinOverlap = stripCountMin < stripCountDefault ? overlapMin : overlapDefault;
-    const stripCount = stripCountMin < stripCountDefault ? stripCountMin : stripCountDefault;
-
-    // Total vertical overlap: stripCount joins × overlap_per_join
-    const totalVerticalOverlap = stripCount * verticalJoinOverlap;
-    const totalLengthNeeded = perimeter + totalVerticalOverlap;
-
-    const basePerimeterPerStrip = perimeter / stripCount;
-    const stripLengths: number[] = [];
-
-    if (stripCount === 1) {
-      stripLengths.push(perimeter + verticalJoinOverlap);
-    } else if (stripCount === 2) {
-      // Prefer default: 10cm per join -> total overlap 20cm.
-      // If we can reuse an offcut exactly equal to base length (e.g. 15.0m),
-      // put the whole 0.2m overlap on the other strip: 15.0 + 15.2.
-      const canConcentrate = basePerimeterPerStrip + totalVerticalOverlap <= ROLL_LENGTH;
-      const matchingOffcut = canConcentrate
-        ? rolls.find(
-            (r) =>
-              r.rollWidth === wallRollWidth &&
-              r.wasteLength >= MIN_REUSABLE_OFFCUT_LENGTH &&
-              Math.abs(r.wasteLength - basePerimeterPerStrip) <= 0.05
-          )
-        : undefined;
-
-      if (matchingOffcut) {
-        stripLengths.push(basePerimeterPerStrip);
-        stripLengths.push(basePerimeterPerStrip + totalVerticalOverlap);
-      } else {
-        stripLengths.push(basePerimeterPerStrip + verticalJoinOverlap);
-        stripLengths.push(basePerimeterPerStrip + verticalJoinOverlap);
-      }
-    } else {
-      // Default distribution: each strip carries one join overlap.
-      for (let i = 0; i < stripCount; i++) {
-        stripLengths.push(basePerimeterPerStrip + verticalJoinOverlap);
-      }
-    }
+    const wallPlan = computeWallStripPlanFromPerimeter(perimeter, config, wallRollWidth);
+    const {
+      stripCount,
+      overlapPerJoin: verticalJoinOverlap,
+      totalVerticalOverlap,
+      totalLengthNeeded,
+      stripLengths,
+    } = wallPlan;
     
     // ===== 4. BUILD STRIP INFO WITH WALL LABELS =====
     const strips: Array<{
@@ -949,7 +1030,7 @@ export function calculateSurfaceDetails(
         rollWidth: wallRollWidth,
         stripLength: Math.round(stripLen * 10) / 10,
         wallLabels: [combinedLabel],
-        rollNumber: i + 1,
+        rollNumber: rollBySurfaceStrip.get(`Ściany__${i + 1}`) ?? i + 1,
       });
       
       cumulativePerimeterPos += perimeterCovered;
