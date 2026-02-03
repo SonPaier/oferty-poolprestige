@@ -125,14 +125,21 @@ interface SurfaceDefinition {
 
 /**
  * Calculate strips needed for a given width and roll width
+ * 
+ * Key insight: The overlap between strips can be adjusted (within reason) to minimize edge waste.
+ * If the actual overlap needed to exactly cover the width is >= minOverlap and <= maxOverlap,
+ * there's no edge waste.
  */
 function calculateStripsForWidth(
   coverWidth: number,
   rollWidth: RollWidth,
-  overlap: number
-): { count: number; coveredWidth: number; wasteArea: number; totalCoveredWidth: number; materialWidthUsed: number } {
+  minOverlap: number
+): { count: number; coveredWidth: number; wasteArea: number; totalCoveredWidth: number; materialWidthUsed: number; actualOverlap: number } {
+  // Max overlap is typically ~15cm for good welding practice
+  const MAX_OVERLAP = 0.15;
+  
   if (coverWidth <= 0) {
-    return { count: 0, coveredWidth: 0, wasteArea: 0, totalCoveredWidth: 0, materialWidthUsed: 0 };
+    return { count: 0, coveredWidth: 0, wasteArea: 0, totalCoveredWidth: 0, materialWidthUsed: 0, actualOverlap: 0 };
   }
 
   if (coverWidth <= rollWidth) {
@@ -142,20 +149,44 @@ function calculateStripsForWidth(
       wasteArea: rollWidth - coverWidth,
       totalCoveredWidth: rollWidth,
       materialWidthUsed: rollWidth,
+      actualOverlap: 0,
     };
   }
 
-  const effectiveWidth = rollWidth - overlap;
+  // Calculate minimum strips needed with minimum overlap
+  const effectiveWidthWithMinOverlap = rollWidth - minOverlap;
   const remainingAfterFirst = coverWidth - rollWidth;
-  const additionalStrips = Math.ceil(remainingAfterFirst / effectiveWidth);
+  const additionalStrips = Math.ceil(remainingAfterFirst / effectiveWidthWithMinOverlap);
   const totalStrips = 1 + additionalStrips;
 
-  // Total *covered* width from all strips (overlap reduces effective coverage)
-  const totalCoveredWidth = totalStrips * rollWidth - (totalStrips - 1) * overlap;
-  const wasteWidth = totalCoveredWidth - coverWidth;
-
-  // Total *material* width used (overlap is still consumed)
+  // Total material width used (what we pay for)
   const materialWidthUsed = totalStrips * rollWidth;
+  
+  // Calculate actual overlap that would give exact coverage (if possible)
+  // Formula: totalStrips * rollWidth - (totalStrips - 1) * actualOverlap = coverWidth
+  // Solving: actualOverlap = (totalStrips * rollWidth - coverWidth) / (totalStrips - 1)
+  const actualOverlapForExactFit = (materialWidthUsed - coverWidth) / (totalStrips - 1);
+  
+  let wasteWidth: number;
+  let actualOverlap: number;
+  
+  if (actualOverlapForExactFit >= minOverlap && actualOverlapForExactFit <= MAX_OVERLAP) {
+    // We can adjust overlap to get exact coverage - no edge waste!
+    wasteWidth = 0;
+    actualOverlap = actualOverlapForExactFit;
+  } else if (actualOverlapForExactFit > MAX_OVERLAP) {
+    // Even with max overlap, we have excess material (waste on edges)
+    const coveredWithMaxOverlap = materialWidthUsed - (totalStrips - 1) * MAX_OVERLAP;
+    wasteWidth = coveredWithMaxOverlap - coverWidth;
+    actualOverlap = MAX_OVERLAP;
+  } else {
+    // actualOverlapForExactFit < minOverlap - use minimum and accept edge waste
+    const coveredWithMinOverlap = materialWidthUsed - (totalStrips - 1) * minOverlap;
+    wasteWidth = coveredWithMinOverlap - coverWidth;
+    actualOverlap = minOverlap;
+  }
+
+  const totalCoveredWidth = materialWidthUsed - (totalStrips - 1) * actualOverlap;
 
   return { 
     count: totalStrips, 
@@ -163,6 +194,7 @@ function calculateStripsForWidth(
     wasteArea: Math.max(0, wasteWidth),
     totalCoveredWidth,
     materialWidthUsed,
+    actualOverlap,
   };
 }
 
