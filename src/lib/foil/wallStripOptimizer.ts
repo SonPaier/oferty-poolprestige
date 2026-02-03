@@ -652,16 +652,22 @@ export function selectOptimalWallPlan(
     } else {
       // minRolls: minimize additional ORDERED m² for walls (roll width × 25m),
       // after consuming bottom offcuts (same width) wherever possible.
-      // If two plans require the same ordered m², prefer fewer strips (fewer zgrzewów).
+      // 
+      // IMPORTANT: More strips can actually be BETTER if they fit into bottom offcuts!
+      // E.g., 4 short strips (5m + 5m + 10m + 10m) may all fit in leftover space,
+      // while 2 long strips (10m + 20m) may require a new roll because 20m doesn't fit.
 
       const additionalOrderedArea = calculateAdditionalWallOrderedArea(plan.strips, bottomStrips);
 
+      // Primary: minimize total ordered m² (area from new rolls needed for walls)
+      // Secondary: minimize width waste (don't use 2.05m when 1.65m suffices)
+      // Tertiary: if equal, prefer fewer strips (fewer welds) for installation quality
       score = additionalOrderedArea * 1_000_000 // Primary: minimize ordered m² for walls
-            + plan.totalStripCount * 10_000     // Secondary: fewer strips / joins
-            + plan.totalFoilArea * 100          // Tertiary: slightly prefer less used foil
-            + widthWaste * 10                   // Tie-break: avoid excessive width
+            + widthWaste * 100_000              // Secondary: avoid excessive width strongly
+            + plan.totalFoilArea * 1_000        // Tertiary: prefer less total foil used
+            + plan.totalStripCount * 100        // Lower priority: fewer strips only as tie-break
             + wasteArea * 10
-            + pairedLeftover;                   // Tie-break: tighter pairing with offcuts
+            + pairedLeftover;
     }
     
     return { ...plan, score };
