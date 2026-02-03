@@ -898,6 +898,21 @@ export function calculateSurfaceDetails(
       let wasteArea: number;
       let strips: SurfaceDetailedResult['strips'];
 
+      // Calculate roll-end waste for bottom strips (unusable leftovers < 2m)
+      // Only count waste from rolls that ONLY contain bottom strips
+      let bottomRollEndWaste = 0;
+      for (const r of rolls) {
+        const bottomStripsInRoll = r.strips.filter((s) => s.surface === bottomLabel);
+        const otherStripsInRoll = r.strips.filter((s) => s.surface !== bottomLabel);
+        
+        // If this roll contains ONLY bottom strips and has unusable leftover
+        if (bottomStripsInRoll.length > 0 && otherStripsInRoll.length === 0) {
+          if (r.wasteLength > 0 && r.wasteLength < MIN_REUSABLE_OFFCUT_LENGTH) {
+            bottomRollEndWaste += r.wasteLength * r.rollWidth;
+          }
+        }
+      }
+
       if (surface.stripMix && surface.stripMix.length > 0) {
         const widths = buildWidthsFromMix(surface.stripMix);
         const evalRes = evaluateMixedStrips(def.coverWidth, widths, def.overlap);
@@ -942,14 +957,19 @@ export function calculateSurfaceDetails(
         }];
       }
 
+      // Add roll-end waste to total foil area (we need to order it)
+      // and to waste area (it's not usable)
+      const totalFoilAreaWithWaste = totalFoilAreaRaw + bottomRollEndWaste;
+      const totalWasteArea = wasteArea + bottomRollEndWaste;
+
       results.push({
         surfaceKey: 'bottom',
         surfaceLabel: 'Dno',
         strips,
         coverArea: Math.round(coverArea * 10) / 10,
-        totalFoilArea: Math.ceil(totalFoilAreaRaw),
+        totalFoilArea: Math.ceil(totalFoilAreaWithWaste),
         weldArea: Math.round(weldArea * 10) / 10,
-        wasteArea: Math.round(wasteArea * 10) / 10,
+        wasteArea: Math.round(totalWasteArea * 10) / 10,
       });
     }
   }
