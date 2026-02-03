@@ -1599,66 +1599,84 @@ export function packStripsIntoRolls(
     const walls = group.filter((s) => s.surface === 'Ściany');
     const others = group.filter((s) => s.surface !== 'Dno' && s.surface !== 'Ściany');
 
-    // Cross-surface optimization: pair bottom + wall if it fills a roll (e.g. 10 + 15 = 25)
-    const findBestPair = (): { wi: number; bi: number; sum: number } | null => {
-      let best: { wi: number; bi: number; sum: number } | null = null;
-      for (let wi = 0; wi < walls.length; wi++) {
-        for (let bi = 0; bi < bottoms.length; bi++) {
-          const sum = walls[wi].length + bottoms[bi].length;
-          if (sum <= ROLL_LENGTH + 1e-9) {
-            if (!best || sum > best.sum + 1e-9) {
-              best = { wi, bi, sum };
-            }
-          }
-        }
-      }
-      return best;
+    // Packing strategy:
+    // We previously did a greedy "bottom+wall" pairing first, but that can be suboptimal.
+    // Example (10x5): pairing 10m(bottom)+10.2m(wall) twice leaves two ~4.8m leftovers,
+    // forcing a new roll for a 5m wall strip. A standard bin-packing pass avoids this.
+    //
+    // We now use Best-Fit Decreasing (BFD):
+    // - primary: minimize number of rolls (by filling existing rolls whenever possible)
+    // - tie-breakers (minRolls): avoid leaving non-reusable end leftovers (<2m), and prefer
+    //   placing wall strips into rolls that already contain bottom strips (consume bottom offcuts).
+    const remaining: StripToPack[] = [...bottoms, ...walls, ...others];
+
+    const surfacePriority = (s: StripToPack) => {
+      if (s.surface === 'Dno') return 0;
+      if (s.surface === 'Ściany') return 1;
+      return 2;
     };
 
-    while (walls.length > 0 && bottoms.length > 0) {
-      const best = findBestPair();
-      if (!best) break;
+    remaining.sort((a, b) => {
+      const dl = b.length - a.length;
+      if (Math.abs(dl) > 1e-9) return dl;
+      // For minRolls, process bottom first on ties to encourage consolidating bottom strips
+      // into fewer physical rolls (longer offcuts), which often lets walls fit into those offcuts.
+      if (priority === 'minRolls') return surfacePriority(a) - surfacePriority(b);
+      return 0;
+    });
 
-      const wall = walls.splice(best.wi, 1)[0];
-      const bottom = bottoms.splice(best.bi, 1)[0];
+    const canFit = (roll: RollAllocation, len: number) => roll.usedLength + len <= ROLL_LENGTH + 1e-9;
 
-      const usedLength = wall.length + bottom.length;
+    const pickBestRollIndex = (strip: StripToPack): number => {
+      let bestIdx = -1;
+      let bestPenalty = Number.POSITIVE_INFINITY;
+
+      for (let i = 0; i < groupRolls.length; i++) {
+        const roll = groupRolls[i];
+        if (!canFit(roll, strip.length)) continue;
+
+        const remainingAfter = ROLL_LENGTH - (roll.usedLength + strip.length);
+
+        let penalty: number;
+        if (priority === 'minRolls') {
+          const isNonReusableEnd = remainingAfter > 0.001 && remainingAfter < MIN_REUSABLE_OFFCUT_LENGTH;
+          penalty = (isNonReusableEnd ? 1_000_000 : 0) + remainingAfter;
+
+          // Prefer consuming bottom offcuts for walls before opening/using other rolls.
+          if (strip.surface === 'Ściany' && roll.strips.some((x) => x.surface === 'Dno')) {
+            penalty -= 0.1; // tiny bonus (tie-break only)
+          }
+        } else {
+          // minWaste: classic best-fit (minimize leftover per roll)
+          penalty = remainingAfter;
+        }
+
+        if (penalty < bestPenalty) {
+          bestPenalty = penalty;
+          bestIdx = i;
+        }
+      }
+
+      return bestIdx;
+    };
+
+    for (const strip of remaining) {
+      const idx = pickBestRollIndex(strip);
+      if (idx >= 0) {
+        const roll = groupRolls[idx];
+        roll.strips.push({ surface: strip.surface, stripIndex: strip.stripIndex, length: strip.length });
+        roll.usedLength += strip.length;
+        roll.wasteLength = ROLL_LENGTH - roll.usedLength;
+        continue;
+      }
+
       groupRolls.push({
         rollNumber: 0,
         rollWidth: width,
-        usedLength,
-        wasteLength: ROLL_LENGTH - usedLength,
-        strips: [
-          { surface: bottom.surface, stripIndex: bottom.stripIndex, length: bottom.length },
-          { surface: wall.surface, stripIndex: wall.stripIndex, length: wall.length },
-        ],
+        usedLength: strip.length,
+        wasteLength: ROLL_LENGTH - strip.length,
+        strips: [{ surface: strip.surface, stripIndex: strip.stripIndex, length: strip.length }],
       });
-    }
-
-    const remaining: StripToPack[] = [...walls, ...bottoms, ...others];
-    remaining.sort((a, b) => b.length - a.length);
-
-    for (const strip of remaining) {
-      let placed = false;
-      for (const roll of groupRolls) {
-        if (roll.usedLength + strip.length <= ROLL_LENGTH + 1e-9) {
-          roll.strips.push({ surface: strip.surface, stripIndex: strip.stripIndex, length: strip.length });
-          roll.usedLength += strip.length;
-          roll.wasteLength = ROLL_LENGTH - roll.usedLength;
-          placed = true;
-          break;
-        }
-      }
-
-      if (!placed) {
-        groupRolls.push({
-          rollNumber: 0,
-          rollWidth: width,
-          usedLength: strip.length,
-          wasteLength: ROLL_LENGTH - strip.length,
-          strips: [{ surface: strip.surface, stripIndex: strip.stripIndex, length: strip.length }],
-        });
-      }
     }
 
     rolls.push(...groupRolls);
