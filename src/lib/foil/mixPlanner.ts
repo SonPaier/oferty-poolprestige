@@ -624,6 +624,14 @@ export function calculateSurfaceDetails(
       const calc = calculateStripsForWidth(def.coverWidth, surface.rollWidth, def.overlap);
       const rollNumbers = getRollNumbersForSurface(surface.surfaceLabel);
       
+      // Total foil area = strips × roll width × strip length (full material used)
+      const totalFoilAreaRaw = surface.stripCount * surface.rollWidth * surface.stripLength;
+      // Weld area = overlaps between strips
+      const overlapsCount = Math.max(0, calc.count - 1);
+      const weldArea = overlapsCount * calc.actualOverlap * def.stripLength;
+      // Cover area = net area covered (total foil - weld overlap)
+      const coverArea = totalFoilAreaRaw - weldArea;
+      
       results.push({
         surfaceKey: 'bottom',
         surfaceLabel: 'Dno',
@@ -633,48 +641,49 @@ export function calculateSurfaceDetails(
           stripLength: surface.stripLength,
           rollNumber: rollNumbers[0],
         }],
-        coverArea: Math.round(surface.areaM2 * 10) / 10,
-        totalFoilArea: Math.ceil(surface.areaM2 + calc.wasteArea * def.stripLength),
-        weldArea: Math.round((calc.actualOverlap * def.stripLength * Math.max(0, calc.count - 1)) * 10) / 10,
-        wasteArea: Math.round(surface.wasteM2 * 10) / 10,
+        coverArea: Math.round(coverArea * 10) / 10,
+        totalFoilArea: Math.ceil(totalFoilAreaRaw),
+        weldArea: Math.round(weldArea * 10) / 10,
+        wasteArea: 0, // Edge waste (if any) is handled separately
       });
     }
   }
 
-  // Walls (combined)
+  // Walls (combined) - use continuous strip around perimeter
   if (wallSurfaces.length > 0) {
-    const totalWallArea = wallSurfaces.reduce((sum, s) => sum + s.areaM2, 0);
-    const totalWallWaste = wallSurfaces.reduce((sum, s) => sum + s.wasteM2, 0);
-    const totalWallStrips = wallSurfaces.reduce((sum, s) => sum + s.stripCount, 0);
+    const walls = getWallSegments(dimensions);
+    const perimeter = walls.reduce((sum, w) => sum + w.length, 0);
+    const depth = dimensions.depth + FOLD_AT_BOTTOM;
     
-    // Get wall strip assignments
-    const perimeter = getWallSegments(dimensions).reduce((sum, w) => sum + w.length, 0);
-    const wallStripInfo = assignWallLabelsToStrips(dimensions, perimeter / totalWallStrips, totalWallStrips);
+    // Optimal width based on wall depth
+    const wallRollWidth = depth <= 1.50 ? ROLL_WIDTH_NARROW : ROLL_WIDTH_WIDE;
     
-    const wallDefs = defs.filter(d => d.key === 'wall-long' || d.key === 'wall-short');
-    let totalWeldArea = 0;
-    wallDefs.forEach(def => {
-      const surface = wallSurfaces.find(s => s.surface === def.key);
-      if (surface) {
-        const calc = calculateStripsForWidth(def.coverWidth, surface.rollWidth, def.overlap);
-        totalWeldArea += calc.actualOverlap * def.stripLength * Math.max(0, calc.count - 1) * def.count;
-      }
-    });
+    // One continuous strip covers entire perimeter + overlap for joining ends
+    const joinOverlap = MIN_OVERLAP_WALL; // 10cm for joining ends
+    const stripLength = perimeter + joinOverlap; // e.g., 24m + 0.1m = 24.1m
+    
+    // Calculate cover area and total foil area
+    const coverArea = perimeter * depth; // Net area to cover
+    const totalFoilAreaRaw = stripLength * wallRollWidth; // Full material used
+    const weldArea = joinOverlap * wallRollWidth; // Only the joining overlap
+    
+    // Wall labels: one strip covering all walls A-B-C-D-A
+    const wallLabels = walls.map(w => w.label.split('-')[0]).join('-') + '-' + walls[0].label.split('-')[0];
     
     results.push({
       surfaceKey: 'walls',
       surfaceLabel: 'Ściany',
-      strips: wallStripInfo.map((info, idx) => ({
+      strips: [{
         count: 1,
-        rollWidth: wallSurfaces[0]?.rollWidth || ROLL_WIDTH_NARROW,
-        stripLength: info.stripLength,
-        wallLabels: info.wallLabels,
-        rollNumber: idx + 1,
-      })),
-      coverArea: Math.round(totalWallArea * 10) / 10,
-      totalFoilArea: Math.ceil(totalWallArea + totalWallWaste),
-      weldArea: Math.round(totalWeldArea * 10) / 10,
-      wasteArea: Math.round(totalWallWaste * 10) / 10,
+        rollWidth: wallRollWidth,
+        stripLength: Math.round(stripLength * 10) / 10,
+        wallLabels: [wallLabels], // e.g., "A-B-C-D-A"
+        rollNumber: 1,
+      }],
+      coverArea: Math.round(coverArea * 10) / 10,
+      totalFoilArea: Math.ceil(totalFoilAreaRaw),
+      weldArea: Math.round(weldArea * 10) / 10,
+      wasteArea: 0,
     });
   }
 
@@ -686,6 +695,11 @@ export function calculateSurfaceDetails(
       const calc = calculateStripsForWidth(def.coverWidth, surface.rollWidth, def.overlap);
       const rollNumbers = getRollNumbersForSurface(surface.surfaceLabel);
       
+      const totalFoilAreaRaw = surface.stripCount * surface.rollWidth * surface.stripLength;
+      const overlapsCount = Math.max(0, calc.count - 1);
+      const weldArea = overlapsCount * calc.actualOverlap * def.stripLength;
+      const coverArea = totalFoilAreaRaw - weldArea;
+      
       results.push({
         surfaceKey: 'stairs',
         surfaceLabel: 'Schody',
@@ -695,10 +709,10 @@ export function calculateSurfaceDetails(
           stripLength: surface.stripLength,
           rollNumber: rollNumbers[0],
         }],
-        coverArea: Math.round(surface.areaM2 * 10) / 10,
-        totalFoilArea: Math.ceil(surface.areaM2 + surface.wasteM2),
-        weldArea: Math.round((calc.actualOverlap * def.stripLength * Math.max(0, calc.count - 1)) * 10) / 10,
-        wasteArea: Math.round(surface.wasteM2 * 10) / 10,
+        coverArea: Math.round(coverArea * 10) / 10,
+        totalFoilArea: Math.ceil(totalFoilAreaRaw),
+        weldArea: Math.round(weldArea * 10) / 10,
+        wasteArea: 0,
       });
     }
   }
@@ -711,6 +725,11 @@ export function calculateSurfaceDetails(
       const calc = calculateStripsForWidth(def.coverWidth, surface.rollWidth, def.overlap);
       const rollNumbers = getRollNumbersForSurface(surface.surfaceLabel);
       
+      const totalFoilAreaRaw = surface.stripCount * surface.rollWidth * surface.stripLength;
+      const overlapsCount = Math.max(0, calc.count - 1);
+      const weldArea = overlapsCount * calc.actualOverlap * def.stripLength;
+      const coverArea = totalFoilAreaRaw - weldArea;
+      
       results.push({
         surfaceKey: 'paddling',
         surfaceLabel: 'Brodzik',
@@ -720,10 +739,10 @@ export function calculateSurfaceDetails(
           stripLength: surface.stripLength,
           rollNumber: rollNumbers[0],
         }],
-        coverArea: Math.round(surface.areaM2 * 10) / 10,
-        totalFoilArea: Math.ceil(surface.areaM2 + surface.wasteM2),
-        weldArea: Math.round((calc.actualOverlap * def.stripLength * Math.max(0, calc.count - 1)) * 10) / 10,
-        wasteArea: Math.round(surface.wasteM2 * 10) / 10,
+        coverArea: Math.round(coverArea * 10) / 10,
+        totalFoilArea: Math.ceil(totalFoilAreaRaw),
+        weldArea: Math.round(weldArea * 10) / 10,
+        wasteArea: 0,
       });
     }
   }
@@ -736,6 +755,11 @@ export function calculateSurfaceDetails(
       const calc = calculateStripsForWidth(def.coverWidth, surface.rollWidth, def.overlap);
       const rollNumbers = getRollNumbersForSurface(surface.surfaceLabel);
       
+      const totalFoilAreaRaw = surface.stripCount * surface.rollWidth * surface.stripLength;
+      const overlapsCount = Math.max(0, calc.count - 1);
+      const weldArea = overlapsCount * calc.actualOverlap * def.stripLength;
+      const coverArea = totalFoilAreaRaw - weldArea;
+      
       results.push({
         surfaceKey: 'dividing-wall',
         surfaceLabel: 'Murek brodzika',
@@ -745,10 +769,10 @@ export function calculateSurfaceDetails(
           stripLength: surface.stripLength,
           rollNumber: rollNumbers[0],
         }],
-        coverArea: Math.round(surface.areaM2 * 10) / 10,
-        totalFoilArea: Math.ceil(surface.areaM2 + surface.wasteM2),
-        weldArea: Math.round((calc.actualOverlap * def.stripLength * Math.max(0, calc.count - 1)) * 10) / 10,
-        wasteArea: Math.round(surface.wasteM2 * 10) / 10,
+        coverArea: Math.round(coverArea * 10) / 10,
+        totalFoilArea: Math.ceil(totalFoilAreaRaw),
+        weldArea: Math.round(weldArea * 10) / 10,
+        wasteArea: 0,
       });
     }
   }

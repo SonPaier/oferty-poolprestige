@@ -106,7 +106,7 @@ function StripDetailsTable({ details }: StripDetailsTableProps) {
           <TableRow className="bg-muted/50">
             <TableHead className="font-semibold">Miejsce</TableHead>
             <TableHead className="font-semibold">Rozpiska pasów</TableHead>
-            <TableHead className="text-right font-semibold">Pokrycie</TableHead>
+            <TableHead className="text-right font-semibold">Powierzchnia</TableHead>
             <TableHead className="text-right font-semibold">Pow. folii</TableHead>
           </TableRow>
         </TableHeader>
