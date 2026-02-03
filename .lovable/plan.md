@@ -1,232 +1,199 @@
 
+# Plan: Elastyczna optymalizacja rozkładu pasów folii
 
-# Plan: Naprawa kalkulacji ścian z optymalizacją cross-surface rolek
-
-## Podsumowanie zmian
-
-Ten plan obejmuje trzy kluczowe poprawki:
-1. **Poprawne zakłady na ścianach** (pionowe i poziome)
-2. **Elastyczny zakład pionowy** (0.2m może być na jednym pasie zamiast 0.1m + 0.1m)
-3. **Cross-surface roll optimization** (resztka z dna może być użyta na ścianę)
+## Cel
+Przebudować logikę optymalizacji folii tak, aby algorytm **dynamicznie wybierał optymalną liczbę pasów** (1, 2, 3, 4 lub więcej) zamiast sztywno zakładać 2 lub 4. Zakład pionowy ma być rozdzielany nierówno między pasy, gdy to poprawia wykorzystanie rolek.
 
 ---
 
-## 1. Poprawna kalkulacja zakładów na ścianach
+## Analiza problemu
 
-### Zakład poziomy (góra/dół)
-```
-nadmiar = szerokość_folii - głębokość_basenu
-zakład_na_stronę = nadmiar / 2
-```
+### Obecny stan (błędny)
+Plik `src/lib/foil/mixPlanner.ts` obecnie:
+- **minWaste**: Sztywno używa 2 ciągłych pasów wokół obwodu (funkcja `computeWallStripPlanFromPerimeter`)
+- **minRolls**: Sztywno używa 4 osobnych pasów (po jednym na ścianę)
 
-| Zakład na stronę | Działanie |
-|------------------|-----------|
-| 5-10 cm | OK - zakład (weld area) |
-| > 10 cm | Max 10cm zakład, reszta = odpad |
-| < 5 cm | Min 5cm zakład |
-
-**Przykład (basen 10×5×1.5m):**
-- Folia 1.65m, głębokość 1.5m
-- Nadmiar = 0.15m → 7.5cm góra + 7.5cm dół ✓
-
-### Zakład pionowy (łączenia pasów)
-- Zakład 0.1m na każde łączenie pasów
-- Przy 2 pasach = 2 łączenia (A→C i C→A) = 0.2m × 1.65m = 0.33m²
+### Wymagany stan
+Dla obu trybów algorytm powinien:
+1. Wygenerować wszystkie sensowne konfiguracje pasów (od 1 do n pasów)
+2. Dla każdej konfiguracji obliczyć:
+   - Łączny m² folii do zamówienia (brutto)
+   - Odpad nieużytkowy (m²)
+   - Liczbę rolek
+3. Wybrać najlepszą konfigurację według priorytetu:
+   - **minWaste**: minimalizuj odpad
+   - **minRolls**: minimalizuj m² do zamówienia (mniej rolek × szerokość × 25m)
 
 ---
 
-## 2. Elastyczny zakład pionowy - przypisanie do jednego pasa
+## Rozwiązanie techniczne
 
-### Problem
-Aktualnie: Pas 1 = 15.1m, Pas 2 = 15.1m (każdy +0.1m)
-Ale: Czasem lepiej zrobić Pas 1 = 15m, Pas 2 = 15.2m (całe 0.2m na jednym pasie)
+### 1. Nowa struktura danych dla konfiguracji ścian
 
-### Kiedy to jest lepsze?
-Gdy resztka z innej rolki (np. dno) może pokryć jeden pas ściany:
-- Rolka dna: 25m - 10m (dno) = **15m resztki**
-- Jeśli pas ściany = 15m (bez zakładu) → wykorzystujemy resztkę
-- Drugi pas = 15.2m (z całym zakładem 0.2m) → z nowej rolki
+Zmiana podejścia z "2 lub 4 pasów" na generyczną reprezentację:
 
-### Logika
 ```typescript
-// Opcja A: równy podział zakładu
-const option1 = { strip1: perimeter/2 + 0.1, strip2: perimeter/2 + 0.1 };
-
-// Opcja B: cały zakład na jednym pasie
-const option2 = { strip1: perimeter/2, strip2: perimeter/2 + 0.2 };
-
-// Wybierz opcję z mniejszym zużyciem rolek
+interface WallStripPlan {
+  strips: Array<{
+    wallLabels: string[];      // np. ['A-B'] lub ['A-B-C']
+    length: number;            // długość pasa wraz z zakładem
+    rollWidth: RollWidth;      // 1.65 lub 2.05
+  }>;
+  totalVerticalOverlap: number; // suma zakładów pionowych
+  totalFoilArea: number;        // suma pasów × szerokość
+  wasteArea: number;            // odpad nieużytkowy
+}
 ```
 
----
+### 2. Generator wszystkich konfiguracji pasów ścian
 
-## 3. Cross-surface roll optimization
+Nowa funkcja `generateWallStripConfigurations()`:
 
-### Cel
-Wykorzystanie resztek z rolek dna na ściany (jeśli ta sama szerokość folii).
-
-### Przykład dla basenu 10×5×1.5m
-
-**BEZ optymalizacji:**
-- Dno: 3 pasy × 10m = 30m → 2 rolki (używamy 30m z 50m)
-- Ściany: 2 pasy × 15.1m = 30.2m → 2 rolki
-- **RAZEM: 4 rolki, ~45m odpadu**
-
-**Z optymalizacją:**
-- Dno: 3 pasy × 10m = 30m → 2 rolki (resztka z drugiej rolki = 15m)
-- Ściany: Pas 1 = 15m (z resztki dna), Pas 2 = 15.2m (z nowej rolki)
-- **RAZEM: 3 rolki, ~20m odpadu**
-
-### Warunek
-Optymalizacja możliwa tylko gdy:
-- Szerokość folii na dno = szerokość folii na ściany (np. obie 1.65m)
-- Resztka z rolki ≥ długość pasa ściany
-
----
-
-## Szczegóły techniczne
-
-### Plik: `src/lib/foil/mixPlanner.ts`
-
-#### A. Nowe stałe
 ```typescript
-const DEPTH_THRESHOLD_FOR_WIDE = 1.55; // Próg dla folii 2.05m na ściany
-const MIN_HORIZONTAL_OVERLAP = 0.05;   // 5cm min zakład góra/dół
-const MAX_HORIZONTAL_OVERLAP = 0.10;   // 10cm max zakład góra/dół
-```
-
-#### B. Nowa funkcja: `calculateWallOverlaps()`
-```typescript
-function calculateWallOverlaps(
-  rollWidth: RollWidth,
+function generateWallStripConfigurations(
+  walls: WallSegment[],             // 4 ściany: A-B, B-C, C-D, D-A
   depth: number,
-  perimeter: number,
-  totalFoilLength: number
-): { horizontalWeldArea: number; wasteArea: number } {
-  const overhang = rollWidth - depth;
-  const overlapPerSide = overhang / 2;
+  availableWidths: RollWidth[],     // [1.65] lub [1.65, 2.05]
+  bottomStrips: BottomStripInfo[]   // do parowania rolek
+): WallStripPlan[] {
+  const configs: WallStripPlan[] = [];
+  const perimeter = walls.reduce((s, w) => s + w.length, 0);
   
-  let actualOverlap: number;
-  let edgeWaste: number;
+  // Generuj konfiguracje od 1 do max pasów
+  // Max pasów = liczba ścian (4 dla prostokąta)
+  // Możliwe podziały:
+  // - 1 pas: cały obwód (jeśli <= 25m)
+  // - 2 pasy: różne podziały (połowa + połowa, lub A-B + B-C-D-A)
+  // - 3 pasy: np. A-B, B-C-D, D-A
+  // - 4 pasy: osobno każda ściana
   
-  if (overlapPerSide >= MIN_HORIZONTAL_OVERLAP && overlapPerSide <= MAX_HORIZONTAL_OVERLAP) {
-    actualOverlap = overlapPerSide;
-    edgeWaste = 0;
-  } else if (overlapPerSide > MAX_HORIZONTAL_OVERLAP) {
-    actualOverlap = MAX_HORIZONTAL_OVERLAP;
-    edgeWaste = overlapPerSide - MAX_HORIZONTAL_OVERLAP;
-  } else {
-    actualOverlap = MIN_HORIZONTAL_OVERLAP;
-    edgeWaste = 0;
-  }
+  // Dla każdego podziału:
+  // - przydziel szerokości (1.65/2.05) na podstawie głębokości i parowania
+  // - rozdystrybuuj zakład pionowy nierówno (żeby lepiej domykać rolki)
   
-  const horizontalWeldArea = actualOverlap * 2 * totalFoilLength;
-  const wasteArea = edgeWaste * 2 * totalFoilLength;
-  
-  return { horizontalWeldArea, wasteArea };
+  return configs;
 }
 ```
 
-#### C. Nowa funkcja: `optimizeStripLengthsWithRemainder()`
+### 3. Nierówny rozkład zakładu pionowego
+
+Zamiast stałego +0.10m na każdy pas:
+
 ```typescript
-interface StripOptimizationResult {
-  stripLengths: number[];
-  totalLength: number;
-  rollsUsed: { rollNumber: number; usedLength: number }[];
-  canReuseFromBottom?: boolean;
-}
-
-function optimizeStripLengthsWithRemainder(
-  perimeter: number,
-  joinOverlap: number,
-  bottomRemainder: number | null, // Resztka z rolki dna
-  bottomRollWidth: RollWidth | null,
-  wallRollWidth: RollWidth
-): StripOptimizationResult {
-  const stripCount = Math.ceil((perimeter + joinOverlap) / ROLL_LENGTH);
+function distributeVerticalOverlap(
+  strips: StripInfo[],
+  totalOverlap: number,         // np. 0.40m dla 4 pasów
+  bottomOffcuts: OffcutInfo[]   // pozostałości z dna do parowania
+): StripInfo[] {
+  // Strategia: przydziel więcej zakładu do pasów, które mogą
+  // lepiej wykorzystać pozostałość z rolki
+  // 
+  // Przykład dla 10×5 (obwód 30m):
+  // - pas 1: 10.0m (ściana A-B)
+  // - pas 2: 5.2m  (ściana B-C z całym zakładem)
+  // - pas 3: 10.0m (ściana C-D)
+  // - pas 4: 5.2m  (ściana D-A z całym zakładem)
+  // 
+  // Lub inny rozkład: 10.2, 5.0, 10.2, 5.0
   
-  if (stripCount === 1) {
-    return {
-      stripLengths: [perimeter + joinOverlap],
-      totalLength: perimeter + joinOverlap,
-      rollsUsed: [{ rollNumber: 1, usedLength: perimeter + joinOverlap }],
-    };
-  }
-  
-  // Sprawdź czy można wykorzystać resztkę z dna
-  const canReuseFromBottom = 
-    bottomRemainder !== null &&
-    bottomRollWidth === wallRollWidth &&
-    bottomRemainder >= perimeter / stripCount;
-  
-  if (canReuseFromBottom && stripCount === 2) {
-    // Opcja: Pas 1 = resztka (bez zakładu), Pas 2 = reszta + cały zakład
-    const strip1Length = Math.min(bottomRemainder!, perimeter / 2);
-    const strip2Length = perimeter - strip1Length + joinOverlap * 2;
-    
-    return {
-      stripLengths: [strip1Length, strip2Length],
-      totalLength: strip1Length + strip2Length,
-      rollsUsed: [
-        { rollNumber: 0, usedLength: strip1Length }, // 0 = reuse
-        { rollNumber: 1, usedLength: strip2Length },
-      ],
-      canReuseFromBottom: true,
-    };
-  }
-  
-  // Domyślnie: równy podział
-  const baseLength = perimeter / stripCount;
-  const stripLengths = Array(stripCount).fill(0).map((_, i) => 
-    i === 0 ? baseLength + joinOverlap : baseLength + joinOverlap
-  );
-  
-  return {
-    stripLengths,
-    totalLength: stripLengths.reduce((a, b) => a + b, 0),
-    rollsUsed: stripLengths.map((len, i) => ({ rollNumber: i + 1, usedLength: len })),
-  };
+  return stripsWithOptimalOverlap;
 }
 ```
 
-#### D. Aktualizacja `calculateSurfaceDetails()` dla ścian (~linie 782-935)
+### 4. Funkcja wyboru optymalnej konfiguracji
 
-1. Zmiana progu głębokości: `1.50m → 1.55m`
-2. Nowa logika zakładów poziomych (góra/dół)
-3. Wykorzystanie `optimizeStripLengthsWithRemainder()` dla optymalizacji rolek
-4. Poprawne etykiety narożników (A-B-C i C-D-A)
+```typescript
+function selectOptimalWallConfig(
+  configs: WallStripPlan[],
+  priority: OptimizationPriority
+): WallStripPlan {
+  if (priority === 'minWaste') {
+    // Sortuj po wasteArea rosnąco, potem po liczbie pasów rosnąco
+    configs.sort((a, b) => {
+      const wasteDiff = a.wasteArea - b.wasteArea;
+      if (Math.abs(wasteDiff) > 0.1) return wasteDiff;
+      return a.strips.length - b.strips.length;
+    });
+  } else {
+    // minRolls: sortuj po totalFoilArea rosnąco (mniej m² = mniej rolek)
+    configs.sort((a, b) => {
+      const areaDiff = a.totalFoilArea - b.totalFoilArea;
+      if (Math.abs(areaDiff) > 0.1) return areaDiff;
+      return a.strips.length - b.strips.length;
+    });
+  }
+  
+  return configs[0];
+}
+```
 
-#### E. Aktualizacja `packStripsIntoRolls()` 
-Dodanie obsługi cross-surface packing (dno + ściany na tej samej rolce).
+### 5. Integracja z istniejącymi funkcjami
+
+Zmiany w następujących funkcjach:
+- `autoOptimizeMixConfig()` - używa nowego generatora konfiguracji
+- `calculateSurfaceDetails()` - wyświetla wybrany rozkład pasów
+- `packStripsIntoRolls()` - pakuje pasy według wybranej konfiguracji
 
 ---
 
-## Weryfikacja dla basenu 10×5×1.5m
+## Zmiany w plikach
 
-| Parametr | Wartość |
-|----------|---------|
-| Obwód | 30m |
-| Głębokość | 1.5m |
-| Szerokość folii ściany | 1.65m (bo 1.5m ≤ 1.55m) |
-| Nadmiar | 0.15m |
-| **Zakład góra/dół** | 7.5cm + 7.5cm |
-| Liczba pasów | 2 |
-| **Opcja równy podział** | 15.1m + 15.1m |
-| **Opcja z resztką dna** | 15m (resztka) + 15.2m (nowa) |
-| **Zakład pionowy** | 2 × 0.1m × 1.65m = 0.33m² |
-| **Zakład poziomy** | 0.15m × 30.2m = 4.53m² |
-| **RAZEM zakład** | ~4.86m² |
-| Powierzchnia folii | ~50m² |
-| Oznaczenie | **A-B-C** i **C-D-A** |
+### src/lib/foil/mixPlanner.ts
+
+1. **Nowe funkcje** (~100 linii):
+   - `generateWallStripConfigurations()`
+   - `distributeVerticalOverlap()`
+   - `selectOptimalWallConfig()`
+
+2. **Modyfikacja `calculateSurfaceDetails()`** (~50 linii):
+   - Usunięcie warunkowego `if (priority === 'minRolls') ... else ...`
+   - Użycie jednej ścieżki z dynamicznym wyborem konfiguracji
+
+3. **Modyfikacja `packStripsIntoRolls()`** (~30 linii):
+   - Analogiczne usunięcie warunkowej logiki
+   - Użycie wybranej konfiguracji
+
+4. **Modyfikacja `autoOptimizeMixConfig()`** (~20 linii):
+   - Generowanie konfiguracji ścian za pomocą nowej funkcji
 
 ---
 
-## Kolejność implementacji
+## Przypadki testowe
 
-1. Dodać nowe stałe `DEPTH_THRESHOLD_FOR_WIDE`, `MIN_HORIZONTAL_OVERLAP`, `MAX_HORIZONTAL_OVERLAP`
-2. Zaimplementować `calculateWallOverlaps()` 
-3. Zaimplementować `optimizeStripLengthsWithRemainder()`
-4. Zaktualizować `calculateSurfaceDetails()` dla sekcji ścian
-5. Zaktualizować `packStripsIntoRolls()` dla cross-surface optimization
-6. Naprawić logikę etykiet narożników (A-B-C, C-D-A)
+### Basen 10×5×1.5m (obwód 30m)
 
+**Konfiguracje do porównania:**
+| # pasów | Rozkład | Szerokości | m² folii | Odpad |
+|---------|---------|------------|----------|-------|
+| 2 | 15+15.2 | 1.65+1.65 | 49.83 | ~2m² |
+| 4 | 10+5+10+5 | 1.65×4 | ~50m² | ~1.5m² |
+| 4 | 10+5+10+5 | 1.65+2.05+1.65+1.65 | ~52m² | mniej |
+| 3 | ... | ... | ... | ... |
+
+**Oczekiwany wynik dla minRolls:**
+- Dno: 2.05×10 + 1.65×10 + 1.65×10 (3 pasy)
+- Ściany: 1.65×5 + 2.05×5.1 + 1.65×10.2 + 1.65×10.2 (4 pasy)
+- Rolki: 1× 2.05m + 2× 1.65m = 3 rolki
+
+**Oczekiwany wynik dla minWaste:**
+- Dno: najbardziej optymalny podział minimalizujący odpad
+- Ściany: liczba pasów zależna od tego, co daje mniej odpadu
+
+---
+
+## Harmonogram implementacji
+
+1. **Krok 1**: Refaktor generatora konfiguracji ścian
+2. **Krok 2**: Implementacja nierównego rozkładu zakładu
+3. **Krok 3**: Aktualizacja `calculateSurfaceDetails` i `packStripsIntoRolls`
+4. **Krok 4**: Testy dla basenu 10×5×1.5m i weryfikacja UI
+
+---
+
+## Ryzyka i mitygacje
+
+| Ryzyko | Mitygacja |
+|--------|-----------|
+| Duża liczba kombinacji do sprawdzenia | Ograniczenie max pasów do liczby ścian + inteligentne przycinanie |
+| Regresja w istniejących obliczeniach | Zachowanie testów porównawczych przed/po refaktorze |
+| Złożoność kodu | Dokumentacja i komentarze wyjaśniające logikę optymalizacji |
