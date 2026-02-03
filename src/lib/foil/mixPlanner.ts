@@ -1272,12 +1272,18 @@ export function autoOptimizeMixConfig(
       const calc = calculateStripsForWidth(def.coverWidth, ROLL_WIDTH_NARROW, def.overlap);
       wastePerSurface = calc.wasteArea * def.stripLength;
     } else if (priority === 'minRolls') {
-      // Prefer wider rolls (2.05m) to minimize roll count
+      // "Min rolls" = minimize total m² ordered from manufacturer.
+      // Total m² for a surface = stripCount × stripLength × rollWidth
+      // We compare both widths and choose the one with lower total foil consumption.
       const narrowCalc = calculateStripsForWidth(def.coverWidth, ROLL_WIDTH_NARROW, def.overlap);
       const wideCalc = calculateStripsForWidth(def.coverWidth, ROLL_WIDTH_WIDE, def.overlap);
       
-      // Prefer wider if it uses same or fewer strips
-      if (wideCalc.count <= narrowCalc.count) {
+      // Total foil ordered = strips × length × width
+      const narrowTotalM2 = narrowCalc.count * def.stripLength * ROLL_WIDTH_NARROW;
+      const wideTotalM2 = wideCalc.count * def.stripLength * ROLL_WIDTH_WIDE;
+      
+      // Choose the option with less total m² ordered
+      if (wideTotalM2 <= narrowTotalM2) {
         optimalWidth = ROLL_WIDTH_WIDE;
         wastePerSurface = wideCalc.wasteArea * def.stripLength;
       } else {
