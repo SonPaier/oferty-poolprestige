@@ -553,26 +553,32 @@ export function selectOptimalWallPlan(
             + pairedLeftover * 100
             + plan.totalFoilArea * 0.01;
     } else {
-      // minRolls: minimize total foil to order while considering practical constraints
+      // minRolls: minimize total foil COST (m² ordered from manufacturer)
       // 
-      // Key insight: pairing with bottom offcuts saves rolls, BUT using a wider
-      // roll than needed creates "width waste" which increases total foil cost.
+      // Key insight: At the same roll count, prefer narrower rolls (cheaper per roll).
+      // - Roll 1.65m × 25m = 41.25m² 
+      // - Roll 2.05m × 25m = 51.25m²
       // 
       // For 8x4 pool with 1.5m depth:
-      // - 2.05m walls + pairing: 0 extra rolls, but 0.55m×24m = 13.2m² width waste
-      // - 1.65m walls + own roll: 1 extra roll (41.25m²), but 0.15m×24m = 3.6m² width waste
+      // Both options need ~2 rolls total (1 bottom + 1 walls), but:
+      // - 1.65m walls: 2 rolls = 82.50m² ordered
+      // - 2.05m walls: 2 rolls = 102.50m² ordered (or 92.50m² if mixed)
       // 
-      // The 1.65m option uses more rolls but less total foil (41.25 + 3.6 < 0 + 13.2? No!)
-      // Actually: 1.65m total = 39.8m² strips, 2.05m total = 49.6m² strips
-      // Difference = 9.8m² less foil with 1.65m, but costs 1 extra roll
+      // So at equal roll count, 1.65m is always cheaper!
       //
-      // For minRolls, we balance: extra roll cost vs width waste
+      // Calculate total roll area that would need to be ordered
       const additionalWallRollArea = estimateAdditionalWallRollArea(plan, bottomStrips);
       
-      score = additionalWallRollArea * 100_000   // Primary: minimize extra rolls
-            + widthWaste * 50_000                // High penalty for using wider roll than needed
-            + actualRollsNeeded * 10_000
-            + plan.totalFoilArea * 1000
+      // Count rolls by width to calculate actual m² to order
+      const rollsBy165 = plan.strips.filter(s => s.rollWidth === 1.65).length > 0;
+      const rollsBy205 = plan.strips.filter(s => s.rollWidth === 2.05).length > 0;
+      
+      // Primary: minimize additional rolls needed
+      // Secondary: minimize total foil area (accounts for roll width cost difference)
+      // This ensures that at same roll count, narrower (cheaper) rolls win
+      score = additionalWallRollArea * 1_000_000   // Primary: minimize extra rolls (in m²)
+            + plan.totalFoilArea * 10_000          // Secondary: minimize total foil needed
+            + widthWaste * 1_000                   // Tertiary: penalize excess width  
             + wasteArea * 10
             + plan.totalStripCount;
     }
