@@ -951,11 +951,15 @@ export function calculateSurfaceDetails(
         }
       }
 
+      // Structural foil uses butt joint (no overlap), so weldArea = 0 for bottom
+      const isButtJointBottom = usesButtJoint(foilSubtype);
+      
       if (surface.stripMix && surface.stripMix.length > 0) {
         const widths = buildWidthsFromMix(surface.stripMix);
         const evalRes = evaluateMixedStrips(def.coverWidth, widths, def.overlap);
         totalFoilAreaRaw = evalRes.materialWidthUsed * def.stripLength;
-        weldArea = Math.max(0, evalRes.stripCount - 1) * evalRes.actualOverlap * def.stripLength;
+        // For butt joint, no overlap area on bottom
+        weldArea = isButtJointBottom ? 0 : Math.max(0, evalRes.stripCount - 1) * evalRes.actualOverlap * def.stripLength;
         wasteArea = Math.max(0, totalFoilAreaRaw - coverArea - weldArea);
 
         // Display per roll number (so we don't incorrectly show 2×10m as coming from one roll)
@@ -985,7 +989,8 @@ export function calculateSurfaceDetails(
         const calc = calculateStripsForWidth(def.coverWidth, surface.rollWidth, def.overlap);
         totalFoilAreaRaw = surface.stripCount * surface.rollWidth * surface.stripLength;
         const overlapsCount = Math.max(0, calc.count - 1);
-        weldArea = overlapsCount * calc.actualOverlap * def.stripLength;
+        // For butt joint, no overlap area on bottom
+        weldArea = isButtJointBottom ? 0 : overlapsCount * calc.actualOverlap * def.stripLength;
         wasteArea = Math.max(0, totalFoilAreaRaw - coverArea - weldArea);
         
         // Group by roll number even for single-width configuration
@@ -1025,8 +1030,7 @@ export function calculateSurfaceDetails(
       const totalFoilAreaWithWaste = totalFoilAreaRaw + bottomRollEndWaste;
       const totalWasteArea = wasteArea + bottomRollEndWaste;
 
-      // Determine if this bottom uses butt joint (structural foil)
-      const isButtJoint = usesButtJoint(foilSubtype);
+      // Use the already-calculated isButtJointBottom for the result
 
       results.push({
         surfaceKey: 'bottom',
@@ -1036,7 +1040,7 @@ export function calculateSurfaceDetails(
         totalFoilArea: Math.ceil(totalFoilAreaWithWaste),
         weldArea: Math.round(weldArea * 10) / 10,
         wasteArea: Math.round(totalWasteArea * 10) / 10,
-        isButtJoint,
+        isButtJoint: isButtJointBottom,
       });
     }
   }
