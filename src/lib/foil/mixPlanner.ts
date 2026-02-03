@@ -27,6 +27,13 @@ export const ROLL_LENGTH = 25;
 export const MIN_REUSABLE_OFFCUT_LENGTH = 2; // meters
 export const MIN_OVERLAP_BOTTOM = 0.05;
 export const MIN_OVERLAP_WALL = 0.10;
+
+// Vertical join overlap (wall strip-to-strip joins around the perimeter)
+// Updated range: 7–15cm, default 10cm (can be optimized when it helps reuse offcuts)
+export const MIN_VERTICAL_JOIN_OVERLAP = 0.07;
+export const MAX_VERTICAL_JOIN_OVERLAP = 0.15;
+export const DEFAULT_VERTICAL_JOIN_OVERLAP = 0.10;
+
 export const FOLD_AT_BOTTOM = 0.15;
 export const BUTT_JOINT_OVERLAP = 0; // Structural foil uses butt joint (no overlap)
 
@@ -816,30 +823,61 @@ export function calculateSurfaceDetails(
     }
     
     // ===== 3. STRIP COUNT AND LENGTHS =====
-    // Vertical join overlap: 0.1m per join
-    const verticalJoinOverlap = MIN_OVERLAP_WALL; // 10cm
-    
-    // Number of strips needed (each strip can be at most ROLL_LENGTH = 25m)
-    const stripCount = Math.ceil(perimeter / ROLL_LENGTH);
-    
-    // Total vertical overlap: stripCount joins × 0.1m
+    // Vertical join overlap per join: 7–15cm (default 10cm).
+    // Default = 10cm, but if using 7cm reduces strip/roll count for this perimeter,
+    // we automatically pick 7cm.
+    const computeStripCount = (overlap: number) => {
+      let c = 1;
+      while (perimeter + c * overlap > c * ROLL_LENGTH) c += 1;
+      return c;
+    };
+
+    const overlapDefault = Math.max(
+      MIN_VERTICAL_JOIN_OVERLAP,
+      Math.min(MAX_VERTICAL_JOIN_OVERLAP, DEFAULT_VERTICAL_JOIN_OVERLAP)
+    );
+    const overlapMin = MIN_VERTICAL_JOIN_OVERLAP;
+
+    const stripCountDefault = computeStripCount(overlapDefault);
+    const stripCountMin = computeStripCount(overlapMin);
+
+    const verticalJoinOverlap = stripCountMin < stripCountDefault ? overlapMin : overlapDefault;
+    const stripCount = stripCountMin < stripCountDefault ? stripCountMin : stripCountDefault;
+
+    // Total vertical overlap: stripCount joins × overlap_per_join
     const totalVerticalOverlap = stripCount * verticalJoinOverlap;
-    
-    // Total foil length needed
     const totalLengthNeeded = perimeter + totalVerticalOverlap;
-    
-    // Calculate actual strip lengths
+
+    const basePerimeterPerStrip = perimeter / stripCount;
     const stripLengths: number[] = [];
-    
+
     if (stripCount === 1) {
-      // Single strip covers entire perimeter + overlap
       stripLengths.push(perimeter + verticalJoinOverlap);
+    } else if (stripCount === 2) {
+      // Prefer default: 10cm per join -> total overlap 20cm.
+      // If we can reuse an offcut exactly equal to base length (e.g. 15.0m),
+      // put the whole 0.2m overlap on the other strip: 15.0 + 15.2.
+      const canConcentrate = basePerimeterPerStrip + totalVerticalOverlap <= ROLL_LENGTH;
+      const matchingOffcut = canConcentrate
+        ? rolls.find(
+            (r) =>
+              r.rollWidth === wallRollWidth &&
+              r.wasteLength >= MIN_REUSABLE_OFFCUT_LENGTH &&
+              Math.abs(r.wasteLength - basePerimeterPerStrip) <= 0.05
+          )
+        : undefined;
+
+      if (matchingOffcut) {
+        stripLengths.push(basePerimeterPerStrip);
+        stripLengths.push(basePerimeterPerStrip + totalVerticalOverlap);
+      } else {
+        stripLengths.push(basePerimeterPerStrip + verticalJoinOverlap);
+        stripLengths.push(basePerimeterPerStrip + verticalJoinOverlap);
+      }
     } else {
-      // Multiple strips - divide perimeter evenly, add overlap per strip
-      const baseLength = perimeter / stripCount;
+      // Default distribution: each strip carries one join overlap.
       for (let i = 0; i < stripCount; i++) {
-        // Each strip gets: baseLength + verticalJoinOverlap
-        stripLengths.push(baseLength + verticalJoinOverlap);
+        stripLengths.push(basePerimeterPerStrip + verticalJoinOverlap);
       }
     }
     
