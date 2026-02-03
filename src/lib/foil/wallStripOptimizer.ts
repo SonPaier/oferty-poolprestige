@@ -274,24 +274,25 @@ function calculateWasteForPlan(
 }
 
 /**
- * Build a wall strip configuration from a partition
+ * Build a wall strip configuration from a partition with specific widths
  */
 function buildWallStripPlan(
   partition: number[][],
   walls: WallSegment[],
-  availableWidths: RollWidth[],
+  stripWidths: RollWidth[], // Width for each strip in the partition
   bottomStrips: BottomStripInfo[],
-  depth: number,
-  preferredWidth: RollWidth
+  depth: number
 ): WallStripPlan | null {
   const stripCount = partition.length;
+  if (stripWidths.length !== stripCount) return null;
+  
   const totalVerticalOverlap = calculateTotalVerticalOverlap(stripCount);
   
-  // Build basic strip info
-  const basicStrips = partition.map(wallIndices => {
+  // Build basic strip info with widths
+  const basicStrips = partition.map((wallIndices, i) => {
     const baseLength = wallIndices.reduce((sum, idx) => sum + walls[idx].length, 0);
     const wallLabels = wallIndices.map(idx => walls[idx].label);
-    return { wallIndices, baseLength, wallLabels };
+    return { wallIndices, baseLength, wallLabels, rollWidth: stripWidths[i] };
   });
   
   // Check if all strips can fit in rolls (with minimum overlap)
@@ -302,35 +303,16 @@ function buildWallStripPlan(
     }
   }
   
-  // First assign roll widths to each strip (before distributing overlaps)
-  // Strategy: use preferred width unless pairing benefits from different width
-  const stripsWithWidths = basicStrips.map((strip) => {
-    let bestWidth = preferredWidth;
-    if (availableWidths.length > 1) {
-      // Check if any width gives better pairing with bottom offcuts
-      for (const width of availableWidths) {
-        const matchingOffcuts = bottomStrips.filter(
-          b => b.rollWidth === width && b.offcutLength >= strip.baseLength - 0.1
-        );
-        if (matchingOffcuts.length > 0) {
-          bestWidth = width;
-          break;
-        }
-      }
-    }
-    return { ...strip, rollWidth: bestWidth };
-  });
-  
   // Distribute vertical overlap optimally (now with rollWidth info)
   const overlaps = distributeVerticalOverlap(
-    stripsWithWidths,
+    basicStrips,
     totalVerticalOverlap,
     bottomStrips,
-    availableWidths
+    stripWidths
   );
   
   // Build final strip configs with overlaps applied
-  const strips: WallStripConfig[] = stripsWithWidths.map((strip, i) => {
+  const strips: WallStripConfig[] = basicStrips.map((strip, i) => {
     const totalLength = strip.baseLength + overlaps[i];
     
     return {
@@ -370,6 +352,36 @@ function buildWallStripPlan(
 }
 
 /**
+ * Generate all width combinations for a given number of strips
+ */
+function generateWidthCombinations(
+  stripCount: number,
+  availableWidths: RollWidth[]
+): RollWidth[][] {
+  if (stripCount === 0) return [[]];
+  if (availableWidths.length === 1) {
+    return [Array(stripCount).fill(availableWidths[0])];
+  }
+  
+  // Generate all combinations of widths
+  const combinations: RollWidth[][] = [];
+  const stack: RollWidth[][] = [[]];
+  
+  while (stack.length > 0) {
+    const current = stack.pop()!;
+    if (current.length === stripCount) {
+      combinations.push(current);
+      continue;
+    }
+    for (const width of availableWidths) {
+      stack.push([...current, width]);
+    }
+  }
+  
+  return combinations;
+}
+
+/**
  * Generate all valid wall strip configurations
  */
 export function generateWallStripConfigurations(
@@ -382,27 +394,29 @@ export function generateWallStripConfigurations(
   const depth = dimensions.depth;
   
   const availableWidths = getWallWidthsForDepth(depth, foilSubtype);
-  const preferredWidth = availableWidths.includes(ROLL_WIDTH_WIDE) && depth > DEPTH_THRESHOLD_FOR_WIDE
-    ? ROLL_WIDTH_WIDE
-    : ROLL_WIDTH_NARROW;
-  
   const bottomStrips = getBottomStripsInfo(config);
   const partitions = generateWallPartitions(wallCount);
   
   const validPlans: WallStripPlan[] = [];
   
   for (const partition of partitions) {
-    const plan = buildWallStripPlan(
-      partition,
-      walls,
-      availableWidths,
-      bottomStrips,
-      depth,
-      preferredWidth
-    );
+    const stripCount = partition.length;
     
-    if (plan) {
-      validPlans.push(plan);
+    // Generate all possible width combinations for this partition
+    const widthCombinations = generateWidthCombinations(stripCount, availableWidths);
+    
+    for (const widths of widthCombinations) {
+      const plan = buildWallStripPlan(
+        partition,
+        walls,
+        widths,
+        bottomStrips,
+        depth
+      );
+      
+      if (plan) {
+        validPlans.push(plan);
+      }
     }
   }
   
