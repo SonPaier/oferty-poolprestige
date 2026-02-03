@@ -9,6 +9,11 @@
  * Foil Assignment:
  * - MAIN: bottom, walls, dividing wall (user's choice)
  * - STRUCTURAL: stairs, paddling pool bottom (always 1.65m structural)
+ * 
+ * Wall Strip Optimization:
+ * - Dynamically chooses optimal number of strips (1, 2, 3, 4+)
+ * - Distributes vertical overlap unevenly for better roll utilization
+ * - Supports cross-surface pairing with bottom strips
  */
 
 import { PoolDimensions } from '@/types/configurator';
@@ -20,6 +25,11 @@ import {
   WASTE_THRESHOLD,
   OVERLAP_STRIPS,
 } from './types';
+import {
+  getOptimalWallStripPlan,
+  wallPlanToDetailedStrips,
+  WallStripPlan,
+} from './wallStripOptimizer';
 
 export const ROLL_WIDTH_NARROW = 1.65;
 export const ROLL_WIDTH_WIDE = 2.05;
@@ -944,18 +954,16 @@ export function calculateSurfaceDetails(
     }
   }
 
-  // Walls - strategy depends on priority:
-  // - minWaste: 2 continuous strips (legacy mode)
-  // - minRolls: 4 separate strips (one per wall segment)
+  // Walls - use flexible strip optimizer for both priorities
+  // The optimizer dynamically chooses the optimal number of strips (1, 2, 3, 4+)
   if (wallSurfaces.length > 0) {
     const walls = getWallSegments(dimensions);
     const perimeter = walls.reduce((sum, w) => sum + w.length, 0);
     const depth = dimensions.depth;
     
     const fallbackWidth = getPreferredWallRollWidth(dimensions, foilSubtype);
-    const narrowOnly = isNarrowOnlyFoil(foilSubtype);
     
-    // Helper for horizontal overlap (same for both strategies)
+    // Helper for horizontal overlap
     const getHorizontalOverlapForWidth = (w: RollWidth): { overlap: number; edgeWastePerSide: number } => {
       const foilOverhang = w - depth;
       const overlapPerSide = foilOverhang / 2;
@@ -969,176 +977,79 @@ export function calculateSurfaceDetails(
       return { overlap: MIN_HORIZONTAL_OVERLAP, edgeWastePerSide: 0 };
     };
     
-    if (priority === 'minRolls') {
-      // ===== MINROLLS: 4 separate strips (one per wall segment) =====
-      // Determine wall widths - one width per wall segment
-      const wallWidthsForSegments: RollWidth[] = [];
-      
-      if (narrowOnly) {
-        for (let i = 0; i < walls.length; i++) {
-          wallWidthsForSegments.push(ROLL_WIDTH_NARROW);
-        }
-      } else {
-        // Check bottom strips to see what widths are available for pairing
-        const bottomSurface = config.surfaces.find(s => s.surface === 'bottom');
-        const bottomMix = bottomSurface?.stripMix ?? [{ rollWidth: bottomSurface?.rollWidth ?? ROLL_WIDTH_NARROW, count: bottomSurface?.stripCount ?? 0 }];
-        
-        let narrowBottomStrips = 0;
-        let wideBottomStrips = 0;
-        for (const m of bottomMix) {
-          if (m.rollWidth === ROLL_WIDTH_NARROW) narrowBottomStrips += m.count;
-          else wideBottomStrips += m.count;
-        }
-        
-        const bottomStripLength = bottomSurface?.stripLength ?? 10;
-        const bottomOffcutLength = ROLL_LENGTH - bottomStripLength;
-        
-        // Sort walls by length for pairing optimization
-        const wallsWithIdx = walls.map((w, i) => ({ ...w, idx: i }));
-        const sortedWalls = [...wallsWithIdx].sort((a, b) => b.length - a.length);
-        
-        const assignedWidths: RollWidth[] = new Array(walls.length).fill(fallbackWidth);
-        
-        // Allow mixed wall widths for minRolls if depth allows
-        if (depth <= DEPTH_THRESHOLD_FOR_WIDE) {
-          for (const wall of sortedWalls) {
-            const fitsWithOffcut = wall.length <= bottomOffcutLength + 0.1;
-            
-            if (fitsWithOffcut) {
-              if (wideBottomStrips > 0 && wall.length <= bottomOffcutLength) {
-                assignedWidths[wall.idx] = ROLL_WIDTH_WIDE;
-                wideBottomStrips--;
-              } else if (narrowBottomStrips > 0) {
-                assignedWidths[wall.idx] = ROLL_WIDTH_NARROW;
-                narrowBottomStrips--;
-              }
-            }
-          }
-        } else if (depth > DEPTH_THRESHOLD_FOR_WIDE && depth <= DEPTH_THRESHOLD_FOR_DOUBLE_NARROW) {
-          for (let i = 0; i < walls.length; i++) {
-            assignedWidths[i] = ROLL_WIDTH_WIDE;
-          }
-        }
-        
-        wallWidthsForSegments.push(...assignedWidths);
-      }
-      
-      // Build strip info for each wall segment
-      const verticalJoinOverlap = DEFAULT_VERTICAL_JOIN_OVERLAP;
-      const strips: SurfaceDetailedResult['strips'] = [];
-      
-      for (let i = 0; i < walls.length; i++) {
-        const wall = walls[i];
-        const rollWidthForThisStrip = wallWidthsForSegments[i] ?? fallbackWidth;
-        const stripLen = wall.length + verticalJoinOverlap;
-        
-        strips.push({
-          count: 1,
-          rollWidth: rollWidthForThisStrip,
-          stripLength: Math.round(stripLen * 10) / 10,
-          wallLabels: [wall.label],
-          rollNumber: rollBySurfaceStrip.get(`Ściany__${i + 1}`) ?? i + 1,
-        });
-      }
-      
-      // Calculate areas for 4-strip layout
-      const totalUsedFoilArea = strips.reduce((sum, s) => sum + s.stripLength * s.rollWidth, 0);
-      const coverArea = perimeter * depth;
-      
-      const verticalWeldArea = strips.length * verticalJoinOverlap * depth;
-      const horizontalWeldArea = strips.reduce((sum, s) => {
-        const { overlap } = getHorizontalOverlapForWidth(s.rollWidth);
-        return sum + (overlap * 2) * s.stripLength;
-      }, 0);
-      const totalWeldArea = verticalWeldArea + horizontalWeldArea;
-      
-      const edgeWasteArea = strips.reduce((sum, s) => {
-        const { edgeWastePerSide } = getHorizontalOverlapForWidth(s.rollWidth);
-        return sum + (edgeWastePerSide * 2) * s.stripLength;
-      }, 0);
-      
-      let totalRollEndWaste = 0;
-      for (const s of strips) {
-        const rollWaste = ROLL_LENGTH - s.stripLength;
-        const isReusable = rollWaste >= MIN_REUSABLE_OFFCUT_LENGTH;
-        if (!isReusable && rollWaste > 0) {
-          totalRollEndWaste += rollWaste * s.rollWidth;
-        }
-      }
-      
-      const totalWasteArea = edgeWasteArea + totalRollEndWaste;
-      
-      results.push({
-        surfaceKey: 'walls',
-        surfaceLabel: 'Ściany',
-        strips,
-        coverArea: Math.round(coverArea * 10) / 10,
-        totalFoilArea: Math.ceil(totalUsedFoilArea + totalRollEndWaste),
-        weldArea: Math.round(totalWeldArea * 10) / 10,
-        wasteArea: Math.round(totalWasteArea * 10) / 10,
-      });
+    // Get optimal wall strip plan from the flexible optimizer
+    const wallPlan = getOptimalWallStripPlan(dimensions, config, foilSubtype, priority);
+    
+    let strips: SurfaceDetailedResult['strips'];
+    
+    if (wallPlan && wallPlan.strips.length > 0) {
+      // Use the optimized plan
+      strips = wallPlan.strips.map((strip, i) => ({
+        count: 1,
+        rollWidth: strip.rollWidth,
+        stripLength: strip.totalLength,
+        wallLabels: strip.wallLabels,
+        rollNumber: rollBySurfaceStrip.get(`Ściany__${i + 1}`) ?? i + 1,
+      }));
     } else {
-      // ===== MINWASTE: 2 continuous strips (legacy mode) =====
-      // Use the perimeter-based strip calculation
-      const wallWidth = fallbackWidth;
+      // Fallback: legacy 2-strip continuous mode
       const { stripCount, overlapPerJoin, stripLengths } = computeWallStripPlanFromPerimeter(
         perimeter, 
         config, 
-        wallWidth
+        fallbackWidth
       );
       
-      // Assign wall labels to strips
       const wallStrips = assignWallLabelsToStrips(dimensions, stripLengths[0] ?? perimeter / stripCount, stripCount);
       
-      const strips: SurfaceDetailedResult['strips'] = [];
+      strips = [];
       for (let i = 0; i < stripCount; i++) {
         const stripLen = stripLengths[i] ?? perimeter / stripCount + overlapPerJoin;
         strips.push({
           count: 1,
-          rollWidth: wallWidth,
+          rollWidth: fallbackWidth,
           stripLength: Math.round(stripLen * 10) / 10,
           wallLabels: wallStrips[i]?.wallLabels ?? [],
           rollNumber: rollBySurfaceStrip.get(`Ściany__${i + 1}`) ?? i + 1,
         });
       }
-      
-      // Calculate areas for 2-strip layout
-      const totalUsedFoilArea = strips.reduce((sum, s) => sum + s.stripLength * s.rollWidth, 0);
-      const coverArea = perimeter * depth;
-      
-      const verticalWeldArea = stripCount * overlapPerJoin * depth;
-      const horizontalWeldArea = strips.reduce((sum, s) => {
-        const { overlap } = getHorizontalOverlapForWidth(s.rollWidth);
-        return sum + (overlap * 2) * s.stripLength;
-      }, 0);
-      const totalWeldArea = verticalWeldArea + horizontalWeldArea;
-      
-      const edgeWasteArea = strips.reduce((sum, s) => {
-        const { edgeWastePerSide } = getHorizontalOverlapForWidth(s.rollWidth);
-        return sum + (edgeWastePerSide * 2) * s.stripLength;
-      }, 0);
-      
-      let totalRollEndWaste = 0;
-      for (const s of strips) {
-        const rollWaste = ROLL_LENGTH - s.stripLength;
-        const isReusable = rollWaste >= MIN_REUSABLE_OFFCUT_LENGTH;
-        if (!isReusable && rollWaste > 0) {
-          totalRollEndWaste += rollWaste * s.rollWidth;
-        }
-      }
-      
-      const totalWasteArea = edgeWasteArea + totalRollEndWaste;
-      
-      results.push({
-        surfaceKey: 'walls',
-        surfaceLabel: 'Ściany',
-        strips,
-        coverArea: Math.round(coverArea * 10) / 10,
-        totalFoilArea: Math.ceil(totalUsedFoilArea + totalRollEndWaste),
-        weldArea: Math.round(totalWeldArea * 10) / 10,
-        wasteArea: Math.round(totalWasteArea * 10) / 10,
-      });
     }
+    
+    // Calculate areas based on the chosen strip configuration
+    const totalUsedFoilArea = strips.reduce((sum, s) => sum + s.stripLength * s.rollWidth, 0);
+    const coverArea = perimeter * depth;
+    
+    const verticalWeldArea = strips.length * DEFAULT_VERTICAL_JOIN_OVERLAP * depth;
+    const horizontalWeldArea = strips.reduce((sum, s) => {
+      const { overlap } = getHorizontalOverlapForWidth(s.rollWidth);
+      return sum + (overlap * 2) * s.stripLength;
+    }, 0);
+    const totalWeldArea = verticalWeldArea + horizontalWeldArea;
+    
+    const edgeWasteArea = strips.reduce((sum, s) => {
+      const { edgeWastePerSide } = getHorizontalOverlapForWidth(s.rollWidth);
+      return sum + (edgeWastePerSide * 2) * s.stripLength;
+    }, 0);
+    
+    let totalRollEndWaste = 0;
+    for (const s of strips) {
+      const rollWaste = ROLL_LENGTH - s.stripLength;
+      const isReusable = rollWaste >= MIN_REUSABLE_OFFCUT_LENGTH;
+      if (!isReusable && rollWaste > 0) {
+        totalRollEndWaste += rollWaste * s.rollWidth;
+      }
+    }
+    
+    const totalWasteArea = edgeWasteArea + totalRollEndWaste;
+    
+    results.push({
+      surfaceKey: 'walls',
+      surfaceLabel: 'Ściany',
+      strips,
+      coverArea: Math.round(coverArea * 10) / 10,
+      totalFoilArea: Math.ceil(totalUsedFoilArea + totalRollEndWaste),
+      weldArea: Math.round(totalWeldArea * 10) / 10,
+      wasteArea: Math.round(totalWasteArea * 10) / 10,
+    });
   }
 
   // Stairs
@@ -1626,72 +1537,29 @@ export function packStripsIntoRolls(
     }
   });
 
-  // Inject wall strips based on priority:
-  // - minWaste: 2 continuous strips (legacy perimeter-based)
-  // - minRolls: 4 separate strips (one per wall segment)
+  // Inject wall strips using the flexible optimizer (same for both priorities)
   if (shouldUseContinuousWallStrips && dimensions) {
-    const walls = getWallSegments(dimensions);
-    const perimeter = walls.reduce((sum, w) => sum + w.length, 0);
     const fallbackWidth = getPreferredWallRollWidth(dimensions, foilSubtype);
-    const narrowOnly = isNarrowOnlyFoil(foilSubtype);
-    const depth = dimensions.depth;
     
-    if (priority === 'minRolls') {
-      // 4 separate strips - one per wall segment
-      const bottomSurface = config.surfaces.find(s => s.surface === 'bottom');
-      const bottomMix = bottomSurface?.stripMix ?? [{ rollWidth: bottomSurface?.rollWidth ?? ROLL_WIDTH_NARROW, count: bottomSurface?.stripCount ?? 0 }];
-      
-      let narrowBottomStrips = 0;
-      let wideBottomStrips = 0;
-      for (const m of bottomMix) {
-        if (m.rollWidth === ROLL_WIDTH_NARROW) narrowBottomStrips += m.count;
-        else wideBottomStrips += m.count;
-      }
-      
-      const bottomStripLength = bottomSurface?.stripLength ?? 10;
-      const bottomOffcutLength = ROLL_LENGTH - bottomStripLength;
-      
-      const wallsWithIdx = walls.map((w, i) => ({ ...w, idx: i }));
-      const sortedWalls = [...wallsWithIdx].sort((a, b) => b.length - a.length);
-      
-      const assignedWidths: RollWidth[] = new Array(walls.length).fill(fallbackWidth);
-      
-      if (!narrowOnly && depth <= DEPTH_THRESHOLD_FOR_WIDE) {
-        for (const wall of sortedWalls) {
-          const fitsWithOffcut = wall.length <= bottomOffcutLength + 0.1;
-          
-          if (fitsWithOffcut) {
-            if (wideBottomStrips > 0 && wall.length <= bottomOffcutLength) {
-              assignedWidths[wall.idx] = ROLL_WIDTH_WIDE;
-              wideBottomStrips--;
-            } else if (narrowBottomStrips > 0) {
-              assignedWidths[wall.idx] = ROLL_WIDTH_NARROW;
-              narrowBottomStrips--;
-            }
-          }
-        }
-      } else if (!narrowOnly && depth > DEPTH_THRESHOLD_FOR_WIDE && depth <= DEPTH_THRESHOLD_FOR_DOUBLE_NARROW) {
-        for (let i = 0; i < walls.length; i++) {
-          assignedWidths[i] = ROLL_WIDTH_WIDE;
-        }
-      }
-      
-      const verticalJoinOverlap = DEFAULT_VERTICAL_JOIN_OVERLAP;
-
-      for (let i = 0; i < walls.length; i++) {
-        const wall = walls[i];
-        const stripLen = wall.length + verticalJoinOverlap;
-        const rollWidth = narrowOnly ? ROLL_WIDTH_NARROW : assignedWidths[i];
-        
+    // Get optimal wall strip plan from the flexible optimizer
+    const wallPlan = getOptimalWallStripPlan(dimensions, config, foilSubtype, priority);
+    
+    if (wallPlan && wallPlan.strips.length > 0) {
+      // Use the optimized plan
+      for (let i = 0; i < wallPlan.strips.length; i++) {
+        const strip = wallPlan.strips[i];
         allStrips.push({
           surface: 'Ściany',
           stripIndex: i + 1,
-          length: stripLen,
-          rollWidth,
+          length: strip.totalLength,
+          rollWidth: strip.rollWidth,
         });
       }
     } else {
-      // minWaste: 2 continuous strips
+      // Fallback: legacy 2-strip continuous mode
+      const walls = getWallSegments(dimensions);
+      const perimeter = walls.reduce((sum, w) => sum + w.length, 0);
+      
       const { stripCount, overlapPerJoin, stripLengths } = computeWallStripPlanFromPerimeter(
         perimeter, 
         config, 
