@@ -1103,12 +1103,13 @@ export function calculateSurfaceDetails(
     
     const totalWasteArea = edgeWasteArea + totalRollEndWaste;
     
+    // totalFoilArea should include non-reusable roll-end waste (material ordered but discarded)
     results.push({
       surfaceKey: 'walls',
       surfaceLabel: 'Ściany',
       strips,
       coverArea: Math.round(coverArea * 10) / 10,
-      totalFoilArea: Math.ceil(totalUsedFoilArea),
+      totalFoilArea: Math.ceil(totalUsedFoilArea + totalRollEndWaste),
       weldArea: Math.round(totalWeldArea * 10) / 10,
       wasteArea: Math.round(totalWasteArea * 10) / 10,
     });
