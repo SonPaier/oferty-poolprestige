@@ -19,7 +19,7 @@ import {
   SurfaceDetailedResult,
   ReusableOffcut,
   calculateSurfaceDetails,
-  getReusableOffcuts,
+  getReusableOffcutsWithDimensions,
 } from '@/lib/foil/mixPlanner';
 import { Badge } from '@/components/ui/badge';
 import { PoolDimensions } from '@/types/configurator';
@@ -261,8 +261,8 @@ export function RollSummary({
   const mainConfig = { ...config, surfaces: main };
   const structuralConfig = { ...config, surfaces: structural };
   
-  const mainRolls = packStripsIntoRolls(mainConfig);
-  const structuralRolls = packStripsIntoRolls(structuralConfig);
+  const mainRolls = packStripsIntoRolls(mainConfig, dimensions);
+  const structuralRolls = packStripsIntoRolls(structuralConfig, dimensions);
 
   // Calculate roll counts per pool
   const mainRolls165 = mainRolls.filter(r => r.rollWidth === 1.65).length;
@@ -279,7 +279,7 @@ export function RollSummary({
   );
   
   // Get reusable offcuts
-  const reusableOffcuts = getReusableOffcuts(config);
+  const reusableOffcuts = getReusableOffcutsWithDimensions(config, dimensions);
 
   // Calculate totals
   const totalArea = config.surfaces.reduce((sum, s) => sum + s.areaM2, 0);
