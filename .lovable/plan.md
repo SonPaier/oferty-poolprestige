@@ -1,231 +1,232 @@
 
-# Plan: Przebudowa zakładki "Podsumowanie rolek" z etykietami ścian
 
-## Cel
-Przebudowa zakładki z:
-1. Podsumowaniem rolek (bez zmian)
-2. Tabelą szczegółową z rozpiskę pasów i etykietami ścian (A-B, B-C-D)
-3. Tabelą odpadu do ponownego wykorzystania (pogrupowane na rolki)
-4. Przełącznikiem priorytetu optymalizacji (odpad vs ilość rolek)
+# Plan: Naprawa kalkulacji ścian z optymalizacją cross-surface rolek
 
-## Kluczowa zmiana: Etykiety ścian zamiast "długie/krótkie"
+## Podsumowanie zmian
 
-Zamiast podziału na "Ściany długie (2x)" i "Ściany krótkie (2x)", używam:
-- Jedna pozycja "Ściany" z rozpisą pasów
-- Każdy pas ma oznaczenie ścian: "A-B", "B-C", lub "A-B-C" (gdy pokrywa wiele ścian)
-- Dla basenów nieregularnych - działa automatycznie z dowolną liczbą ścian
+Ten plan obejmuje trzy kluczowe poprawki:
+1. **Poprawne zakłady na ścianach** (pionowe i poziome)
+2. **Elastyczny zakład pionowy** (0.2m może być na jednym pasie zamiast 0.1m + 0.1m)
+3. **Cross-surface roll optimization** (resztka z dna może być użyta na ścianę)
 
-## Struktura nowej tabeli
+---
 
-```text
-| Miejsce      | Rozpiska pasów                  | Pow. do pokrycia | Pow. folii (pokrycie + zgrzew + odpad) |
-|--------------|---------------------------------|------------------|----------------------------------------|
-| Dno          | 2× pas 2.05m × 8.0m (rolka #1)  | 32.0 m²          | 33 m² (32.0 + 0.8 + 0.2)               |
-| Ściany       | 1× pas 1.65m × 19.0m (A-B-C-D)  | 26.6 m²          | 32 m² (...)                            |
-|              | 1× pas 1.65m × 5.0m (A-B)       |                  |                                        |
-| Schody       | 1× pas 1.65m × 2.5m             | 3.75 m²          | 4 m² (...)                             |
+## 1. Poprawna kalkulacja zakładów na ścianach
+
+### Zakład poziomy (góra/dół)
 ```
+nadmiar = szerokość_folii - głębokość_basenu
+zakład_na_stronę = nadmiar / 2
+```
+
+| Zakład na stronę | Działanie |
+|------------------|-----------|
+| 5-10 cm | OK - zakład (weld area) |
+| > 10 cm | Max 10cm zakład, reszta = odpad |
+| < 5 cm | Min 5cm zakład |
+
+**Przykład (basen 10×5×1.5m):**
+- Folia 1.65m, głębokość 1.5m
+- Nadmiar = 0.15m → 7.5cm góra + 7.5cm dół ✓
+
+### Zakład pionowy (łączenia pasów)
+- Zakład 0.1m na każde łączenie pasów
+- Przy 2 pasach = 2 łączenia (A→C i C→A) = 0.2m × 1.65m = 0.33m²
+
+---
+
+## 2. Elastyczny zakład pionowy - przypisanie do jednego pasa
+
+### Problem
+Aktualnie: Pas 1 = 15.1m, Pas 2 = 15.1m (każdy +0.1m)
+Ale: Czasem lepiej zrobić Pas 1 = 15m, Pas 2 = 15.2m (całe 0.2m na jednym pasie)
+
+### Kiedy to jest lepsze?
+Gdy resztka z innej rolki (np. dno) może pokryć jeden pas ściany:
+- Rolka dna: 25m - 10m (dno) = **15m resztki**
+- Jeśli pas ściany = 15m (bez zakładu) → wykorzystujemy resztkę
+- Drugi pas = 15.2m (z całym zakładem 0.2m) → z nowej rolki
+
+### Logika
+```typescript
+// Opcja A: równy podział zakładu
+const option1 = { strip1: perimeter/2 + 0.1, strip2: perimeter/2 + 0.1 };
+
+// Opcja B: cały zakład na jednym pasie
+const option2 = { strip1: perimeter/2, strip2: perimeter/2 + 0.2 };
+
+// Wybierz opcję z mniejszym zużyciem rolek
+```
+
+---
+
+## 3. Cross-surface roll optimization
+
+### Cel
+Wykorzystanie resztek z rolek dna na ściany (jeśli ta sama szerokość folii).
+
+### Przykład dla basenu 10×5×1.5m
+
+**BEZ optymalizacji:**
+- Dno: 3 pasy × 10m = 30m → 2 rolki (używamy 30m z 50m)
+- Ściany: 2 pasy × 15.1m = 30.2m → 2 rolki
+- **RAZEM: 4 rolki, ~45m odpadu**
+
+**Z optymalizacją:**
+- Dno: 3 pasy × 10m = 30m → 2 rolki (resztka z drugiej rolki = 15m)
+- Ściany: Pas 1 = 15m (z resztki dna), Pas 2 = 15.2m (z nowej rolki)
+- **RAZEM: 3 rolki, ~20m odpadu**
+
+### Warunek
+Optymalizacja możliwa tylko gdy:
+- Szerokość folii na dno = szerokość folii na ściany (np. obie 1.65m)
+- Resztka z rolki ≥ długość pasa ściany
 
 ---
 
 ## Szczegóły techniczne
 
-### 1. Nowy typ `OptimizationPriority` w `mixPlanner.ts`
+### Plik: `src/lib/foil/mixPlanner.ts`
 
+#### A. Nowe stałe
 ```typescript
-export type OptimizationPriority = 'minWaste' | 'minRolls';
+const DEPTH_THRESHOLD_FOR_WIDE = 1.55; // Próg dla folii 2.05m na ściany
+const MIN_HORIZONTAL_OVERLAP = 0.05;   // 5cm min zakład góra/dół
+const MAX_HORIZONTAL_OVERLAP = 0.10;   // 10cm max zakład góra/dół
 ```
 
-### 2. Zmiana modelu powierzchni ścian
-
-Zamiast `wall-long` i `wall-short`:
+#### B. Nowa funkcja: `calculateWallOverlaps()`
 ```typescript
-export type SurfaceKey = 'bottom' | 'walls' | 'stairs' | 'paddling' | 'dividing-wall';
-
-interface WallStripAssignment {
-  stripIndex: number;
-  rollWidth: RollWidth;
-  stripLength: number;
-  wallLabels: string[]; // np. ['A-B'], ['B-C', 'C-D'], ['A-B-C-D']
-}
-```
-
-### 3. Nowy interfejs dla szczegółowej rozpiski
-
-```typescript
-interface SurfaceDetailedResult {
-  surfaceKey: SurfaceKey;
-  surfaceLabel: string;
-  strips: Array<{
-    count: number;
-    rollWidth: RollWidth;
-    stripLength: number;
-    rollNumber?: number; // z której rolki
-    wallLabels?: string[]; // tylko dla ścian: A-B, B-C itd.
-  }>;
-  coverArea: number;       // powierzchnia netto do pokrycia
-  totalFoilArea: number;   // pełna pow. folii (zaokrąglona w górę)
-  weldArea: number;        // zakład/zgrzew
-  wasteArea: number;       // odpad nieużyteczny
-}
-```
-
-### 4. Interfejs dla odpadu do ponownego wykorzystania
-
-```typescript
-interface ReusableOffcut {
-  rollNumber: number;
-  rollWidth: RollWidth;
-  length: number;  // długość odpadu (m)
-  area: number;    // powierzchnia (m²)
-}
-```
-
-### 5. Logika przypisywania pasów do ścian
-
-Dla basenu prostokątnego (4 ściany):
-- Obwód: 2×(L+W), głębokość: D+0.15 (fold at bottom)
-- Pasy mogą pokrywać ściany w różnych kombinacjach zależnie od ich długości
-
-Przykład 8×4m, głębokość 1.5m:
-- Obwód: 24m
-- Pas 25m pokrywa cały obwód: "A-B-C-D-A" (z powrotem)
-- Lub 2 pasy po 12m: "A-B-C" i "C-D-A"
-
-Funkcja `assignWallLabelsToStrips()`:
-```typescript
-function assignWallLabelsToStrips(
-  dimensions: PoolDimensions,
-  strips: StripInfo[]
-): WallStripAssignment[] {
-  // Pobierz listę ścian z ich długościami
-  const walls = getWallSegments(dimensions);
-  // walls = [{ label: 'A-B', length: 8 }, { label: 'B-C', length: 4 }, ...]
+function calculateWallOverlaps(
+  rollWidth: RollWidth,
+  depth: number,
+  perimeter: number,
+  totalFoilLength: number
+): { horizontalWeldArea: number; wasteArea: number } {
+  const overhang = rollWidth - depth;
+  const overlapPerSide = overhang / 2;
   
-  // Przypisz pasy do ścian sekwencyjnie
-  // ...
-}
-```
-
-### 6. Funkcja `getWallSegments()` dla różnych kształtów
-
-```typescript
-function getWallSegments(dimensions: PoolDimensions): WallSegment[] {
-  if (dimensions.shape === 'nieregularny' && dimensions.customVertices) {
-    // Użyj customVertices i getWallLabel() z configurator.ts
-    return dimensions.customVertices.map((_, i) => ({
-      label: getWallLabel(i, dimensions.customVertices!.length),
-      length: calculateEdgeLength(i, dimensions.customVertices!)
-    }));
+  let actualOverlap: number;
+  let edgeWaste: number;
+  
+  if (overlapPerSide >= MIN_HORIZONTAL_OVERLAP && overlapPerSide <= MAX_HORIZONTAL_OVERLAP) {
+    actualOverlap = overlapPerSide;
+    edgeWaste = 0;
+  } else if (overlapPerSide > MAX_HORIZONTAL_OVERLAP) {
+    actualOverlap = MAX_HORIZONTAL_OVERLAP;
+    edgeWaste = overlapPerSide - MAX_HORIZONTAL_OVERLAP;
+  } else {
+    actualOverlap = MIN_HORIZONTAL_OVERLAP;
+    edgeWaste = 0;
   }
   
-  // Prostokąt: 4 ściany (A-B, B-C, C-D, D-A)
-  return [
-    { label: 'A-B', length: dimensions.length },
-    { label: 'B-C', length: dimensions.width },
-    { label: 'C-D', length: dimensions.length },
-    { label: 'D-A', length: dimensions.width },
-  ];
+  const horizontalWeldArea = actualOverlap * 2 * totalFoilLength;
+  const wasteArea = edgeWaste * 2 * totalFoilLength;
+  
+  return { horizontalWeldArea, wasteArea };
 }
 ```
 
----
+#### C. Nowa funkcja: `optimizeStripLengthsWithRemainder()`
+```typescript
+interface StripOptimizationResult {
+  stripLengths: number[];
+  totalLength: number;
+  rollsUsed: { rollNumber: number; usedLength: number }[];
+  canReuseFromBottom?: boolean;
+}
 
-## Zmiany w plikach
-
-### `src/lib/foil/mixPlanner.ts`
-
-1. Dodaj typ `OptimizationPriority`
-2. Zmień `SurfaceKey` - usuń `wall-long`/`wall-short`, dodaj `walls`
-3. Nowa funkcja `getWallSegments(dimensions)` - zwraca listę ścian z etykietami
-4. Nowa funkcja `assignWallLabelsToStrips()` - przypisuje pasy do ścian
-5. Nowa funkcja `calculateSurfaceDetails()` - zwraca pełne dane per powierzchnię
-6. Nowa funkcja `getReusableOffcuts()` - lista odpadów do ponownego użycia
-7. Modyfikacja `autoOptimizeMixConfig()` - dodaj parametr `priority`
-8. Rozszerz interfejsy o nowe pola
-
-### `src/components/finishing/components/RollSummary.tsx`
-
-Przebudowa komponentu:
-
-1. Import `Switch`, `Table` i nowych typów
-2. Props: dodaj `optimizationPriority`, `onPriorityChange`, `dimensions`
-3. Nowy subkomponent `StripDetailsTable` - tabela z rozpiską pasów
-4. Nowy subkomponent `ReusableOffcutsTable` - tabela odpadu
-5. Przełącznik priorytetu w nagłówku
-
-### `src/components/finishing/components/CalculationDetailsDialog.tsx`
-
-1. Dodaj state dla `optimizationPriority`
-2. Przekaż nowe propsy do `RollSummary`
-3. Przekaż `dimensions` do `RollSummary`
-
----
-
-## Wizualizacja struktury
-
-```text
-┌──────────────────────────────────────────────────────────────────────┐
-│  📦 Podsumowanie rolek              [Min. odpad] ○──● [Min. rolek]   │
-├──────────────────────────────────────────────────────────────────────┤
-│  ┌─────────┐  ┌─────────┐  ┌─────────┐                               │
-│  │ 2× 1.65m│  │ 1× 2.05m│  │ 3 rolek │  (istniejąca sekcja)          │
-│  │  × 25m  │  │  × 25m  │  │  razem  │                               │
-│  └─────────┘  └─────────┘  └─────────┘                               │
-├──────────────────────────────────────────────────────────────────────┤
-│  TABELA: Szczegółowa rozpiska pasów                                  │
-│  ┌──────────┬─────────────────────────────┬──────────┬──────────────┐│
-│  │ Miejsce  │ Rozpiska pasów              │ Pokrycie │ Pow. folii   ││
-│  ├──────────┼─────────────────────────────┼──────────┼──────────────┤│
-│  │ Dno      │ 2× pas 2.05m × 8.0m (#1)    │ 32 m²    │ 33 m²        ││
-│  │          │                             │          │(32+0.8+0.2)  ││
-│  ├──────────┼─────────────────────────────┼──────────┼──────────────┤│
-│  │ Ściany   │ 1× pas 1.65m × 20.0m (A-B-C)│ 28 m²    │ 32 m²        ││
-│  │          │ 1× pas 1.65m × 4.0m (D-A)   │          │              ││
-│  ├──────────┼─────────────────────────────┼──────────┼──────────────┤│
-│  │ Schody   │ 1× pas 1.65m × 2.5m         │ 3.75 m²  │ 4 m²         ││
-│  └──────────┴─────────────────────────────┴──────────┴──────────────┘│
-├──────────────────────────────────────────────────────────────────────┤
-│  TABELA: Odpad do ponownego wykorzystania                            │
-│  ┌────────────────┬────────────────┬─────────────┐                   │
-│  │ Rolka          │ Wymiar         │ Powierzchnia│                   │
-│  ├────────────────┼────────────────┼─────────────┤                   │
-│  │ #1 (1.65m)     │ 3.5m × 1.65m   │ 5.78 m²     │                   │
-│  │ #2 (2.05m)     │ 2.0m × 2.05m   │ 4.10 m²     │                   │
-│  └────────────────┴────────────────┴─────────────┘                   │
-│  (jeśli brak odpadu do wykorzystania: "Brak odpadu do ponownego...)  │
-└──────────────────────────────────────────────────────────────────────┘
+function optimizeStripLengthsWithRemainder(
+  perimeter: number,
+  joinOverlap: number,
+  bottomRemainder: number | null, // Resztka z rolki dna
+  bottomRollWidth: RollWidth | null,
+  wallRollWidth: RollWidth
+): StripOptimizationResult {
+  const stripCount = Math.ceil((perimeter + joinOverlap) / ROLL_LENGTH);
+  
+  if (stripCount === 1) {
+    return {
+      stripLengths: [perimeter + joinOverlap],
+      totalLength: perimeter + joinOverlap,
+      rollsUsed: [{ rollNumber: 1, usedLength: perimeter + joinOverlap }],
+    };
+  }
+  
+  // Sprawdź czy można wykorzystać resztkę z dna
+  const canReuseFromBottom = 
+    bottomRemainder !== null &&
+    bottomRollWidth === wallRollWidth &&
+    bottomRemainder >= perimeter / stripCount;
+  
+  if (canReuseFromBottom && stripCount === 2) {
+    // Opcja: Pas 1 = resztka (bez zakładu), Pas 2 = reszta + cały zakład
+    const strip1Length = Math.min(bottomRemainder!, perimeter / 2);
+    const strip2Length = perimeter - strip1Length + joinOverlap * 2;
+    
+    return {
+      stripLengths: [strip1Length, strip2Length],
+      totalLength: strip1Length + strip2Length,
+      rollsUsed: [
+        { rollNumber: 0, usedLength: strip1Length }, // 0 = reuse
+        { rollNumber: 1, usedLength: strip2Length },
+      ],
+      canReuseFromBottom: true,
+    };
+  }
+  
+  // Domyślnie: równy podział
+  const baseLength = perimeter / stripCount;
+  const stripLengths = Array(stripCount).fill(0).map((_, i) => 
+    i === 0 ? baseLength + joinOverlap : baseLength + joinOverlap
+  );
+  
+  return {
+    stripLengths,
+    totalLength: stripLengths.reduce((a, b) => a + b, 0),
+    rollsUsed: stripLengths.map((len, i) => ({ rollNumber: i + 1, usedLength: len })),
+  };
+}
 ```
 
----
+#### D. Aktualizacja `calculateSurfaceDetails()` dla ścian (~linie 782-935)
 
-## Logika przełącznika priorytetu
+1. Zmiana progu głębokości: `1.50m → 1.55m`
+2. Nowa logika zakładów poziomych (góra/dół)
+3. Wykorzystanie `optimizeStripLengthsWithRemainder()` dla optymalizacji rolek
+4. Poprawne etykiety narożników (A-B-C i C-D-A)
 
-**Minimalny odpad (domyślnie):**
-- Istniejąca logika - wybór szerokości rolki minimalizującej odpad
-- Sortowanie: najpierw mniej odpadu, potem mniej rolek
-
-**Minimalna ilość rolek:**
-- Preferuje szersze rolki (2.05m) gdy obie opcje dają podobny wynik
-- Grupuje pasy tak aby wypełnić rolki maksymalnie
-- Sortowanie: najpierw mniej rolek, potem mniej odpadu
+#### E. Aktualizacja `packStripsIntoRolls()` 
+Dodanie obsługi cross-surface packing (dno + ściany na tej samej rolce).
 
 ---
 
-## Obsługa basenów nieregularnych
+## Weryfikacja dla basenu 10×5×1.5m
 
-Dla `shape === 'nieregularny'`:
-- Funkcja `getWallSegments()` używa `customVertices` i `getWallLabel()` z `configurator.ts`
-- Generuje etykiety np. A-B, B-C, C-D, D-E, E-F, F-A dla 6-kątnego basenu
-- Logika przypisywania pasów działa identycznie - sekwencyjnie przez obwód
+| Parametr | Wartość |
+|----------|---------|
+| Obwód | 30m |
+| Głębokość | 1.5m |
+| Szerokość folii ściany | 1.65m (bo 1.5m ≤ 1.55m) |
+| Nadmiar | 0.15m |
+| **Zakład góra/dół** | 7.5cm + 7.5cm |
+| Liczba pasów | 2 |
+| **Opcja równy podział** | 15.1m + 15.1m |
+| **Opcja z resztką dna** | 15m (resztka) + 15.2m (nowa) |
+| **Zakład pionowy** | 2 × 0.1m × 1.65m = 0.33m² |
+| **Zakład poziomy** | 0.15m × 30.2m = 4.53m² |
+| **RAZEM zakład** | ~4.86m² |
+| Powierzchnia folii | ~50m² |
+| Oznaczenie | **A-B-C** i **C-D-A** |
 
 ---
 
-## Podsumowanie zmian
+## Kolejność implementacji
 
-| Plik | Rodzaj zmiany |
-|------|---------------|
-| `src/lib/foil/mixPlanner.ts` | Nowe typy, funkcje, zmiana modelu ścian |
-| `src/components/finishing/components/RollSummary.tsx` | Przebudowa UI, nowe tabele, przełącznik |
-| `src/components/finishing/components/CalculationDetailsDialog.tsx` | Stan priorytetu, przekazanie propów |
-| `src/types/configurator.ts` | Bez zmian - już ma `getWallLabel()` |
+1. Dodać nowe stałe `DEPTH_THRESHOLD_FOR_WIDE`, `MIN_HORIZONTAL_OVERLAP`, `MAX_HORIZONTAL_OVERLAP`
+2. Zaimplementować `calculateWallOverlaps()` 
+3. Zaimplementować `optimizeStripLengthsWithRemainder()`
+4. Zaktualizować `calculateSurfaceDetails()` dla sekcji ścian
+5. Zaktualizować `packStripsIntoRolls()` dla cross-surface optimization
+6. Naprawić logikę etykiet narożników (A-B-C, C-D-A)
+
