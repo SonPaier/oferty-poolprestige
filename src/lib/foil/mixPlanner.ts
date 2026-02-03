@@ -39,6 +39,8 @@ export const BUTT_JOINT_OVERLAP = 0; // Structural foil uses butt joint (no over
 
 // Wall overlap thresholds (for horizontal top/bottom overlaps)
 export const DEPTH_THRESHOLD_FOR_WIDE = 1.55; // Depth threshold for using 2.05m roll on walls
+// Above this depth, walls should be made from two narrow strips (1.65m) instead of wide rolls.
+export const DEPTH_THRESHOLD_FOR_DOUBLE_NARROW = 1.95;
 export const MIN_HORIZONTAL_OVERLAP = 0.05;   // Min 5cm for top/bottom weld
 export const MAX_HORIZONTAL_OVERLAP = 0.10;   // Max 10cm for top/bottom weld
 
@@ -72,6 +74,23 @@ export type SurfaceKey = 'bottom' | 'walls' | 'wall-long' | 'wall-short' | 'stai
 
 /** Optimization priority for roll selection */
 export type OptimizationPriority = 'minWaste' | 'minRolls';
+
+function getPreferredWallRollWidth(
+  dimensions: PoolDimensions,
+  foilSubtype?: FoilSubtype | null
+): RollWidth {
+  // Printed / structural foils are narrow-only.
+  if (isNarrowOnlyFoil(foilSubtype)) return ROLL_WIDTH_NARROW;
+
+  const d = dimensions.depth;
+  // Rule (independent of optimization priority):
+  // - depth <= 1.55m => 1.65m
+  // - 1.55m < depth <= 1.95m => 2.05m
+  // - depth > 1.95m => 2×1.65m (so still narrow width)
+  if (d <= DEPTH_THRESHOLD_FOR_WIDE) return ROLL_WIDTH_NARROW;
+  if (d <= DEPTH_THRESHOLD_FOR_DOUBLE_NARROW) return ROLL_WIDTH_WIDE;
+  return ROLL_WIDTH_NARROW;
+}
 
 /** Wall segment with label and length */
 export interface WallSegment {
@@ -927,8 +946,12 @@ export function calculateSurfaceDetails(
     const depth = dimensions.depth;
     
     // ===== 1. ROLL WIDTH SELECTION =====
-    // Use narrow (1.65m) if depth <= 1.55m, otherwise use wide (2.05m)
-    const wallRollWidth = depth <= DEPTH_THRESHOLD_FOR_WIDE ? ROLL_WIDTH_NARROW : ROLL_WIDTH_WIDE;
+    // Use the same width as in the configuration (and fallback to the depth-based rule).
+    // This keeps roll counts and the strips table consistent.
+    const wallRollWidth: RollWidth =
+      (wallSurfaces.find((s) => s.surface === 'wall-long')?.rollWidth as RollWidth | undefined) ??
+      (wallSurfaces.find((s) => s.surface === 'wall-short')?.rollWidth as RollWidth | undefined) ??
+      getPreferredWallRollWidth(dimensions, foilSubtype);
     
     // ===== 2. HORIZONTAL OVERLAP CALCULATION (top/bottom) =====
     // Calculate foil overhang beyond pool depth
@@ -1237,7 +1260,13 @@ export function autoOptimizeMixConfig(
     const isStructuralSurface = def.foilAssignment === 'structural';
     const forceNarrow = narrowOnlyMain || isStructuralSurface;
 
-    if (forceNarrow) {
+    // CRITICAL: Wall widths are selected by depth thresholds (installation constraint),
+    // and must NOT be overridden by the "minRolls" preference.
+    if (def.key === 'wall-long' || def.key === 'wall-short') {
+      optimalWidth = getPreferredWallRollWidth(dimensions, foilSubtype);
+      const calc = calculateStripsForWidth(def.coverWidth, optimalWidth, def.overlap);
+      wastePerSurface = calc.wasteArea * def.stripLength;
+    } else if (forceNarrow) {
       // Structural surfaces OR nadruk/strukturalna foils can only use 1.65m
       optimalWidth = ROLL_WIDTH_NARROW;
       const calc = calculateStripsForWidth(def.coverWidth, ROLL_WIDTH_NARROW, def.overlap);
@@ -1504,7 +1533,7 @@ export function packStripsIntoRolls(
     const wallRollWidth: RollWidth =
       (wallLong?.rollWidth as RollWidth | undefined) ??
       (wallShort?.rollWidth as RollWidth | undefined) ??
-      (dimensions.depth <= DEPTH_THRESHOLD_FOR_WIDE ? ROLL_WIDTH_NARROW : ROLL_WIDTH_WIDE);
+      getPreferredWallRollWidth(dimensions);
 
     const perimeter = getWallSegments(dimensions).reduce((sum, w) => sum + w.length, 0);
     const wallPlan = computeWallStripPlanFromPerimeter(perimeter, config, wallRollWidth);
