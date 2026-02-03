@@ -505,12 +505,26 @@ function estimateAdditionalWallRollArea(
 }
 
 /**
+ * Calculate "width waste" - excess roll width beyond wall depth
+ * This penalizes using 2.05m rolls when 1.65m would suffice
+ */
+function calculateWidthWaste(strips: WallStripConfig[], depth: number): number {
+  let waste = 0;
+  for (const strip of strips) {
+    const excessWidth = Math.max(0, strip.rollWidth - depth);
+    waste += excessWidth * strip.totalLength;
+  }
+  return waste;
+}
+
+/**
  * Select the optimal wall strip configuration based on priority
  */
 export function selectOptimalWallPlan(
   plans: WallStripPlan[],
   priority: OptimizationPriority,
-  bottomStrips: BottomStripInfo[] = []
+  bottomStrips: BottomStripInfo[] = [],
+  depth: number = 1.5
 ): WallStripPlan | null {
   if (plans.length === 0) return null;
   
@@ -519,6 +533,9 @@ export function selectOptimalWallPlan(
     
     // Recalculate waste with proper strip packing (multiple strips can share a roll)
     const { wasteArea, pairedLeftover, actualRollsNeeded } = calculateWasteForPlan(plan.strips, bottomStrips, 0);
+    
+    // Calculate width waste (using wider roll than needed)
+    const widthWaste = calculateWidthWaste(plan.strips, depth);
     
     if (priority === 'minWaste') {
       // For minWaste, the key insight is:
@@ -536,12 +553,25 @@ export function selectOptimalWallPlan(
             + pairedLeftover * 100
             + plan.totalFoilArea * 0.01;
     } else {
-      // minRolls:
-      // 1. Minimalizuj dodatkową powierzchnię rolek wymaganych SPECJALNIE na ściany
+      // minRolls: minimize total foil to order while considering practical constraints
+      // 
+      // Key insight: pairing with bottom offcuts saves rolls, BUT using a wider
+      // roll than needed creates "width waste" which increases total foil cost.
+      // 
+      // For 8x4 pool with 1.5m depth:
+      // - 2.05m walls + pairing: 0 extra rolls, but 0.55m×24m = 13.2m² width waste
+      // - 1.65m walls + own roll: 1 extra roll (41.25m²), but 0.15m×24m = 3.6m² width waste
+      // 
+      // The 1.65m option uses more rolls but less total foil (41.25 + 3.6 < 0 + 13.2? No!)
+      // Actually: 1.65m total = 39.8m² strips, 2.05m total = 49.6m² strips
+      // Difference = 9.8m² less foil with 1.65m, but costs 1 extra roll
+      //
+      // For minRolls, we balance: extra roll cost vs width waste
       const additionalWallRollArea = estimateAdditionalWallRollArea(plan, bottomStrips);
-      score = additionalWallRollArea * 1_000_000
-            + actualRollsNeeded * 100_000
-            + pairedLeftover * 10_000
+      
+      score = additionalWallRollArea * 100_000   // Primary: minimize extra rolls
+            + widthWaste * 50_000                // High penalty for using wider roll than needed
+            + actualRollsNeeded * 10_000
             + plan.totalFoilArea * 1000
             + wasteArea * 10
             + plan.totalStripCount;
@@ -565,7 +595,7 @@ export function getOptimalWallStripPlan(
 ): WallStripPlan | null {
   const plans = generateWallStripConfigurations(dimensions, config, foilSubtype);
   const bottomStrips = getBottomStripsInfo(config);
-  return selectOptimalWallPlan(plans, priority, bottomStrips);
+  return selectOptimalWallPlan(plans, priority, bottomStrips, dimensions.depth);
 }
 
 /**
