@@ -69,6 +69,27 @@ function makeConfigForBottom10mMixedWidths(): MixConfiguration {
 }
 
 describe("wallStripOptimizer priority behavior", () => {
+  it("minWaste should prefer symmetric 15m + 15.2m strips for 10x5x1.5m", () => {
+    const dimensions = makeDimensions10x5x15();
+    const config = makeConfigForBottom10mMixedWidths();
+
+    const wastePlan = getOptimalWallStripPlan(dimensions, config, "jednokolorowa", "minWaste");
+
+    expect(wastePlan).toBeTruthy();
+    expect(wastePlan!.totalStripCount).toBe(2);
+    
+    // Expected: Two symmetric strips A-B-C (15m) and C-D-A (15m) with overlaps distributed
+    // Total overlap = 2 strips × 0.1m = 0.2m, distributed between strips
+    const lengths = wastePlan!.strips.map(s => s.totalLength).sort((a, b) => a - b);
+    // Both strips should be around 15m + some overlap (total 30.2m)
+    expect(lengths[0] + lengths[1]).toBeCloseTo(30.2, 1);
+    // Difference between strips should be small (symmetric distribution)
+    expect(Math.abs(lengths[1] - lengths[0])).toBeLessThan(1);
+    
+    // Both should be 1.65m wide
+    expect(wastePlan!.strips.every(s => s.rollWidth === ROLL_WIDTH_NARROW)).toBe(true);
+  });
+
   it("minWaste and minRolls should produce different wall plans for 10x5x1.5m", () => {
     const dimensions = makeDimensions10x5x15();
     const config = makeConfigForBottom10mMixedWidths();
