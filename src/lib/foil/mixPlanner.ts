@@ -167,12 +167,22 @@ function calculateStripsForWidth(
 }
 
 /**
- * Ilość folii do wyceny (m²):
- * - liczymy pełną powierzchnię pasów (z zakładami = pełna szerokość rolki na pas)
- * - odejmujemy odpad, który *może* być użyty ponownie (>= 30cm szer. oraz >= 2m dł.)
- * - dodajemy odpad z końcówek rolek, którego nie da się użyć (dł. < 2m)
+ * Result from foil pricing calculation - separated by foil pool
  */
-export function calculateFoilAreaForPricing(
+export interface FoilPricingResult {
+  /** Main foil (bottom, walls, dividing wall) area for pricing in m² */
+  mainFoilArea: number;
+  /** Structural foil (stairs, paddling pool bottom) area for pricing in m² */
+  structuralFoilArea: number;
+  /** Total area for pricing (main + structural) */
+  totalArea: number;
+}
+
+/**
+ * Helper: Calculate foil area for a subset of surfaces
+ */
+function calculateAreaForSurfaces(
+  surfaceKeys: SurfaceKey[],
   config: MixConfiguration,
   dimensions: PoolDimensions,
   foilSubtype?: FoilSubtype | null
@@ -182,10 +192,13 @@ export function calculateFoilAreaForPricing(
     config.surfaces.map((s) => [s.surface, s])
   );
 
+  const relevantDefs = defs.filter((d) => surfaceKeys.includes(d.key));
+  const relevantSurfaces = config.surfaces.filter((s) => surfaceKeys.includes(s.surface));
+
   let totalStripsArea = 0;
   let reusableWidthWasteArea = 0;
 
-  for (const def of defs) {
+  for (const def of relevantDefs) {
     const surface = surfaceByKey.get(def.key);
     if (!surface) continue;
 
@@ -205,8 +218,12 @@ export function calculateFoilAreaForPricing(
     }
   }
 
-  // Roll-end waste (length leftover). Only count as waste if it's too short to reuse.
-  const rolls = packStripsIntoRolls(config);
+  // Roll-end waste (length leftover) - pack only relevant surfaces
+  const subConfig: MixConfiguration = {
+    ...config,
+    surfaces: relevantSurfaces,
+  };
+  const rolls = packStripsIntoRolls(subConfig);
   const unusableRollEndWasteArea = rolls.reduce((sum, r) => {
     if (r.wasteLength > 0 && r.wasteLength < MIN_REUSABLE_OFFCUT_LENGTH) {
       return sum + r.wasteLength * r.rollWidth;
@@ -215,6 +232,32 @@ export function calculateFoilAreaForPricing(
   }, 0);
 
   return totalStripsArea - reusableWidthWasteArea + unusableRollEndWasteArea;
+}
+
+/**
+ * Ilość folii do wyceny (m²) - osobno dla głównej i strukturalnej:
+ * - liczymy pełną powierzchnię pasów (z zakładami = pełna szerokość rolki na pas)
+ * - odejmujemy odpad, który *może* być użyty ponownie (>= 30cm szer. oraz >= 2m dł.)
+ * - dodajemy odpad z końcówek rolek, którego nie da się użyć (dł. < 2m)
+ */
+export function calculateFoilAreaForPricing(
+  config: MixConfiguration,
+  dimensions: PoolDimensions,
+  foilSubtype?: FoilSubtype | null
+): FoilPricingResult {
+  // Main surfaces: bottom, wall-long, wall-short, dividing-wall
+  const mainKeys: SurfaceKey[] = ['bottom', 'wall-long', 'wall-short', 'dividing-wall'];
+  // Structural surfaces: stairs, paddling
+  const structuralKeys: SurfaceKey[] = ['stairs', 'paddling'];
+
+  const mainFoilArea = calculateAreaForSurfaces(mainKeys, config, dimensions, foilSubtype);
+  const structuralFoilArea = calculateAreaForSurfaces(structuralKeys, config, dimensions, foilSubtype);
+
+  return {
+    mainFoilArea,
+    structuralFoilArea,
+    totalArea: mainFoilArea + structuralFoilArea,
+  };
 }
 
 /**
