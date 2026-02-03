@@ -4,8 +4,14 @@
  * Plans foil coverage for pool stairs:
  * - Only counts horizontal footprint (stepDepth × stepCount)
  * - Risers (vertical fronts) are NOT covered with anti-slip foil
+ * - NO overlap between step pieces (each step is separate)
  * 
- * The anti-slip foil covers only the TREADS (horizontal walking surfaces).
+ * CUTTING LOGIC:
+ * - If stair width <= 1.65m: one strip of footprintLength × stairWidth
+ * - If stair width > 1.65m: cut from roll width transversely
+ *   - Cut strip of LENGTH = stair width from 1.65m roll
+ *   - Cut into stepDepth pieces (one per step)
+ *   - Waste = (1.65m - footprintLength) × stairWidth
  */
 
 import { StairsConfig, PoolDimensions } from '@/types/configurator';
@@ -50,9 +56,41 @@ function calculateStairFootprintArea(stairs: StairsConfig, dimensions: PoolDimen
 }
 
 /**
+ * Calculate foil material area needed for stairs
+ * Uses transverse cutting logic when width > roll width
+ * 
+ * @returns { materialArea: number, wasteArea: number }
+ */
+function calculateStairsFoilMaterial(stairs: StairsConfig, dimensions: PoolDimensions): { materialArea: number, wasteArea: number } {
+  const stairsWidth = getStairsWidth(stairs, dimensions);
+  const stepCount = stairs.stepCount || 4;
+  const stepDepth = stairs.stepDepth || 0.30;
+  const footprintLength = stepCount * stepDepth;
+  
+  if (stairsWidth > ROLL_WIDTH_NARROW) {
+    // Cut from roll width transversely:
+    // - Strip length = stair width
+    // - Material = 1.65m × stairWidth
+    // - Waste = (1.65m - footprintLength) × stairWidth
+    const materialArea = ROLL_WIDTH_NARROW * stairsWidth;
+    const wasteArea = Math.max(0, (ROLL_WIDTH_NARROW - footprintLength) * stairsWidth);
+    return { materialArea, wasteArea };
+  } else {
+    // Standard: stair width fits within roll
+    // - Strip length = footprintLength
+    // - Material = footprintLength × 1.65m
+    // - Waste = (1.65m - stairWidth) × footprintLength
+    const materialArea = footprintLength * ROLL_WIDTH_NARROW;
+    const wasteArea = Math.max(0, (ROLL_WIDTH_NARROW - stairsWidth) * footprintLength);
+    return { materialArea, wasteArea };
+  }
+}
+
+/**
  * Plan foil layout for stairs
  * 
  * Only covers horizontal footprint (treads) - risers are NOT included
+ * NO overlap between step pieces
  * 
  * @param stairs Stairs configuration
  * @param poolDepth Pool depth at stairs location
@@ -70,7 +108,7 @@ export function planStairsSurface(
   const stepCount = stairs.stepCount || 4;
   const stepDepth = stairs.stepDepth || 0.30;
   
-  // Only calculate footprint area (no risers)
+  // Only calculate footprint area (no risers, no overlap)
   const footprintArea = calculateStairFootprintArea(stairs, dimensions);
   const footprintLength = stepCount * stepDepth;
   
@@ -78,6 +116,7 @@ export function planStairsSurface(
   const surfaces: ExtendedSurfacePlan[] = [];
   
   // Stair footprint (horizontal treads) - STRUCTURAL anti-slip foil
+  // NO overlap between steps
   const stepType: ExtendedSurfaceType = 'stairs-step';
   surfaces.push({
     type: stepType,
@@ -104,4 +143,14 @@ export function calculateTotalStairsArea(stairs: StairsConfig, dimensions: PoolD
   
   // Only footprint area - no risers
   return calculateStairFootprintArea(stairs, dimensions);
+}
+
+/**
+ * Calculate total foil material needed for stairs (includes waste from cutting)
+ */
+export function calculateStairsFoilMaterialArea(stairs: StairsConfig, dimensions: PoolDimensions): number {
+  if (!stairs.enabled) return 0;
+  
+  const { materialArea } = calculateStairsFoilMaterial(stairs, dimensions);
+  return materialArea;
 }

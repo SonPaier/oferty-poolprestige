@@ -578,6 +578,27 @@ function calculateAreaForSurfaces(
     const surfaceEntries = surfacesByKey.get(def.key);
     if (!surfaceEntries || surfaceEntries.length === 0) continue;
 
+    // SPECIAL CASE: Stairs use different cutting logic
+    if (def.key === 'stairs' && dimensions.stairs?.enabled) {
+      const stairs = dimensions.stairs;
+      const stairsWidth = typeof stairs.width === 'number' ? stairs.width : Math.min(dimensions.length, dimensions.width);
+      const stepDepth = stairs.stepDepth || 0.30;
+      const stepCount = stairs.stepCount || 4;
+      const stairsFootprintLength = stepDepth * stepCount;
+      
+      // Calculate based on cutting logic
+      if (stairsWidth > ROLL_WIDTH_NARROW) {
+        // Cut from roll width transversely: 1.65m × stairsWidth
+        totalStripsArea += ROLL_WIDTH_NARROW * stairsWidth;
+      } else {
+        // Standard cut along roll: footprintLength × rollWidth
+        totalStripsArea += stairsFootprintLength * ROLL_WIDTH_NARROW;
+      }
+      // NO weld area for stairs (overlap = 0)
+      // NO reusable waste for stairs (waste is small piece)
+      continue;
+    }
+
     // NOTE: We treat multiple entries for the same surface as additive (rare, but safe).
     for (const surface of surfaceEntries) {
       if (!surface.stripMix) {
@@ -749,20 +770,32 @@ function getSurfaceDefinitions(dimensions: PoolDimensions, foilSubtype?: FoilSub
 
   // Stairs (STRUCTURAL foil - always anti-slip)
   // Only count horizontal footprint (stepDepth × stepCount) - risers are NOT covered with anti-slip foil
+  // 
+  // CUTTING LOGIC:
+  // - If stair width <= 1.65m: cut one strip of length = footprint, width = stair width
+  // - If stair width > 1.65m: cut from ROLL WIDTH transversely:
+  //   - Cut a strip of LENGTH = stair width from the 1.65m wide roll
+  //   - Then cut that strip into stepDepth pieces (one per step)
+  //   - Waste = (1.65m - stepCount * stepDepth) × stair width
+  //   - NO OVERLAP between step pieces (they're separate treads)
   if (dimensions.stairs?.enabled) {
     const stairs = dimensions.stairs;
     const stepWidth = typeof stairs.width === 'number' ? stairs.width : shorterSide;
-    // Stairs foil only covers treads (horizontal) - NOT risers (vertical)
-    // Total footprint length = stepDepth × stepCount
-    const stairsFootprintLength = stairs.stepDepth * stairs.stepCount;
+    const stepDepth = stairs.stepDepth || 0.30;
+    const stepCount = stairs.stepCount || 4;
     
+    // Total footprint = stepDepth × stepCount (only treads, no risers)
+    const stairsFootprintLength = stepDepth * stepCount;
+    
+    // For stairs, NO overlap between strips (each step is separate piece)
+    // If width > roll width, we cut transversely from roll
     surfaces.push({
       key: 'stairs',
       label: 'Schody',
-      stripLength: stairsFootprintLength,
-      coverWidth: stepWidth,
+      stripLength: stepWidth > ROLL_WIDTH_NARROW ? stepWidth : stairsFootprintLength,
+      coverWidth: stepWidth > ROLL_WIDTH_NARROW ? stairsFootprintLength : stepWidth,
       count: 1,
-      overlap: MIN_OVERLAP_WALL,
+      overlap: 0, // NO overlap for stairs - separate pieces per step
       foilAssignment: 'structural', // Always structural foil
     });
   }
@@ -1152,32 +1185,75 @@ export function calculateSurfaceDetails(
     const def = defs.find(d => d.key === 'stairs');
     if (def && dimensions.stairs) {
       const stairs = dimensions.stairs;
-      const calc = calculateStripsForWidth(def.coverWidth, surface.rollWidth, def.overlap);
       const rollNumbers = getRollNumbersForSurface(surface.surfaceLabel);
       
-      const totalFoilAreaRaw = surface.stripCount * surface.rollWidth * surface.stripLength;
-      const overlapsCount = Math.max(0, calc.count - 1);
-      const weldArea = overlapsCount * calc.actualOverlap * def.stripLength;
-      const coverArea = totalFoilAreaRaw - weldArea;
+      // Stair parameters
+      const stairsWidth = typeof stairs.width === 'number' ? stairs.width : Math.min(dimensions.length, dimensions.width);
+      const stepDepth = stairs.stepDepth || 0.30;
+      const stepCount = stairs.stepCount || 4;
+      const stairsFootprintLength = stepDepth * stepCount;
+      
+      // NEW CUTTING LOGIC:
+      // If stair width > roll width (1.65m), cut transversely from roll:
+      // - Strip length = stair width (2.0m in example)
+      // - Strip pieces = stepCount pieces of stepDepth each
+      // - Waste = (1.65m - footprintLength) × stairWidth
+      
+      // Calculate areas
+      let totalFoilAreaRaw: number;
+      let wasteArea: number;
+      let displayStripLength: number;
+      let displayRollWidth: RollWidth;
+      
+      if (stairsWidth > ROLL_WIDTH_NARROW) {
+        // Cut from roll width transversely
+        // We cut one strip of length = stairsWidth from 1.65m roll
+        // Then cut into stepDepth pieces
+        displayStripLength = stairsWidth;
+        displayRollWidth = ROLL_WIDTH_NARROW;
+        
+        // Material used = 1.65m × stairsWidth (one full strip from roll width)
+        totalFoilAreaRaw = ROLL_WIDTH_NARROW * stairsWidth;
+        
+        // Waste = unused portion of roll width after cutting all steps
+        // (1.65 - stepCount * stepDepth) × stairsWidth
+        const unusedRollWidth = ROLL_WIDTH_NARROW - stairsFootprintLength;
+        wasteArea = Math.max(0, unusedRollWidth * stairsWidth);
+      } else {
+        // Standard: stair width fits within roll, cut along roll length
+        displayStripLength = stairsFootprintLength;
+        displayRollWidth = ROLL_WIDTH_NARROW;
+        
+        // Material = footprint length × roll width
+        totalFoilAreaRaw = stairsFootprintLength * ROLL_WIDTH_NARROW;
+        
+        // Waste = (roll width - stair width) × footprint length
+        const unusedWidth = ROLL_WIDTH_NARROW - stairsWidth;
+        wasteArea = Math.max(0, unusedWidth * stairsFootprintLength);
+      }
+      
+      // Net cover area (actual surface covered)
+      const coverArea = stairsWidth * stairsFootprintLength;
+      
+      // NO weld/overlap for stairs - each step is separate piece
+      const weldArea = 0;
       
       // Build detailed label with stair parameters
-      const stairsWidth = typeof stairs.width === 'number' ? stairs.width : Math.min(dimensions.length, dimensions.width);
-      const stairsLength = stairs.stepDepth * stairs.stepCount;
-      const stairsLabel = `Schody (${stairsWidth.toFixed(2)}m × ${stairsLength.toFixed(2)}m, ${stairs.stepCount} stopni × ${(stairs.stepDepth * 100).toFixed(0)}cm)`;
+      const stairsLabel = `Schody (${stairsWidth.toFixed(2)}m × ${stairsFootprintLength.toFixed(2)}m, ${stepCount} stopni × ${(stepDepth * 100).toFixed(0)}cm)`;
       
       results.push({
         surfaceKey: 'stairs',
         surfaceLabel: stairsLabel,
         strips: [{
-          count: surface.stripCount,
-          rollWidth: surface.rollWidth,
-          stripLength: surface.stripLength,
+          count: 1,
+          rollWidth: displayRollWidth,
+          stripLength: displayStripLength,
           rollNumber: rollNumbers[0],
         }],
         coverArea: Math.round(coverArea * 10) / 10,
         totalFoilArea: Math.ceil(totalFoilAreaRaw),
-        weldArea: Math.round(weldArea * 10) / 10,
-        wasteArea: 0,
+        weldArea: weldArea,
+        wasteArea: Math.round(wasteArea * 10) / 10,
       });
     }
   }
