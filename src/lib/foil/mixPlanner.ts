@@ -1285,6 +1285,45 @@ export function getReusableOffcutsWithDimensions(
   return offcuts;
 }
 
+/** Unusable waste pieces (< 2m length) */
+export interface UnusableWaste {
+  rollNumber: number;
+  rollWidth: RollWidth;
+  length: number;  // waste length (m)
+  area: number;    // waste area (m²)
+  source: string;  // surface that generated this waste
+}
+
+/** Get unusable waste pieces (offcuts < 2m that cannot be reused) */
+export function getUnusableWaste(
+  config: MixConfiguration,
+  dimensions: PoolDimensions,
+  foilSubtype?: FoilSubtype | null,
+  priority: OptimizationPriority = 'minWaste'
+): UnusableWaste[] {
+  const rolls = packStripsIntoRolls(config, dimensions, foilSubtype, priority);
+  const wastes: UnusableWaste[] = [];
+
+  for (const roll of rolls) {
+    // Only count waste that is too short to reuse (< 2m)
+    if (roll.wasteLength > 0 && roll.wasteLength < MIN_REUSABLE_OFFCUT_LENGTH) {
+      // Determine source based on strips in the roll
+      const surfaceNames = [...new Set(roll.strips.map(s => s.surface))];
+      const source = surfaceNames.join(' + ');
+      
+      wastes.push({
+        rollNumber: roll.rollNumber,
+        rollWidth: roll.rollWidth,
+        length: Math.round(roll.wasteLength * 10) / 10,
+        area: Math.round(roll.wasteLength * roll.rollWidth * 100) / 100,
+        source,
+      });
+    }
+  }
+
+  return wastes;
+}
+
 /**
  * Auto-optimize roll width selection for all surfaces
  */

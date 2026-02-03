@@ -1,4 +1,4 @@
-import { Package, Layers, Recycle } from 'lucide-react';
+import { Package, Layers, Recycle, Trash2 } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
@@ -20,8 +20,10 @@ import {
   ROLL_WIDTH_WIDE,
   SurfaceDetailedResult,
   ReusableOffcut,
+  UnusableWaste,
   calculateSurfaceDetails,
   getReusableOffcutsWithDimensions,
+  getUnusableWaste,
   calculateButtJointMeters,
 } from '@/lib/foil/mixPlanner';
 import { Badge } from '@/components/ui/badge';
@@ -254,6 +256,62 @@ function ReusableOffcutsTable({ offcuts }: ReusableOffcutsTableProps) {
   );
 }
 
+interface UnusableWasteTableProps {
+  wastes: UnusableWaste[];
+}
+
+function UnusableWasteTable({ wastes }: UnusableWasteTableProps) {
+  if (wastes.length === 0) {
+    return null; // No unusable waste - don't show the section
+  }
+  
+  const totalArea = wastes.reduce((sum, w) => sum + w.area, 0);
+  
+  return (
+    <div className="border rounded-lg overflow-hidden border-red-200 dark:border-red-800">
+      <Table>
+        <TableHeader>
+          <TableRow className="bg-red-50/50 dark:bg-red-900/20">
+            <TableHead className="font-semibold">Rolka</TableHead>
+            <TableHead className="font-semibold">Wymiar</TableHead>
+            <TableHead className="font-semibold">Źródło</TableHead>
+            <TableHead className="text-right font-semibold">Powierzchnia</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {wastes.map((waste, idx) => (
+            <TableRow key={idx}>
+              <TableCell>
+                <div className="flex items-center gap-2">
+                  <span className={`w-2 h-2 rounded-full ${waste.rollWidth === 2.05 ? 'bg-emerald-500' : 'bg-blue-500'}`} />
+                  <span>#{waste.rollNumber} ({waste.rollWidth}m)</span>
+                </div>
+              </TableCell>
+              <TableCell>
+                {waste.length}m × {waste.rollWidth}m
+              </TableCell>
+              <TableCell className="text-muted-foreground text-sm">
+                {waste.source}
+              </TableCell>
+              <TableCell className="text-right font-medium">
+                {waste.area.toFixed(2)} m²
+              </TableCell>
+            </TableRow>
+          ))}
+          <TableRow className="bg-red-50 dark:bg-red-900/20 border-t-2">
+            <TableCell colSpan={3} className="font-semibold">
+              Razem odpad nieużyteczny
+            </TableCell>
+            <TableCell className="text-right font-bold text-red-600 dark:text-red-400">
+              {totalArea.toFixed(2)} m²
+            </TableCell>
+          </TableRow>
+        </TableBody>
+      </Table>
+    </div>
+  );
+}
+
 export function RollSummary({ 
   config, 
   dimensions,
@@ -290,8 +348,9 @@ export function RollSummary({
     d.surfaceKey === 'stairs' || d.surfaceKey === 'paddling'
   );
   
-  // Get reusable offcuts
+  // Get reusable offcuts and unusable waste
   const reusableOffcuts = getReusableOffcutsWithDimensions(config, dimensions, foilSubtype, optimizationPriority);
+  const unusableWaste = getUnusableWaste(config, dimensions, foilSubtype, optimizationPriority);
 
   // Calculate totals
   const totalArea = config.surfaces.reduce((sum, s) => sum + s.areaM2, 0);
@@ -306,13 +365,8 @@ export function RollSummary({
   if (isMainFoilStructural) {
     return (
       <div className="space-y-6">
-        {/* Header with toggle */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Package className="h-5 w-5 text-primary" />
-            <h4 className="font-semibold">Podsumowanie rolek</h4>
-            <Badge variant="outline" className="text-xs">Folia strukturalna</Badge>
-          </div>
+        {/* Header with toggle - removed duplicate heading */}
+        <div className="flex items-center justify-end">
           <div className="flex items-center gap-3">
             <Label htmlFor="priority-toggle" className={`text-sm ${optimizationPriority === 'minWaste' ? 'font-medium' : 'text-muted-foreground'}`}>
               Min. odpad
@@ -327,6 +381,9 @@ export function RollSummary({
             </Label>
           </div>
         </div>
+
+        {/* Badge for structural foil */}
+        <Badge variant="outline" className="text-xs">Folia strukturalna</Badge>
 
         {/* Roll counts */}
         <RollCountsDisplay 
@@ -347,11 +404,22 @@ export function RollSummary({
         {/* Reusable offcuts */}
         <div>
           <h5 className="font-medium text-sm mb-2 flex items-center gap-2">
-            <Recycle className="h-4 w-4" />
+            <Recycle className="h-4 w-4 text-green-600" />
             Odpad do ponownego wykorzystania
           </h5>
           <ReusableOffcutsTable offcuts={reusableOffcuts} />
         </div>
+
+        {/* Unusable waste */}
+        {unusableWaste.length > 0 && (
+          <div>
+            <h5 className="font-medium text-sm mb-2 flex items-center gap-2">
+              <Trash2 className="h-4 w-4 text-red-600" />
+              Odpad nieużyteczny (&lt;2m)
+            </h5>
+            <UnusableWasteTable wastes={unusableWaste} />
+          </div>
+        )}
 
         {/* Summary stats */}
         <div className="grid grid-cols-5 gap-4 p-4 rounded-lg bg-muted/30 border">
@@ -384,12 +452,8 @@ export function RollSummary({
   // Show separate pools for main and structural foil
   return (
     <div className="space-y-6">
-      {/* Header with toggle */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Package className="h-5 w-5 text-primary" />
-          <h4 className="font-semibold">Podsumowanie rolek</h4>
-        </div>
+      {/* Header with toggle - removed duplicate heading */}
+      <div className="flex items-center justify-end">
         <div className="flex items-center gap-3">
           <Label htmlFor="priority-toggle" className={`text-sm ${optimizationPriority === 'minWaste' ? 'font-medium' : 'text-muted-foreground'}`}>
             Min. odpad
@@ -443,6 +507,17 @@ export function RollSummary({
         </h5>
         <ReusableOffcutsTable offcuts={reusableOffcuts} />
       </div>
+
+      {/* Unusable waste */}
+      {unusableWaste.length > 0 && (
+        <div>
+          <h5 className="font-medium text-sm mb-2 flex items-center gap-2">
+            <Trash2 className="h-4 w-4 text-red-600" />
+            Odpad nieużyteczny (&lt;2m)
+          </h5>
+          <UnusableWasteTable wastes={unusableWaste} />
+        </div>
+      )}
 
       {/* Summary stats */}
       <div className="grid grid-cols-4 gap-4 p-4 rounded-lg bg-muted/30 border">
