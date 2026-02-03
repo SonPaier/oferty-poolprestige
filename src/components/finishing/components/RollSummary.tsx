@@ -263,8 +263,8 @@ export function RollSummary({
   const mainConfig = { ...config, surfaces: main };
   const structuralConfig = { ...config, surfaces: structural };
   
-  const mainRolls = packStripsIntoRolls(mainConfig, dimensions);
-  const structuralRolls = packStripsIntoRolls(structuralConfig, dimensions);
+  const mainRolls = packStripsIntoRolls(mainConfig, dimensions, foilSubtype, optimizationPriority);
+  const structuralRolls = packStripsIntoRolls(structuralConfig, dimensions, foilSubtype, optimizationPriority);
 
   // Calculate roll counts per pool
   const mainRolls165 = mainRolls.filter(r => r.rollWidth === ROLL_WIDTH_NARROW).length;
@@ -272,7 +272,7 @@ export function RollSummary({
   const structuralRolls165 = structuralRolls.filter(r => r.rollWidth === ROLL_WIDTH_NARROW).length;
 
   // Calculate detailed surface info
-  const surfaceDetails = calculateSurfaceDetails(config, dimensions, foilSubtype);
+  const surfaceDetails = calculateSurfaceDetails(config, dimensions, foilSubtype, optimizationPriority);
   const mainDetails = surfaceDetails.filter(d => 
     d.surfaceKey === 'bottom' || d.surfaceKey === 'walls' || d.surfaceKey === 'dividing-wall'
   );
@@ -281,7 +281,7 @@ export function RollSummary({
   );
   
   // Get reusable offcuts
-  const reusableOffcuts = getReusableOffcutsWithDimensions(config, dimensions);
+  const reusableOffcuts = getReusableOffcutsWithDimensions(config, dimensions, foilSubtype, optimizationPriority);
 
   // Calculate totals
   const totalArea = config.surfaces.reduce((sum, s) => sum + s.areaM2, 0);
