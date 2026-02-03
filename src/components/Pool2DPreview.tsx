@@ -524,6 +524,15 @@ export default function Pool2DPreview({ dimensions, height = 300, dimensionDispl
     return { minX, maxX, minY, maxY };
   }, [outerShellPoints, stairsPoints, wadingPoolPoints]);
   
+  // Calculate internal pool bounds (for dimension lines - without wall thickness)
+  const poolBounds = useMemo(() => {
+    const minX = Math.min(...poolPoints.map(p => p.x));
+    const maxX = Math.max(...poolPoints.map(p => p.x));
+    const minY = Math.min(...poolPoints.map(p => p.y));
+    const maxY = Math.max(...poolPoints.map(p => p.y));
+    return { minX, maxX, minY, maxY };
+  }, [poolPoints]);
+  
   // Calculate bounds for stairs and wading pool individually
   const stairsBounds = useMemo(() => {
     if (!stairsPoints || stairsPoints.length < 2) return null;
@@ -565,9 +574,9 @@ export default function Pool2DPreview({ dimensions, height = 300, dimensionDispl
   const stairsPath = stairsPoints ? pointsToPath(stairsPoints) : '';
   const wadingPoolPath = wadingPoolPoints ? pointsToPath(wadingPoolPoints) : '';
   
-  // Calculate dimension labels
-  const poolWidth = bounds.maxX - bounds.minX;
-  const poolHeight = bounds.maxY - bounds.minY;
+  // Calculate internal pool dimensions (for display - without wall thickness)
+  const poolWidth = poolBounds.maxX - poolBounds.minX;
+  const poolHeight = poolBounds.maxY - poolBounds.minY;
   
   // Dimension visibility flags
   const showPoolDims = dimensionDisplay === 'all' || dimensionDisplay === 'pool';
@@ -714,24 +723,24 @@ export default function Pool2DPreview({ dimensions, height = 300, dimensionDispl
           />
         )}
         
-        {/* Pool Dimension lines - only when pool dims enabled */}
+        {/* Pool Dimension lines - only when pool dims enabled (internal dimensions) */}
         {showPoolDims && (
           <>
-            {/* Width dimension (bottom) */}
+            {/* Width dimension (bottom) - uses internal pool bounds */}
             <g>
               <line
-                x1={bounds.minX}
-                y1={-bounds.minY + 0.4}
-                x2={bounds.maxX}
-                y2={-bounds.minY + 0.4}
+                x1={poolBounds.minX}
+                y1={-poolBounds.minY + 0.4}
+                x2={poolBounds.maxX}
+                y2={-poolBounds.minY + 0.4}
                 stroke="#f97316"
                 strokeWidth="0.03"
                 markerStart="url(#arrowStart)"
                 markerEnd="url(#arrowEnd)"
               />
               <text
-                x={(bounds.minX + bounds.maxX) / 2}
-                y={-bounds.minY + 0.7}
+                x={(poolBounds.minX + poolBounds.maxX) / 2}
+                y={-poolBounds.minY + 0.7}
                 textAnchor="middle"
                 fontSize="0.25"
                 fill="#f97316"
@@ -741,24 +750,24 @@ export default function Pool2DPreview({ dimensions, height = 300, dimensionDispl
               </text>
             </g>
             
-            {/* Height dimension (right) */}
+            {/* Height dimension (right) - uses internal pool bounds */}
             <g>
               <line
-                x1={bounds.maxX + 0.4}
-                y1={-bounds.minY}
-                x2={bounds.maxX + 0.4}
-                y2={-bounds.maxY}
+                x1={poolBounds.maxX + 0.4}
+                y1={-poolBounds.minY}
+                x2={poolBounds.maxX + 0.4}
+                y2={-poolBounds.maxY}
                 stroke="#f97316"
                 strokeWidth="0.03"
               />
               <text
-                x={bounds.maxX + 0.7}
-                y={-(bounds.minY + bounds.maxY) / 2}
+                x={poolBounds.maxX + 0.7}
+                y={-(poolBounds.minY + poolBounds.maxY) / 2}
                 textAnchor="middle"
                 fontSize="0.25"
                 fill="#f97316"
                 fontWeight="bold"
-                transform={`rotate(-90 ${bounds.maxX + 0.7} ${-(bounds.minY + bounds.maxY) / 2})`}
+                transform={`rotate(-90 ${poolBounds.maxX + 0.7} ${-(poolBounds.minY + poolBounds.maxY) / 2})`}
               >
                 {poolHeight.toFixed(2)} m
               </text>
