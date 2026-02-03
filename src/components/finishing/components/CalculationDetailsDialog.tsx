@@ -19,6 +19,7 @@ import {
   autoOptimizeMixConfig, 
   MixConfiguration,
   calculateFoilAreaForPricing,
+  OptimizationPriority,
 } from '@/lib/foil/mixPlanner';
 
 interface CalculationDetailsDialogProps {
@@ -42,15 +43,18 @@ export function CalculationDetailsDialog({
   foilPricePerM2,
   manualFoilQty,
 }: CalculationDetailsDialogProps) {
+  // Optimization priority state
+  const [optimizationPriority, setOptimizationPriority] = useState<OptimizationPriority>('minWaste');
+  
   // Initialize MIX configuration with auto-optimization (respecting foil type constraints)
   const [mixConfig, setMixConfig] = useState<MixConfiguration>(() => 
-    autoOptimizeMixConfig(dimensions, foilSubtype)
+    autoOptimizeMixConfig(dimensions, foilSubtype, optimizationPriority)
   );
 
-  // Re-optimize when foil subtype changes
+  // Re-optimize when foil subtype or priority changes
   useEffect(() => {
-    setMixConfig(autoOptimizeMixConfig(dimensions, foilSubtype));
-  }, [foilSubtype, dimensions]);
+    setMixConfig(autoOptimizeMixConfig(dimensions, foilSubtype, optimizationPriority));
+  }, [foilSubtype, dimensions, optimizationPriority]);
 
   const pricingResult = useMemo(
     () => calculateFoilAreaForPricing(mixConfig, dimensions, foilSubtype),
@@ -254,12 +258,16 @@ export function CalculationDetailsDialog({
               <h3 className="font-semibold text-lg mb-3">📦 Podsumowanie rolek</h3>
               <RollSummary 
                 config={mixConfig} 
+                dimensions={dimensions}
+                foilSubtype={foilSubtype}
                 isMainFoilStructural={foilSubtype === 'strukturalna'} 
                 mainFoilAreaForPricing={mainFoilQty}
                 mainWeldArea={pricingResult.mainWeldArea}
                 structuralFoilAreaForPricing={structuralFoilQty}
                 structuralWeldArea={pricingResult.structuralWeldArea}
                 foilAreaForPricing={totalFoilQty}
+                optimizationPriority={optimizationPriority}
+                onPriorityChange={setOptimizationPriority}
               />
             </section>
 

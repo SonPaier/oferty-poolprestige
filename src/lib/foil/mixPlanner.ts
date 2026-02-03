@@ -56,7 +56,24 @@ export function usesButtJoint(foilSubtype?: FoilSubtype | null): boolean {
   return foilSubtype === 'strukturalna';
 }
 
-export type SurfaceKey = 'bottom' | 'wall-long' | 'wall-short' | 'stairs' | 'paddling' | 'dividing-wall';
+export type SurfaceKey = 'bottom' | 'walls' | 'wall-long' | 'wall-short' | 'stairs' | 'paddling' | 'dividing-wall';
+
+/** Optimization priority for roll selection */
+export type OptimizationPriority = 'minWaste' | 'minRolls';
+
+/** Wall segment with label and length */
+export interface WallSegment {
+  label: string;  // e.g., 'A-B', 'B-C'
+  length: number; // length in meters
+}
+
+/** Strip with wall labels for display */
+export interface WallStripInfo {
+  rollWidth: RollWidth;
+  stripLength: number;
+  wallLabels: string[]; // e.g., ['A-B'], ['B-C', 'C-D'], ['A-B-C-D']
+  rollNumber?: number;
+}
 
 export interface SurfaceRollConfig {
   surface: SurfaceKey;
@@ -79,6 +96,31 @@ export interface MixConfiguration {
   totalWaste: number;
   wastePercentage: number;
   isOptimized: boolean;
+}
+
+/** Detailed result for a single surface (for UI display) */
+export interface SurfaceDetailedResult {
+  surfaceKey: SurfaceKey;
+  surfaceLabel: string;
+  strips: Array<{
+    count: number;
+    rollWidth: RollWidth;
+    stripLength: number;
+    rollNumber?: number;
+    wallLabels?: string[]; // only for walls
+  }>;
+  coverArea: number;       // net area to cover
+  totalFoilArea: number;   // total foil area (rounded up)
+  weldArea: number;        // overlap/weld area
+  wasteArea: number;       // unusable waste
+}
+
+/** Reusable offcut piece */
+export interface ReusableOffcut {
+  rollNumber: number;
+  rollWidth: RollWidth;
+  length: number;  // offcut length (m)
+  area: number;    // offcut area (m²)
 }
 
 /**
@@ -311,7 +353,7 @@ export function calculateFoilAreaForPricing(
   foilSubtype?: FoilSubtype | null
 ): FoilPricingResult {
   // Main surfaces: bottom, wall-long, wall-short, dividing-wall
-  const mainKeys: SurfaceKey[] = ['bottom', 'wall-long', 'wall-short', 'dividing-wall'];
+  const mainKeys: SurfaceKey[] = ['bottom', 'walls', 'wall-long', 'wall-short', 'dividing-wall'];
   // Structural surfaces: stairs, paddling
   const structuralKeys: SurfaceKey[] = ['stairs', 'paddling'];
 
@@ -459,9 +501,291 @@ function getSurfaceDefinitions(dimensions: PoolDimensions, foilSubtype?: FoilSub
 }
 
 /**
+ * Get wall segments with labels for a given pool shape
+ */
+export function getWallSegments(dimensions: PoolDimensions): WallSegment[] {
+  if (dimensions.shape === 'nieregularny' && dimensions.customVertices && dimensions.customVertices.length > 2) {
+    const vertices = dimensions.customVertices;
+    return vertices.map((vertex, i) => {
+      const nextVertex = vertices[(i + 1) % vertices.length];
+      const dx = nextVertex.x - vertex.x;
+      const dy = nextVertex.y - vertex.y;
+      const length = Math.sqrt(dx * dx + dy * dy);
+      return {
+        label: `${String.fromCharCode(65 + i)}-${String.fromCharCode(65 + ((i + 1) % vertices.length))}`,
+        length: length,
+      };
+    });
+  }
+  
+  // Rectangular pool: 4 walls (A-B, B-C, C-D, D-A)
+  const longerSide = Math.max(dimensions.length, dimensions.width);
+  const shorterSide = Math.min(dimensions.length, dimensions.width);
+  
+  return [
+    { label: 'A-B', length: longerSide },
+    { label: 'B-C', length: shorterSide },
+    { label: 'C-D', length: longerSide },
+    { label: 'D-A', length: shorterSide },
+  ];
+}
+
+/**
+ * Assign wall labels to strips based on strip lengths
+ */
+export function assignWallLabelsToStrips(
+  dimensions: PoolDimensions,
+  stripLength: number,
+  stripCount: number
+): WallStripInfo[] {
+  const walls = getWallSegments(dimensions);
+  const perimeter = walls.reduce((sum, w) => sum + w.length, 0);
+  const depth = dimensions.depth + FOLD_AT_BOTTOM;
+  
+  // Determine optimal roll width for wall strips
+  const rollWidth = depth <= 1.50 ? ROLL_WIDTH_NARROW : ROLL_WIDTH_WIDE;
+  
+  const strips: WallStripInfo[] = [];
+  let remainingLength = perimeter;
+  let currentWallIndex = 0;
+  let offsetInCurrentWall = 0;
+  
+  for (let i = 0; i < stripCount; i++) {
+    const thisStripLength = stripLength;
+    const coveredLabels: string[] = [];
+    let lengthToCover = thisStripLength;
+    
+    while (lengthToCover > 0 && currentWallIndex < walls.length) {
+      const wall = walls[currentWallIndex];
+      const remainingInWall = wall.length - offsetInCurrentWall;
+      
+      if (coveredLabels.length === 0 || coveredLabels[coveredLabels.length - 1] !== wall.label) {
+        coveredLabels.push(wall.label);
+      }
+      
+      if (lengthToCover >= remainingInWall) {
+        lengthToCover -= remainingInWall;
+        currentWallIndex++;
+        offsetInCurrentWall = 0;
+      } else {
+        offsetInCurrentWall += lengthToCover;
+        lengthToCover = 0;
+      }
+    }
+    
+    // Create combined label like "A-B-C" from ["A-B", "B-C"]
+    const combinedLabel = coveredLabels.length > 0 
+      ? coveredLabels.map(l => l.split('-')[0]).join('-') + '-' + coveredLabels[coveredLabels.length - 1].split('-')[1]
+      : 'A-B';
+    
+    strips.push({
+      rollWidth,
+      stripLength: thisStripLength,
+      wallLabels: [combinedLabel],
+    });
+    
+    remainingLength -= thisStripLength;
+  }
+  
+  return strips;
+}
+
+/**
+ * Calculate detailed surface information for UI display
+ */
+export function calculateSurfaceDetails(
+  config: MixConfiguration,
+  dimensions: PoolDimensions,
+  foilSubtype?: FoilSubtype | null
+): SurfaceDetailedResult[] {
+  const results: SurfaceDetailedResult[] = [];
+  const defs = getSurfaceDefinitions(dimensions, foilSubtype);
+  const rolls = packStripsIntoRolls(config);
+  
+  // Group surfaces by type for display
+  const bottomSurfaces = config.surfaces.filter(s => s.surface === 'bottom');
+  const wallSurfaces = config.surfaces.filter(s => s.surface === 'wall-long' || s.surface === 'wall-short');
+  const stairsSurfaces = config.surfaces.filter(s => s.surface === 'stairs');
+  const paddlingSurfaces = config.surfaces.filter(s => s.surface === 'paddling');
+  const dividingWallSurfaces = config.surfaces.filter(s => s.surface === 'dividing-wall');
+  
+  // Helper to get roll numbers for a surface
+  const getRollNumbersForSurface = (surfaceLabel: string): number[] => {
+    return rolls
+      .filter(r => r.strips.some(s => s.surface === surfaceLabel))
+      .map(r => r.rollNumber);
+  };
+
+  // Bottom
+  if (bottomSurfaces.length > 0) {
+    const surface = bottomSurfaces[0];
+    const def = defs.find(d => d.key === 'bottom');
+    if (def) {
+      const calc = calculateStripsForWidth(def.coverWidth, surface.rollWidth, def.overlap);
+      const rollNumbers = getRollNumbersForSurface(surface.surfaceLabel);
+      
+      results.push({
+        surfaceKey: 'bottom',
+        surfaceLabel: 'Dno',
+        strips: [{
+          count: surface.stripCount,
+          rollWidth: surface.rollWidth,
+          stripLength: surface.stripLength,
+          rollNumber: rollNumbers[0],
+        }],
+        coverArea: Math.round(surface.areaM2 * 10) / 10,
+        totalFoilArea: Math.ceil(surface.areaM2 + calc.wasteArea * def.stripLength),
+        weldArea: Math.round((calc.actualOverlap * def.stripLength * Math.max(0, calc.count - 1)) * 10) / 10,
+        wasteArea: Math.round(surface.wasteM2 * 10) / 10,
+      });
+    }
+  }
+
+  // Walls (combined)
+  if (wallSurfaces.length > 0) {
+    const totalWallArea = wallSurfaces.reduce((sum, s) => sum + s.areaM2, 0);
+    const totalWallWaste = wallSurfaces.reduce((sum, s) => sum + s.wasteM2, 0);
+    const totalWallStrips = wallSurfaces.reduce((sum, s) => sum + s.stripCount, 0);
+    
+    // Get wall strip assignments
+    const perimeter = getWallSegments(dimensions).reduce((sum, w) => sum + w.length, 0);
+    const wallStripInfo = assignWallLabelsToStrips(dimensions, perimeter / totalWallStrips, totalWallStrips);
+    
+    const wallDefs = defs.filter(d => d.key === 'wall-long' || d.key === 'wall-short');
+    let totalWeldArea = 0;
+    wallDefs.forEach(def => {
+      const surface = wallSurfaces.find(s => s.surface === def.key);
+      if (surface) {
+        const calc = calculateStripsForWidth(def.coverWidth, surface.rollWidth, def.overlap);
+        totalWeldArea += calc.actualOverlap * def.stripLength * Math.max(0, calc.count - 1) * def.count;
+      }
+    });
+    
+    results.push({
+      surfaceKey: 'walls',
+      surfaceLabel: 'Ściany',
+      strips: wallStripInfo.map((info, idx) => ({
+        count: 1,
+        rollWidth: wallSurfaces[0]?.rollWidth || ROLL_WIDTH_NARROW,
+        stripLength: info.stripLength,
+        wallLabels: info.wallLabels,
+        rollNumber: idx + 1,
+      })),
+      coverArea: Math.round(totalWallArea * 10) / 10,
+      totalFoilArea: Math.ceil(totalWallArea + totalWallWaste),
+      weldArea: Math.round(totalWeldArea * 10) / 10,
+      wasteArea: Math.round(totalWallWaste * 10) / 10,
+    });
+  }
+
+  // Stairs
+  if (stairsSurfaces.length > 0) {
+    const surface = stairsSurfaces[0];
+    const def = defs.find(d => d.key === 'stairs');
+    if (def) {
+      const calc = calculateStripsForWidth(def.coverWidth, surface.rollWidth, def.overlap);
+      const rollNumbers = getRollNumbersForSurface(surface.surfaceLabel);
+      
+      results.push({
+        surfaceKey: 'stairs',
+        surfaceLabel: 'Schody',
+        strips: [{
+          count: surface.stripCount,
+          rollWidth: surface.rollWidth,
+          stripLength: surface.stripLength,
+          rollNumber: rollNumbers[0],
+        }],
+        coverArea: Math.round(surface.areaM2 * 10) / 10,
+        totalFoilArea: Math.ceil(surface.areaM2 + surface.wasteM2),
+        weldArea: Math.round((calc.actualOverlap * def.stripLength * Math.max(0, calc.count - 1)) * 10) / 10,
+        wasteArea: Math.round(surface.wasteM2 * 10) / 10,
+      });
+    }
+  }
+
+  // Paddling pool
+  if (paddlingSurfaces.length > 0) {
+    const surface = paddlingSurfaces[0];
+    const def = defs.find(d => d.key === 'paddling');
+    if (def) {
+      const calc = calculateStripsForWidth(def.coverWidth, surface.rollWidth, def.overlap);
+      const rollNumbers = getRollNumbersForSurface(surface.surfaceLabel);
+      
+      results.push({
+        surfaceKey: 'paddling',
+        surfaceLabel: 'Brodzik',
+        strips: [{
+          count: surface.stripCount,
+          rollWidth: surface.rollWidth,
+          stripLength: surface.stripLength,
+          rollNumber: rollNumbers[0],
+        }],
+        coverArea: Math.round(surface.areaM2 * 10) / 10,
+        totalFoilArea: Math.ceil(surface.areaM2 + surface.wasteM2),
+        weldArea: Math.round((calc.actualOverlap * def.stripLength * Math.max(0, calc.count - 1)) * 10) / 10,
+        wasteArea: Math.round(surface.wasteM2 * 10) / 10,
+      });
+    }
+  }
+
+  // Dividing wall
+  if (dividingWallSurfaces.length > 0) {
+    const surface = dividingWallSurfaces[0];
+    const def = defs.find(d => d.key === 'dividing-wall');
+    if (def) {
+      const calc = calculateStripsForWidth(def.coverWidth, surface.rollWidth, def.overlap);
+      const rollNumbers = getRollNumbersForSurface(surface.surfaceLabel);
+      
+      results.push({
+        surfaceKey: 'dividing-wall',
+        surfaceLabel: 'Murek brodzika',
+        strips: [{
+          count: surface.stripCount,
+          rollWidth: surface.rollWidth,
+          stripLength: surface.stripLength,
+          rollNumber: rollNumbers[0],
+        }],
+        coverArea: Math.round(surface.areaM2 * 10) / 10,
+        totalFoilArea: Math.ceil(surface.areaM2 + surface.wasteM2),
+        weldArea: Math.round((calc.actualOverlap * def.stripLength * Math.max(0, calc.count - 1)) * 10) / 10,
+        wasteArea: Math.round(surface.wasteM2 * 10) / 10,
+      });
+    }
+  }
+
+  return results;
+}
+
+/**
+ * Get reusable offcuts from rolls (pieces >= 30cm width and >= 2m length)
+ */
+export function getReusableOffcuts(config: MixConfiguration): ReusableOffcut[] {
+  const rolls = packStripsIntoRolls(config);
+  const offcuts: ReusableOffcut[] = [];
+  
+  for (const roll of rolls) {
+    // Only roll-end waste that's >= MIN_REUSABLE_OFFCUT_LENGTH is reusable
+    if (roll.wasteLength >= MIN_REUSABLE_OFFCUT_LENGTH) {
+      offcuts.push({
+        rollNumber: roll.rollNumber,
+        rollWidth: roll.rollWidth,
+        length: Math.round(roll.wasteLength * 10) / 10,
+        area: Math.round(roll.wasteLength * roll.rollWidth * 100) / 100,
+      });
+    }
+  }
+  
+  return offcuts;
+}
+
+/**
  * Auto-optimize roll width selection for all surfaces
  */
-export function autoOptimizeMixConfig(dimensions: PoolDimensions, foilSubtype?: FoilSubtype | null): MixConfiguration {
+export function autoOptimizeMixConfig(
+  dimensions: PoolDimensions, 
+  foilSubtype?: FoilSubtype | null,
+  priority: OptimizationPriority = 'minWaste'
+): MixConfiguration {
   const surfaceDefinitions = getSurfaceDefinitions(dimensions, foilSubtype);
   const surfaces: SurfaceRollConfig[] = [];
   const narrowOnlyMain = isNarrowOnlyFoil(foilSubtype);
@@ -479,8 +803,21 @@ export function autoOptimizeMixConfig(dimensions: PoolDimensions, foilSubtype?: 
       optimalWidth = ROLL_WIDTH_NARROW;
       const calc = calculateStripsForWidth(def.coverWidth, ROLL_WIDTH_NARROW, def.overlap);
       wastePerSurface = calc.wasteArea * def.stripLength;
+    } else if (priority === 'minRolls') {
+      // Prefer wider rolls (2.05m) to minimize roll count
+      const narrowCalc = calculateStripsForWidth(def.coverWidth, ROLL_WIDTH_NARROW, def.overlap);
+      const wideCalc = calculateStripsForWidth(def.coverWidth, ROLL_WIDTH_WIDE, def.overlap);
+      
+      // Prefer wider if it uses same or fewer strips
+      if (wideCalc.count <= narrowCalc.count) {
+        optimalWidth = ROLL_WIDTH_WIDE;
+        wastePerSurface = wideCalc.wasteArea * def.stripLength;
+      } else {
+        optimalWidth = ROLL_WIDTH_NARROW;
+        wastePerSurface = narrowCalc.wasteArea * def.stripLength;
+      }
     } else {
-      // Main surfaces with jednokolorowa - use optimal mixed width selection
+      // Default: minimize waste
       const optimalResult = findOptimalMixedWidths(def.coverWidth, def.stripLength, def.overlap);
       optimalWidth = optimalResult.primaryWidth;
       wastePerSurface = optimalResult.totalWaste;

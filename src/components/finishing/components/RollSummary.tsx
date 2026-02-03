@@ -1,15 +1,34 @@
-import { Package, Layers } from 'lucide-react';
+import { Package, Layers, Recycle } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
+import { 
+  Table, 
+  TableBody, 
+  TableCell, 
+  TableHead, 
+  TableHeader, 
+  TableRow,
+} from '@/components/ui/table';
 import { 
   MixConfiguration, 
   packStripsIntoRolls, 
   partitionSurfacesByFoilType,
   SurfaceRollConfig,
+  OptimizationPriority,
+  SurfaceDetailedResult,
+  ReusableOffcut,
+  calculateSurfaceDetails,
+  getReusableOffcuts,
 } from '@/lib/foil/mixPlanner';
 import { Badge } from '@/components/ui/badge';
+import { PoolDimensions } from '@/types/configurator';
+import { FoilSubtype } from '@/lib/finishingMaterials';
 
 interface RollSummaryProps {
   config: MixConfiguration;
+  dimensions: PoolDimensions;
+  foilSubtype?: FoilSubtype | null;
   /** Whether main foil is structural (allows merging both pools) */
   isMainFoilStructural?: boolean;
   /** Main foil area for pricing */
@@ -22,137 +41,198 @@ interface RollSummaryProps {
   structuralWeldArea?: number;
   /** @deprecated Use mainFoilAreaForPricing instead */
   foilAreaForPricing?: number;
+  /** Optimization priority */
+  optimizationPriority: OptimizationPriority;
+  /** Callback when priority changes */
+  onPriorityChange: (priority: OptimizationPriority) => void;
 }
 
-interface FoilPoolSummaryProps {
-  title: string;
-  surfaces: SurfaceRollConfig[];
+interface RollCountsDisplayProps {
   totalRolls165: number;
   totalRolls205: number;
   colorClass: string;
-  icon: React.ReactNode;
-  /** Override display area (for pricing alignment) */
-  displayArea?: number;
-  /** Weld/overlap area */
-  weldArea?: number;
 }
 
-function FoilPoolSummary({ 
-  title, 
-  surfaces, 
-  totalRolls165, 
-  totalRolls205, 
-  colorClass,
-  icon,
-  displayArea,
-  weldArea,
-}: FoilPoolSummaryProps) {
-  const calculatedArea = surfaces.reduce((sum, s) => sum + s.areaM2, 0);
-  const totalArea = displayArea ?? calculatedArea;
-  const totalWaste = surfaces.reduce((sum, s) => sum + s.wasteM2, 0);
+function RollCountsDisplay({ totalRolls165, totalRolls205, colorClass }: RollCountsDisplayProps) {
   const totalRolls = totalRolls165 + totalRolls205;
-  const totalRollArea = totalRolls165 * 1.65 * 25 + totalRolls205 * 2.05 * 25;
-  const utilizationPercent = totalRollArea > 0 ? ((totalRollArea - totalWaste) / totalRollArea) * 100 : 0;
-
-  if (surfaces.length === 0) return null;
-
+  
   return (
-    <div className="space-y-3">
-      {/* Header */}
-      <div className={`p-4 rounded-lg border ${colorClass}`}>
-        <div className="flex items-center gap-2 mb-3">
-          {icon}
-          <h4 className="font-semibold">{title}</h4>
-        </div>
-
-        {/* Roll counts */}
-        <div className="flex flex-wrap items-center gap-3 mb-3">
-          {totalRolls165 > 0 && (
-            <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-blue-100 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800">
-              <span className="text-xl font-bold text-blue-700 dark:text-blue-300">
-                {totalRolls165}×
-              </span>
-              <div className="text-sm">
-                <div className="font-medium text-blue-800 dark:text-blue-200">1.65m</div>
-                <div className="text-blue-600 dark:text-blue-400 text-xs">× 25m</div>
-              </div>
+    <div className={`p-4 rounded-lg border ${colorClass}`}>
+      <div className="flex flex-wrap items-center gap-3">
+        {totalRolls165 > 0 && (
+          <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-blue-100 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800">
+            <span className="text-xl font-bold text-blue-700 dark:text-blue-300">
+              {totalRolls165}×
+            </span>
+            <div className="text-sm">
+              <div className="font-medium text-blue-800 dark:text-blue-200">1.65m</div>
+              <div className="text-blue-600 dark:text-blue-400 text-xs">× 25m</div>
             </div>
-          )}
+          </div>
+        )}
 
-          {totalRolls205 > 0 && (
-            <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-emerald-100 dark:bg-emerald-900/30 border border-emerald-200 dark:border-emerald-800">
-              <span className="text-xl font-bold text-emerald-700 dark:text-emerald-300">
-                {totalRolls205}×
-              </span>
-              <div className="text-sm">
-                <div className="font-medium text-emerald-800 dark:text-emerald-200">2.05m</div>
-                <div className="text-emerald-600 dark:text-emerald-400 text-xs">× 25m</div>
-              </div>
+        {totalRolls205 > 0 && (
+          <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-emerald-100 dark:bg-emerald-900/30 border border-emerald-200 dark:border-emerald-800">
+            <span className="text-xl font-bold text-emerald-700 dark:text-emerald-300">
+              {totalRolls205}×
+            </span>
+            <div className="text-sm">
+              <div className="font-medium text-emerald-800 dark:text-emerald-200">2.05m</div>
+              <div className="text-emerald-600 dark:text-emerald-400 text-xs">× 25m</div>
             </div>
-          )}
-
-          <div className="px-3 py-2 rounded-lg bg-primary/10 border border-primary/30">
-            <div className="text-xl font-bold text-primary">{totalRolls}</div>
-            <div className="text-xs text-muted-foreground">rolek</div>
           </div>
+        )}
+
+        <div className="px-3 py-2 rounded-lg bg-primary/10 border border-primary/30">
+          <div className="text-xl font-bold text-primary">{totalRolls}</div>
+          <div className="text-xs text-muted-foreground">rolek</div>
         </div>
-
-        {/* Surface breakdown - strip details */}
-        <div className="space-y-2 mb-3">
-          {surfaces.map((surface) => (
-            <div key={surface.surface} className="flex items-center justify-between text-sm py-1 border-b border-border/50 last:border-0">
-              <div className="flex items-center gap-2">
-                <span className={`w-2 h-2 rounded-full ${surface.rollWidth === 2.05 ? 'bg-emerald-500' : 'bg-blue-500'}`} />
-                <span className="font-medium">{surface.surfaceLabel}</span>
-              </div>
-              <div className="flex items-center gap-4 text-muted-foreground">
-                <span>{surface.stripCount} pasy × {surface.rollWidth}m</span>
-                <span>{surface.areaM2.toFixed(1)} m²</span>
-                <span className={surface.wasteM2 > 2 ? 'text-amber-600' : ''}>
-                  odpad: {surface.wasteM2.toFixed(1)} m²
-                </span>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {/* Totals */}
-        <div className="grid grid-cols-4 gap-2 text-sm mb-3">
-          <div>
-            <span className="text-muted-foreground">Pokrycie:</span>
-            <span className="ml-1 font-medium">{totalArea} m²</span>
-          </div>
-          {weldArea !== undefined && weldArea > 0 && (
-            <div>
-              <span className="text-muted-foreground">Zakład:</span>
-              <span className="ml-1 font-medium">{weldArea.toFixed(1)} m²</span>
-            </div>
-          )}
-          <div>
-            <span className="text-muted-foreground">Odpad:</span>
-            <span className="ml-1 font-medium">{totalWaste.toFixed(1)} m²</span>
-          </div>
-          <div>
-            <span className="text-muted-foreground">Wykorzystanie:</span>
-            <span className="ml-1 font-medium">{utilizationPercent.toFixed(1)}%</span>
-          </div>
-        </div>
-
-        {/* Utilization bar */}
-        <Progress value={utilizationPercent} className="h-2" />
       </div>
+    </div>
+  );
+}
+
+interface StripDetailsTableProps {
+  details: SurfaceDetailedResult[];
+}
+
+function StripDetailsTable({ details }: StripDetailsTableProps) {
+  if (details.length === 0) return null;
+  
+  return (
+    <div className="border rounded-lg overflow-hidden">
+      <Table>
+        <TableHeader>
+          <TableRow className="bg-muted/50">
+            <TableHead className="font-semibold">Miejsce</TableHead>
+            <TableHead className="font-semibold">Rozpiska pasów</TableHead>
+            <TableHead className="text-right font-semibold">Pokrycie</TableHead>
+            <TableHead className="text-right font-semibold">Pow. folii</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {details.map((detail) => (
+            <TableRow key={detail.surfaceKey}>
+              <TableCell className="font-medium align-top">{detail.surfaceLabel}</TableCell>
+              <TableCell>
+                <div className="space-y-1">
+                  {detail.strips.map((strip, idx) => (
+                    <div key={idx} className="text-sm flex items-center gap-2">
+                      <span className={`w-2 h-2 rounded-full ${strip.rollWidth === 2.05 ? 'bg-emerald-500' : 'bg-blue-500'}`} />
+                      <span>
+                        {strip.count}× pas {strip.rollWidth}m × {strip.stripLength.toFixed(1)}m
+                        {strip.rollNumber && (
+                          <span className="text-muted-foreground ml-1">(#{strip.rollNumber})</span>
+                        )}
+                        {strip.wallLabels && strip.wallLabels.length > 0 && (
+                          <Badge variant="outline" className="ml-2 text-xs">
+                            {strip.wallLabels.join(', ')}
+                          </Badge>
+                        )}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </TableCell>
+              <TableCell className="text-right align-top">
+                {detail.coverArea} m²
+              </TableCell>
+              <TableCell className="text-right align-top">
+                <div className="font-medium">{detail.totalFoilArea} m²</div>
+                <div className="text-xs text-muted-foreground">
+                  ({detail.coverArea} + {detail.weldArea} zakł. + {detail.wasteArea} odp.)
+                </div>
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </div>
+  );
+}
+
+interface ReusableOffcutsTableProps {
+  offcuts: ReusableOffcut[];
+}
+
+function ReusableOffcutsTable({ offcuts }: ReusableOffcutsTableProps) {
+  if (offcuts.length === 0) {
+    return (
+      <div className="p-4 rounded-lg border bg-muted/30 text-center text-sm text-muted-foreground">
+        <Recycle className="h-5 w-5 mx-auto mb-2 opacity-50" />
+        Brak odpadu do ponownego wykorzystania (wszystkie odcinki &lt; 2m długości)
+      </div>
+    );
+  }
+  
+  // Group by roll width
+  const grouped = offcuts.reduce((acc, offcut) => {
+    const key = `${offcut.rollNumber}-${offcut.rollWidth}`;
+    if (!acc[key]) {
+      acc[key] = { ...offcut, pieces: 1 };
+    } else {
+      acc[key].pieces++;
+      acc[key].area += offcut.area;
+    }
+    return acc;
+  }, {} as Record<string, ReusableOffcut & { pieces: number }>);
+  
+  const groupedOffcuts = Object.values(grouped);
+  const totalArea = offcuts.reduce((sum, o) => sum + o.area, 0);
+  
+  return (
+    <div className="border rounded-lg overflow-hidden">
+      <Table>
+        <TableHeader>
+          <TableRow className="bg-muted/50">
+            <TableHead className="font-semibold">Rolka</TableHead>
+            <TableHead className="font-semibold">Wymiar</TableHead>
+            <TableHead className="text-right font-semibold">Powierzchnia</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {groupedOffcuts.map((offcut, idx) => (
+            <TableRow key={idx}>
+              <TableCell>
+                <div className="flex items-center gap-2">
+                  <span className={`w-2 h-2 rounded-full ${offcut.rollWidth === 2.05 ? 'bg-emerald-500' : 'bg-blue-500'}`} />
+                  <span>#{offcut.rollNumber} ({offcut.rollWidth}m)</span>
+                </div>
+              </TableCell>
+              <TableCell>
+                {offcut.length}m × {offcut.rollWidth}m
+              </TableCell>
+              <TableCell className="text-right font-medium">
+                {offcut.area.toFixed(2)} m²
+              </TableCell>
+            </TableRow>
+          ))}
+          <TableRow className="bg-green-50 dark:bg-green-900/20 border-t-2">
+            <TableCell colSpan={2} className="font-semibold">
+              Razem do wykorzystania
+            </TableCell>
+            <TableCell className="text-right font-bold text-green-600 dark:text-green-400">
+              {totalArea.toFixed(2)} m²
+            </TableCell>
+          </TableRow>
+        </TableBody>
+      </Table>
     </div>
   );
 }
 
 export function RollSummary({ 
   config, 
+  dimensions,
+  foilSubtype,
   isMainFoilStructural = false, 
   mainFoilAreaForPricing,
   mainWeldArea,
   structuralFoilAreaForPricing,
   structuralWeldArea,
-  foilAreaForPricing, // legacy fallback
+  foilAreaForPricing,
+  optimizationPriority,
+  onPriorityChange,
 }: RollSummaryProps) {
   const { main, structural } = partitionSurfacesByFoilType(config.surfaces);
   
@@ -168,25 +248,93 @@ export function RollSummary({
   const mainRolls205 = mainRolls.filter(r => r.rollWidth === 2.05).length;
   const structuralRolls165 = structuralRolls.filter(r => r.rollWidth === 1.65).length;
 
-  // If main foil is structural, show combined view (pack all together)
+  // Calculate detailed surface info
+  const surfaceDetails = calculateSurfaceDetails(config, dimensions, foilSubtype);
+  const mainDetails = surfaceDetails.filter(d => 
+    d.surfaceKey === 'bottom' || d.surfaceKey === 'walls' || d.surfaceKey === 'dividing-wall'
+  );
+  const structuralDetails = surfaceDetails.filter(d => 
+    d.surfaceKey === 'stairs' || d.surfaceKey === 'paddling'
+  );
+  
+  // Get reusable offcuts
+  const reusableOffcuts = getReusableOffcuts(config);
+
+  // Calculate totals
+  const totalArea = config.surfaces.reduce((sum, s) => sum + s.areaM2, 0);
+  const totalWaste = config.surfaces.reduce((sum, s) => sum + s.wasteM2, 0);
+  const totalRollArea = config.totalRolls165 * 1.65 * 25 + config.totalRolls205 * 2.05 * 25;
+  const utilizationPercent = totalRollArea > 0 ? ((totalRollArea - totalWaste) / totalRollArea) * 100 : 0;
+
+  // If main foil is structural, show combined view
   if (isMainFoilStructural) {
     return (
-      <div className="space-y-4">
-        <div className="flex items-center gap-2 mb-2">
-          <Package className="h-5 w-5 text-primary" />
-          <h4 className="font-semibold">Podsumowanie rolek</h4>
-          <Badge variant="outline" className="text-xs">Folia strukturalna</Badge>
+      <div className="space-y-6">
+        {/* Header with toggle */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Package className="h-5 w-5 text-primary" />
+            <h4 className="font-semibold">Podsumowanie rolek</h4>
+            <Badge variant="outline" className="text-xs">Folia strukturalna</Badge>
+          </div>
+          <div className="flex items-center gap-3">
+            <Label htmlFor="priority-toggle" className={`text-sm ${optimizationPriority === 'minWaste' ? 'font-medium' : 'text-muted-foreground'}`}>
+              Min. odpad
+            </Label>
+            <Switch
+              id="priority-toggle"
+              checked={optimizationPriority === 'minRolls'}
+              onCheckedChange={(checked) => onPriorityChange(checked ? 'minRolls' : 'minWaste')}
+            />
+            <Label htmlFor="priority-toggle" className={`text-sm ${optimizationPriority === 'minRolls' ? 'font-medium' : 'text-muted-foreground'}`}>
+              Min. rolek
+            </Label>
+          </div>
         </div>
-        
-        <FoilPoolSummary
-          title="Wszystkie powierzchnie (strukturalna)"
-          surfaces={config.surfaces}
+
+        {/* Roll counts */}
+        <RollCountsDisplay 
           totalRolls165={config.totalRolls165}
           totalRolls205={config.totalRolls205}
           colorClass="bg-purple-50 dark:bg-purple-900/20 border-purple-200 dark:border-purple-800"
-          icon={<Layers className="h-5 w-5 text-purple-600 dark:text-purple-400" />}
-          displayArea={foilAreaForPricing}
         />
+
+        {/* Strip details table */}
+        <div>
+          <h5 className="font-medium text-sm mb-2 flex items-center gap-2">
+            <Layers className="h-4 w-4" />
+            Szczegółowa rozpiska pasów
+          </h5>
+          <StripDetailsTable details={surfaceDetails} />
+        </div>
+
+        {/* Reusable offcuts */}
+        <div>
+          <h5 className="font-medium text-sm mb-2 flex items-center gap-2">
+            <Recycle className="h-4 w-4" />
+            Odpad do ponownego wykorzystania
+          </h5>
+          <ReusableOffcutsTable offcuts={reusableOffcuts} />
+        </div>
+
+        {/* Summary stats */}
+        <div className="grid grid-cols-4 gap-4 p-4 rounded-lg bg-muted/30 border">
+          <div>
+            <span className="text-sm text-muted-foreground">Pokrycie:</span>
+            <div className="font-medium">{Math.round(totalArea)} m²</div>
+          </div>
+          <div>
+            <span className="text-sm text-muted-foreground">Odpad:</span>
+            <div className="font-medium">{totalWaste.toFixed(1)} m²</div>
+          </div>
+          <div>
+            <span className="text-sm text-muted-foreground">Wykorzystanie:</span>
+            <div className="font-medium">{utilizationPercent.toFixed(1)}%</div>
+          </div>
+          <div className="col-span-1">
+            <Progress value={utilizationPercent} className="h-2 mt-3" />
+          </div>
+        </div>
       </div>
     );
   }
@@ -194,36 +342,84 @@ export function RollSummary({
   // Show separate pools for main and structural foil
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-2">
-        <Package className="h-5 w-5 text-primary" />
-        <h4 className="font-semibold">Podsumowanie rolek</h4>
+      {/* Header with toggle */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Package className="h-5 w-5 text-primary" />
+          <h4 className="font-semibold">Podsumowanie rolek</h4>
+        </div>
+        <div className="flex items-center gap-3">
+          <Label htmlFor="priority-toggle" className={`text-sm ${optimizationPriority === 'minWaste' ? 'font-medium' : 'text-muted-foreground'}`}>
+            Min. odpad
+          </Label>
+          <Switch
+            id="priority-toggle"
+            checked={optimizationPriority === 'minRolls'}
+            onCheckedChange={(checked) => onPriorityChange(checked ? 'minRolls' : 'minWaste')}
+          />
+          <Label htmlFor="priority-toggle" className={`text-sm ${optimizationPriority === 'minRolls' ? 'font-medium' : 'text-muted-foreground'}`}>
+            Min. rolek
+          </Label>
+        </div>
       </div>
 
-      {/* Main pool foil */}
-      <FoilPoolSummary
-        title="Folia główna (dno + ściany + murek)"
-        surfaces={main}
-        totalRolls165={mainRolls165}
-        totalRolls205={mainRolls205}
-        colorClass="bg-blue-50/50 dark:bg-blue-900/10 border-blue-200 dark:border-blue-800"
-        icon={<Package className="h-5 w-5 text-blue-600 dark:text-blue-400" />}
-        displayArea={mainFoilAreaForPricing}
-        weldArea={mainWeldArea}
-      />
-
-      {/* Structural foil */}
-      {structural.length > 0 && (
-        <FoilPoolSummary
-          title="Folia strukturalna (schody + brodzik)"
-          surfaces={structural}
-          totalRolls165={structuralRolls165}
-          totalRolls205={0}
-          colorClass="bg-amber-50/50 dark:bg-amber-900/10 border-amber-200 dark:border-amber-800"
-          icon={<Layers className="h-5 w-5 text-amber-600 dark:text-amber-400" />}
-          displayArea={structuralFoilAreaForPricing}
-          weldArea={structuralWeldArea}
+      {/* Main foil section */}
+      <div className="space-y-3">
+        <div className="flex items-center gap-2">
+          <Package className="h-4 w-4 text-blue-600" />
+          <span className="font-medium text-blue-700 dark:text-blue-300">Folia główna (dno + ściany)</span>
+        </div>
+        <RollCountsDisplay 
+          totalRolls165={mainRolls165}
+          totalRolls205={mainRolls205}
+          colorClass="bg-blue-50/50 dark:bg-blue-900/10 border-blue-200 dark:border-blue-800"
         />
+        <StripDetailsTable details={mainDetails} />
+      </div>
+
+      {/* Structural foil section */}
+      {structural.length > 0 && (
+        <div className="space-y-3">
+          <div className="flex items-center gap-2">
+            <Layers className="h-4 w-4 text-amber-600" />
+            <span className="font-medium text-amber-700 dark:text-amber-300">Folia strukturalna (schody + brodzik)</span>
+          </div>
+          <RollCountsDisplay 
+            totalRolls165={structuralRolls165}
+            totalRolls205={0}
+            colorClass="bg-amber-50/50 dark:bg-amber-900/10 border-amber-200 dark:border-amber-800"
+          />
+          <StripDetailsTable details={structuralDetails} />
+        </div>
       )}
+
+      {/* Reusable offcuts */}
+      <div>
+        <h5 className="font-medium text-sm mb-2 flex items-center gap-2">
+          <Recycle className="h-4 w-4 text-green-600" />
+          Odpad do ponownego wykorzystania
+        </h5>
+        <ReusableOffcutsTable offcuts={reusableOffcuts} />
+      </div>
+
+      {/* Summary stats */}
+      <div className="grid grid-cols-4 gap-4 p-4 rounded-lg bg-muted/30 border">
+        <div>
+          <span className="text-sm text-muted-foreground">Pokrycie:</span>
+          <div className="font-medium">{Math.round(totalArea)} m²</div>
+        </div>
+        <div>
+          <span className="text-sm text-muted-foreground">Odpad:</span>
+          <div className="font-medium">{totalWaste.toFixed(1)} m²</div>
+        </div>
+        <div>
+          <span className="text-sm text-muted-foreground">Wykorzystanie:</span>
+          <div className="font-medium">{utilizationPercent.toFixed(1)}%</div>
+        </div>
+        <div className="col-span-1">
+          <Progress value={utilizationPercent} className="h-2 mt-3" />
+        </div>
+      </div>
     </div>
   );
 }
