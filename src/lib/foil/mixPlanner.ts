@@ -663,10 +663,16 @@ export function calculateSurfaceDetails(
     const joinOverlap = MIN_OVERLAP_WALL; // 10cm for joining ends
     const stripLength = perimeter + joinOverlap; // e.g., 24m + 0.1m = 24.1m
     
+    // Calculate roll-end waste (25m roll - used length)
+    const rollEndWaste = ROLL_LENGTH - stripLength; // e.g., 25m - 24.1m = 0.9m
+    const isWasteReusable = rollEndWaste >= MIN_REUSABLE_OFFCUT_LENGTH; // >= 2m is reusable
+    const unusableWasteArea = isWasteReusable ? 0 : rollEndWaste * wallRollWidth;
+    
     // Calculate cover area and total foil area
     const coverArea = perimeter * coverHeight; // Net area to cover
-    const totalFoilAreaRaw = stripLength * wallRollWidth; // Full material used
+    const usedFoilArea = stripLength * wallRollWidth; // Material used for walls
     const weldArea = joinOverlap * wallRollWidth; // Only the joining overlap
+    const totalFoilAreaRaw = usedFoilArea + unusableWasteArea; // Include unusable waste
     
     // Wall labels: one strip covering all walls A-B-C-D-A
     const wallLabels = walls.map(w => w.label.split('-')[0]).join('-') + '-' + walls[0].label.split('-')[0];
@@ -684,7 +690,7 @@ export function calculateSurfaceDetails(
       coverArea: Math.round(coverArea * 10) / 10,
       totalFoilArea: Math.ceil(totalFoilAreaRaw),
       weldArea: Math.round(weldArea * 10) / 10,
-      wasteArea: 0,
+      wasteArea: Math.round(unusableWasteArea * 10) / 10,
     });
   }
 
