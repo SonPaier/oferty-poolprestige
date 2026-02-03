@@ -43,6 +43,7 @@ export {
   getAvailableWidths,
   usesButtJoint,
   partitionSurfacesByFoilType,
+  calculateButtJointMeters,
   ROLL_WIDTH_NARROW,
   ROLL_WIDTH_WIDE,
   ROLL_LENGTH,

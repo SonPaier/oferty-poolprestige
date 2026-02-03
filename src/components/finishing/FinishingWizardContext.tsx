@@ -7,9 +7,10 @@ import {
   calculatePoolAreas,
   getFoilLineItems,
   FoilLineItem,
+  PoolAreas,
 } from '@/lib/finishingMaterials';
 import { useConfigurator } from '@/context/ConfiguratorContext';
-import { autoOptimizeMixConfig, calculateFoilAreaForPricing } from '@/lib/foil/mixPlanner';
+import { autoOptimizeMixConfig, calculateFoilAreaForPricing, calculateButtJointMeters } from '@/lib/foil/mixPlanner';
 
 // Types
 export type FinishingType = 'foil' | 'ceramic' | null;
@@ -44,6 +45,7 @@ export interface FinishingWizardState {
     stairsProjection: number;
     wadingPoolArea: number;
     wadingPoolProjection: number;
+    buttJointMeters: number; // Butt joint weld length for structural foil
   };
   manualFoilQty: number | null;
   
@@ -95,6 +97,7 @@ const initialState: FinishingWizardState = {
     stairsProjection: 0,
     wadingPoolArea: 0,
     wadingPoolProjection: 0,
+    buttJointMeters: 0,
   },
   manualFoilQty: null,
   materials: [],
@@ -263,6 +266,16 @@ export function FinishingWizardProvider({
       wadingPool: dimensions.wadingPool,
     });
 
+    // Calculate butt joint meters for structural foil
+    const autoConfig = autoOptimizeMixConfig(dimensions, state.selectedSubtype);
+    const buttJointMeters = calculateButtJointMeters(autoConfig, dimensions, state.selectedSubtype);
+
+    // Create full areas object with buttJointMeters
+    const fullAreas: PoolAreas = {
+      ...areas,
+      buttJointMeters,
+    };
+
     dispatch({
       type: 'SET_POOL_AREAS',
       payload: {
@@ -275,13 +288,14 @@ export function FinishingWizardProvider({
         stairsProjection: areas.stairsProjection || 0,
         wadingPoolArea: areas.wadingPoolArea || 0,
         wadingPoolProjection: areas.wadingPoolProjection || 0,
+        buttJointMeters,
       },
     });
 
-    // Calculate materials
+    // Calculate materials with butt joint info
     dispatch({
       type: 'SET_MATERIALS',
-      payload: calculateMaterials(areas),
+      payload: calculateMaterials(fullAreas),
     });
   }, [
     configuratorState.dimensions.length,
@@ -291,6 +305,7 @@ export function FinishingWizardProvider({
     configuratorState.dimensions.hasSlope,
     configuratorState.dimensions.stairs?.enabled,
     configuratorState.dimensions.wadingPool?.enabled,
+    state.selectedSubtype, // Recalculate when subtype changes (affects buttJointMeters)
   ]);
 
   // Computed: foil line items (main + structural)
