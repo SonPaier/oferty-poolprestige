@@ -99,6 +99,12 @@ interface StripDetailsTableProps {
 function StripDetailsTable({ details }: StripDetailsTableProps) {
   if (details.length === 0) return null;
   
+  // Calculate totals
+  const totalCoverArea = details.reduce((sum, d) => sum + d.coverArea, 0);
+  const totalFoilArea = details.reduce((sum, d) => sum + d.totalFoilArea, 0);
+  const totalWeldArea = details.reduce((sum, d) => sum + d.weldArea, 0);
+  const totalWasteArea = details.reduce((sum, d) => sum + d.wasteArea, 0);
+  
   return (
     <div className="border rounded-lg overflow-hidden">
       <Table>
@@ -145,6 +151,21 @@ function StripDetailsTable({ details }: StripDetailsTableProps) {
               </TableCell>
             </TableRow>
           ))}
+          {/* Total row */}
+          <TableRow className="bg-primary/5 border-t-2 font-semibold">
+            <TableCell colSpan={2} className="text-right">
+              Razem
+            </TableCell>
+            <TableCell className="text-right">
+              {Math.round(totalCoverArea * 10) / 10} m²
+            </TableCell>
+            <TableCell className="text-right">
+              <div className="font-bold text-primary">{totalFoilArea} m²</div>
+              <div className="text-xs text-muted-foreground font-normal">
+                ({Math.round(totalCoverArea * 10) / 10} + {Math.round(totalWeldArea * 10) / 10} zakł. + {Math.round(totalWasteArea * 10) / 10} odp.)
+              </div>
+            </TableCell>
+          </TableRow>
         </TableBody>
       </Table>
     </div>
