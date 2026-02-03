@@ -14,6 +14,7 @@ export interface PoolAreas {
   stairsProjection?: number;  // Floor area occupied by stairs (to subtract from bottom)
   wadingPoolArea?: number;
   wadingPoolProjection?: number;  // Floor area occupied by wading pool (to subtract from bottom)
+  buttJointMeters?: number;  // Butt joint weld length for structural foil (mb)
 }
 
 export interface MaterialDefinition {
@@ -75,6 +76,14 @@ export const FINISHING_MATERIALS: MaterialDefinition[] = [
     pricePerUnit: 12.50,
   },
   {
+    id: 'folia-podkladowa',
+    name: 'Folia podkładowa (zgrzew doczołowy)',
+    symbol: 'FOL-POD-001',
+    unit: 'mb',
+    calculate: (areas) => areas.buttJointMeters ? Math.ceil(areas.buttJointMeters) : 0,
+    pricePerUnit: 18.00, // per running meter
+  },
+  {
     id: 'katownik-pvc',
     name: 'Kątownik PVC',
     symbol: 'KAT-001',
@@ -118,21 +127,24 @@ export const FINISHING_MATERIALS: MaterialDefinition[] = [
 
 /**
  * Calculate materials quantities based on pool areas
+ * Filters out materials with 0 quantity (e.g., folia podkładowa when not using structural foil)
  */
 export function calculateMaterials(areas: PoolAreas): CalculatedMaterial[] {
-  return FINISHING_MATERIALS.map((material) => {
-    const suggestedQty = material.calculate(areas);
-    return {
-      id: material.id,
-      name: material.name,
-      symbol: material.symbol,
-      unit: material.unit,
-      suggestedQty,
-      manualQty: null,
-      pricePerUnit: material.pricePerUnit,
-      total: suggestedQty * material.pricePerUnit,
-    };
-  });
+  return FINISHING_MATERIALS
+    .map((material) => {
+      const suggestedQty = material.calculate(areas);
+      return {
+        id: material.id,
+        name: material.name,
+        symbol: material.symbol,
+        unit: material.unit,
+        suggestedQty,
+        manualQty: null,
+        pricePerUnit: material.pricePerUnit,
+        total: suggestedQty * material.pricePerUnit,
+      };
+    })
+    .filter((material) => material.suggestedQty > 0); // Filter out materials with 0 quantity
 }
 
 /**

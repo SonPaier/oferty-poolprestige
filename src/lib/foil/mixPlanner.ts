@@ -80,6 +80,43 @@ export function usesButtJoint(foilSubtype?: FoilSubtype | null): boolean {
   return foilSubtype === 'strukturalna';
 }
 
+/**
+ * Calculate total butt joint weld meters for structural foil
+ * 
+ * For structural foils, strips on the bottom are joined with butt joints (no overlap).
+ * The butt joint length = (number of joints) × (strip length)
+ * Number of joints = number of strips - 1
+ * 
+ * @returns Total butt joint length in meters
+ */
+export function calculateButtJointMeters(
+  config: MixConfiguration,
+  dimensions: PoolDimensions,
+  foilSubtype?: FoilSubtype | null
+): number {
+  // Only structural foil uses butt joints
+  if (!usesButtJoint(foilSubtype)) return 0;
+  
+  const bottomSurface = config.surfaces.find(s => s.surface === 'bottom');
+  if (!bottomSurface) return 0;
+  
+  // Get strip count from stripMix or default stripCount
+  let stripCount: number;
+  if (bottomSurface.stripMix && bottomSurface.stripMix.length > 0) {
+    stripCount = bottomSurface.stripMix.reduce((sum, m) => sum + m.count, 0);
+  } else {
+    stripCount = bottomSurface.stripCount;
+  }
+  
+  // Number of butt joints = strips - 1
+  const jointCount = Math.max(0, stripCount - 1);
+  
+  // Each joint runs the full length of the strip
+  const jointLength = bottomSurface.stripLength;
+  
+  return Math.round(jointCount * jointLength * 10) / 10;
+}
+
 export type SurfaceKey = 'bottom' | 'walls' | 'wall-long' | 'wall-short' | 'stairs' | 'paddling' | 'dividing-wall';
 
 /** Optimization priority for roll selection */
@@ -157,8 +194,9 @@ export interface SurfaceDetailedResult {
   }>;
   coverArea: number;       // net area to cover
   totalFoilArea: number;   // total foil area (rounded up)
-  weldArea: number;        // overlap/weld area
+  weldArea: number;        // overlap/weld area (or butt joint for structural)
   wasteArea: number;       // unusable waste
+  isButtJoint?: boolean;   // true for structural foil (butt joint instead of overlap)
 }
 
 /** Reusable offcut piece */
@@ -987,6 +1025,9 @@ export function calculateSurfaceDetails(
       const totalFoilAreaWithWaste = totalFoilAreaRaw + bottomRollEndWaste;
       const totalWasteArea = wasteArea + bottomRollEndWaste;
 
+      // Determine if this bottom uses butt joint (structural foil)
+      const isButtJoint = usesButtJoint(foilSubtype);
+
       results.push({
         surfaceKey: 'bottom',
         surfaceLabel: 'Dno',
@@ -995,6 +1036,7 @@ export function calculateSurfaceDetails(
         totalFoilArea: Math.ceil(totalFoilAreaWithWaste),
         weldArea: Math.round(weldArea * 10) / 10,
         wasteArea: Math.round(totalWasteArea * 10) / 10,
+        isButtJoint,
       });
     }
   }

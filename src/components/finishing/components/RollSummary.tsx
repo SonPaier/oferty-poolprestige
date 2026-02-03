@@ -22,6 +22,7 @@ import {
   ReusableOffcut,
   calculateSurfaceDetails,
   getReusableOffcutsWithDimensions,
+  calculateButtJointMeters,
 } from '@/lib/foil/mixPlanner';
 import { Badge } from '@/components/ui/badge';
 import { PoolDimensions } from '@/types/configurator';
@@ -107,6 +108,10 @@ function StripDetailsTable({ details }: StripDetailsTableProps) {
   const totalWeldArea = details.reduce((sum, d) => sum + d.weldArea, 0);
   const totalWasteArea = details.reduce((sum, d) => sum + d.wasteArea, 0);
   
+  // Check if any surface uses butt joint (for label in total row)
+  const hasButtJoint = details.some(d => d.isButtJoint);
+  const weldLabel = hasButtJoint ? 'zgrzew' : 'zakł.';
+  
   return (
     <div className="border rounded-lg overflow-hidden">
       <Table>
@@ -119,40 +124,45 @@ function StripDetailsTable({ details }: StripDetailsTableProps) {
           </TableRow>
         </TableHeader>
         <TableBody>
-          {details.map((detail) => (
-            <TableRow key={detail.surfaceKey}>
-              <TableCell className="font-medium align-top">{detail.surfaceLabel}</TableCell>
-              <TableCell>
-                <div className="space-y-1">
-                  {detail.strips.map((strip, idx) => (
-                    <div key={idx} className="text-sm flex items-center gap-2">
-                      <span className={`w-2 h-2 rounded-full ${strip.rollWidth === 2.05 ? 'bg-emerald-500' : 'bg-blue-500'}`} />
-                      <span>
-                        {strip.count}× pas {strip.rollWidth}m × {strip.stripLength.toFixed(1)}m
-                        {strip.rollNumber && (
-                          <span className="text-muted-foreground ml-1">(#{strip.rollNumber})</span>
-                        )}
-                        {strip.wallLabels && strip.wallLabels.length > 0 && (
-                          <Badge variant="outline" className="ml-2 text-xs">
-                            {strip.wallLabels.join(', ')}
-                          </Badge>
-                        )}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </TableCell>
-              <TableCell className="text-right align-top">
-                {detail.coverArea} m²
-              </TableCell>
-              <TableCell className="text-right align-top">
-                <div className="font-medium">{detail.totalFoilArea} m²</div>
-                <div className="text-xs text-muted-foreground">
-                  ({detail.coverArea} + {detail.weldArea} zakł. + {detail.wasteArea} odp.)
-                </div>
-              </TableCell>
-            </TableRow>
-          ))}
+          {details.map((detail) => {
+            // Use "zgrzew" for butt joint surfaces, "zakł." for overlap
+            const detailWeldLabel = detail.isButtJoint ? 'zgrzew' : 'zakł.';
+            
+            return (
+              <TableRow key={detail.surfaceKey}>
+                <TableCell className="font-medium align-top">{detail.surfaceLabel}</TableCell>
+                <TableCell>
+                  <div className="space-y-1">
+                    {detail.strips.map((strip, idx) => (
+                      <div key={idx} className="text-sm flex items-center gap-2">
+                        <span className={`w-2 h-2 rounded-full ${strip.rollWidth === 2.05 ? 'bg-emerald-500' : 'bg-blue-500'}`} />
+                        <span>
+                          {strip.count}× pas {strip.rollWidth}m × {strip.stripLength.toFixed(1)}m
+                          {strip.rollNumber && (
+                            <span className="text-muted-foreground ml-1">(#{strip.rollNumber})</span>
+                          )}
+                          {strip.wallLabels && strip.wallLabels.length > 0 && (
+                            <Badge variant="outline" className="ml-2 text-xs">
+                              {strip.wallLabels.join(', ')}
+                            </Badge>
+                          )}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </TableCell>
+                <TableCell className="text-right align-top">
+                  {detail.coverArea} m²
+                </TableCell>
+                <TableCell className="text-right align-top">
+                  <div className="font-medium">{detail.totalFoilArea} m²</div>
+                  <div className="text-xs text-muted-foreground">
+                    ({detail.coverArea} + {detail.weldArea} {detailWeldLabel} + {detail.wasteArea} odp.)
+                  </div>
+                </TableCell>
+              </TableRow>
+            );
+          })}
           {/* Total row */}
           <TableRow className="bg-primary/5 border-t-2 font-semibold">
             <TableCell colSpan={2} className="text-right">
@@ -164,7 +174,7 @@ function StripDetailsTable({ details }: StripDetailsTableProps) {
             <TableCell className="text-right">
               <div className="font-bold text-primary">{totalFoilArea} m²</div>
               <div className="text-xs text-muted-foreground font-normal">
-                ({Math.round(totalCoverArea * 10) / 10} + {Math.round(totalWeldArea * 10) / 10} zakł. + {Math.round(totalWasteArea * 10) / 10} odp.)
+                ({Math.round(totalCoverArea * 10) / 10} + {Math.round(totalWeldArea * 10) / 10} {weldLabel} + {Math.round(totalWasteArea * 10) / 10} odp.)
               </div>
             </TableCell>
           </TableRow>
@@ -288,6 +298,9 @@ export function RollSummary({
   const totalWaste = config.surfaces.reduce((sum, s) => sum + s.wasteM2, 0);
   const totalRollArea = config.totalRolls165 * 1.65 * 25 + config.totalRolls205 * 2.05 * 25;
   const utilizationPercent = totalRollArea > 0 ? ((totalRollArea - totalWaste) / totalRollArea) * 100 : 0;
+  
+  // Calculate butt joint meters for structural foil
+  const buttJointMeters = calculateButtJointMeters(config, dimensions, foilSubtype);
 
   // If main foil is structural, show combined view
   if (isMainFoilStructural) {
@@ -341,11 +354,17 @@ export function RollSummary({
         </div>
 
         {/* Summary stats */}
-        <div className="grid grid-cols-4 gap-4 p-4 rounded-lg bg-muted/30 border">
+        <div className="grid grid-cols-5 gap-4 p-4 rounded-lg bg-muted/30 border">
           <div>
             <span className="text-sm text-muted-foreground">Pokrycie:</span>
             <div className="font-medium">{Math.round(totalArea)} m²</div>
           </div>
+          {buttJointMeters > 0 && (
+            <div>
+              <span className="text-sm text-muted-foreground">Zgrzew doczołowy:</span>
+              <div className="font-medium">{buttJointMeters} mb</div>
+            </div>
+          )}
           <div>
             <span className="text-sm text-muted-foreground">Odpad:</span>
             <div className="font-medium">{totalWaste.toFixed(1)} m²</div>
