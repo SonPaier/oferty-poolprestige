@@ -624,13 +624,18 @@ export function calculateSurfaceDetails(
       const calc = calculateStripsForWidth(def.coverWidth, surface.rollWidth, def.overlap);
       const rollNumbers = getRollNumbersForSurface(surface.surfaceLabel);
       
+      // Net cover area = pool length × pool width (the actual floor area to cover)
+      const coverArea = def.stripLength * def.coverWidth;
+      
       // Total foil area = strips × roll width × strip length (full material used)
       const totalFoilAreaRaw = surface.stripCount * surface.rollWidth * surface.stripLength;
+      
       // Weld area = overlaps between strips
       const overlapsCount = Math.max(0, calc.count - 1);
       const weldArea = overlapsCount * calc.actualOverlap * def.stripLength;
-      // Cover area = net area covered (total foil - weld overlap)
-      const coverArea = totalFoilAreaRaw - weldArea;
+      
+      // Waste area = edge waste (total foil - cover area - weld area)
+      const wasteArea = Math.max(0, totalFoilAreaRaw - coverArea - weldArea);
       
       results.push({
         surfaceKey: 'bottom',
@@ -644,53 +649,127 @@ export function calculateSurfaceDetails(
         coverArea: Math.round(coverArea * 10) / 10,
         totalFoilArea: Math.ceil(totalFoilAreaRaw),
         weldArea: Math.round(weldArea * 10) / 10,
-        wasteArea: 0, // Edge waste (if any) is handled separately
+        wasteArea: Math.round(wasteArea * 10) / 10,
       });
     }
   }
 
-  // Walls (combined) - use continuous strip around perimeter
+  // Walls (combined) - use continuous strip around perimeter, split if > roll length
   if (wallSurfaces.length > 0) {
     const walls = getWallSegments(dimensions);
     const perimeter = walls.reduce((sum, w) => sum + w.length, 0);
     const coverHeight = dimensions.depth + FOLD_AT_BOTTOM;
     
     // Use narrow (1.65m) if it can cover the height, otherwise use wide (2.05m)
-    // Rule: height <= 1.65m → 1.65m roll; height > 1.65m → 2.05m roll
     const wallRollWidth = coverHeight <= ROLL_WIDTH_NARROW ? ROLL_WIDTH_NARROW : ROLL_WIDTH_WIDE;
     
-    // One continuous strip covers entire perimeter + overlap for joining ends
+    // Calculate how many strips we need based on roll length
     const joinOverlap = MIN_OVERLAP_WALL; // 10cm for joining ends
-    const stripLength = perimeter + joinOverlap; // e.g., 24m + 0.1m = 24.1m
+    const totalLengthNeeded = perimeter + joinOverlap; // Include joining overlap
     
-    // Calculate roll-end waste (25m roll - used length)
-    const rollEndWaste = ROLL_LENGTH - stripLength; // e.g., 25m - 24.1m = 0.9m
-    const isWasteReusable = rollEndWaste >= MIN_REUSABLE_OFFCUT_LENGTH; // >= 2m is reusable
-    const unusableWasteArea = isWasteReusable ? 0 : rollEndWaste * wallRollWidth;
+    // Number of strips needed (each strip can be at most ROLL_LENGTH)
+    const stripCount = Math.ceil(totalLengthNeeded / ROLL_LENGTH);
     
-    // Calculate cover area and total foil area
-    const coverArea = perimeter * coverHeight; // Net area to cover
-    const usedFoilArea = stripLength * wallRollWidth; // Material used for walls
-    const weldArea = joinOverlap * wallRollWidth; // Only the joining overlap
-    const totalFoilAreaRaw = usedFoilArea + unusableWasteArea; // Include unusable waste
+    // Calculate actual strip lengths - try to split evenly at corners
+    const stripLengths: number[] = [];
+    let remainingLength = totalLengthNeeded;
     
-    // Wall labels: one strip covering all walls A-B-C-D-A
-    const wallLabels = walls.map(w => w.label.split('-')[0]).join('-') + '-' + walls[0].label.split('-')[0];
+    if (stripCount === 1) {
+      // Single strip covers entire perimeter
+      stripLengths.push(totalLengthNeeded);
+    } else {
+      // Multiple strips - divide as evenly as possible
+      const baseLength = Math.floor(totalLengthNeeded / stripCount * 10) / 10;
+      for (let i = 0; i < stripCount - 1; i++) {
+        // Try to use full roll length for efficiency, or split evenly
+        const thisLength = Math.min(ROLL_LENGTH, baseLength + (i === 0 ? joinOverlap : 0));
+        stripLengths.push(thisLength);
+        remainingLength -= thisLength;
+      }
+      // Last strip gets the remainder
+      stripLengths.push(Math.max(0, remainingLength));
+    }
+    
+    // Calculate total used foil and waste
+    let totalUsedFoilArea = 0;
+    let totalUnusableWaste = 0;
+    const strips: Array<{
+      count: number;
+      rollWidth: RollWidth;
+      stripLength: number;
+      rollNumber?: number;
+      wallLabels?: string[];
+    }> = [];
+    
+    // Build wall label mapping
+    let currentWallIdx = 0;
+    let positionInWall = 0;
+    let cumulativeLength = 0;
+    
+    for (let i = 0; i < stripLengths.length; i++) {
+      const stripLen = stripLengths[i];
+      totalUsedFoilArea += stripLen * wallRollWidth;
+      
+      // Calculate waste for this strip (25m roll - strip length)
+      const rollWaste = ROLL_LENGTH - stripLen;
+      const isWasteReusable = rollWaste >= MIN_REUSABLE_OFFCUT_LENGTH;
+      if (!isWasteReusable && rollWaste > 0) {
+        totalUnusableWaste += rollWaste * wallRollWidth;
+      }
+      
+      // Determine which walls this strip covers
+      const startLength = cumulativeLength;
+      const endLength = cumulativeLength + stripLen;
+      const coveredLabels: string[] = [];
+      
+      // Find starting wall
+      let len = 0;
+      for (let wIdx = 0; wIdx < walls.length; wIdx++) {
+        const wallEnd = len + walls[wIdx].length;
+        if (startLength < wallEnd && endLength > len) {
+          coveredLabels.push(walls[wIdx].label);
+        }
+        len = wallEnd;
+      }
+      // Handle wrap-around for last strip
+      if (endLength > perimeter) {
+        coveredLabels.push(walls[0].label);
+      }
+      
+      // Create combined label
+      const uniqueLabels = [...new Set(coveredLabels)];
+      const combinedLabel = uniqueLabels.length > 0 
+        ? uniqueLabels.map(l => l.split('-')[0]).join('-') + '-' + uniqueLabels[uniqueLabels.length - 1].split('-')[1]
+        : 'A-B';
+      
+      strips.push({
+        count: 1,
+        rollWidth: wallRollWidth,
+        stripLength: Math.round(stripLen * 10) / 10,
+        wallLabels: [combinedLabel],
+        rollNumber: i + 1,
+      });
+      
+      cumulativeLength += stripLen;
+    }
+    
+    // Net cover area = perimeter × height
+    const coverArea = perimeter * coverHeight;
+    
+    // Total weld area includes join overlaps between strips
+    const weldArea = stripCount * joinOverlap * wallRollWidth;
+    
+    // Total foil area = used area + unusable waste
+    const totalFoilAreaRaw = totalUsedFoilArea + totalUnusableWaste;
     
     results.push({
       surfaceKey: 'walls',
       surfaceLabel: 'Ściany',
-      strips: [{
-        count: 1,
-        rollWidth: wallRollWidth,
-        stripLength: Math.round(stripLength * 10) / 10,
-        wallLabels: [wallLabels], // e.g., "A-B-C-D-A"
-        rollNumber: 1,
-      }],
+      strips,
       coverArea: Math.round(coverArea * 10) / 10,
       totalFoilArea: Math.ceil(totalFoilAreaRaw),
       weldArea: Math.round(weldArea * 10) / 10,
-      wasteArea: Math.round(unusableWasteArea * 10) / 10,
+      wasteArea: Math.round(totalUnusableWaste * 10) / 10,
     });
   }
 
