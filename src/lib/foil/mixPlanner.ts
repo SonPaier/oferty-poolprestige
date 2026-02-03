@@ -79,6 +79,11 @@ export interface SurfaceRollConfig {
   surface: SurfaceKey;
   surfaceLabel: string;
   rollWidth: RollWidth;
+  /**
+   * Optional strip mix for a surface (e.g. bottom can be 2×1.65 + 1×2.05).
+   * When provided, `stripCount` should equal the sum of mix counts.
+   */
+  stripMix?: Array<{ rollWidth: RollWidth; count: number }>;
   stripCount: number;
   areaM2: number;
   wasteM2: number;
@@ -245,6 +250,84 @@ function calculateStripsForWidth(
   };
 }
 
+type MixedStripEval = {
+  isValid: boolean;
+  stripCount: number;
+  materialWidthUsed: number;
+  actualOverlap: number;
+  totalCoveredWidth: number;
+  edgeWasteWidth: number;
+};
+
+function evaluateMixedStrips(
+  coverWidth: number,
+  stripWidths: RollWidth[],
+  minOverlap: number
+): MixedStripEval {
+  const MAX_OVERLAP = 0.15;
+
+  if (coverWidth <= 0) {
+    return {
+      isValid: true,
+      stripCount: 0,
+      materialWidthUsed: 0,
+      actualOverlap: 0,
+      totalCoveredWidth: 0,
+      edgeWasteWidth: 0,
+    };
+  }
+
+  if (stripWidths.length === 0) {
+    return {
+      isValid: false,
+      stripCount: 0,
+      materialWidthUsed: 0,
+      actualOverlap: 0,
+      totalCoveredWidth: 0,
+      edgeWasteWidth: 0,
+    };
+  }
+
+  const n = stripWidths.length;
+  const materialWidthUsed = stripWidths.reduce((sum, w) => sum + w, 0);
+
+  if (n === 1) {
+    const totalCoveredWidth = materialWidthUsed;
+    const edgeWasteWidth = Math.max(0, totalCoveredWidth - coverWidth);
+    return {
+      isValid: totalCoveredWidth >= coverWidth,
+      stripCount: 1,
+      materialWidthUsed,
+      actualOverlap: 0,
+      totalCoveredWidth,
+      edgeWasteWidth,
+    };
+  }
+
+  const overlapForExactFit = (materialWidthUsed - coverWidth) / (n - 1);
+  const actualOverlap = Math.max(minOverlap, Math.min(MAX_OVERLAP, overlapForExactFit));
+  const totalCoveredWidth = materialWidthUsed - (n - 1) * actualOverlap;
+  const isValid = totalCoveredWidth >= coverWidth - 1e-6;
+  const edgeWasteWidth = Math.max(0, totalCoveredWidth - coverWidth);
+
+  return {
+    isValid,
+    stripCount: n,
+    materialWidthUsed,
+    actualOverlap,
+    totalCoveredWidth,
+    edgeWasteWidth,
+  };
+}
+
+function buildWidthsFromMix(mix: Array<{ rollWidth: RollWidth; count: number }>): RollWidth[] {
+  const widths: RollWidth[] = [];
+  for (const group of mix) {
+    for (let i = 0; i < group.count; i++) widths.push(group.rollWidth);
+  }
+  return widths;
+}
+
 /**
  * Result from foil pricing calculation - separated by foil pool
  */
@@ -281,9 +364,12 @@ function calculateAreaForSurfaces(
   foilSubtype?: FoilSubtype | null
 ): SurfaceAreaResult {
   const defs = getSurfaceDefinitions(dimensions, foilSubtype);
-  const surfaceByKey = new Map<SurfaceKey, SurfaceRollConfig>(
-    config.surfaces.map((s) => [s.surface, s])
-  );
+  const surfacesByKey = new Map<SurfaceKey, SurfaceRollConfig[]>();
+  for (const s of config.surfaces) {
+    const arr = surfacesByKey.get(s.surface) ?? [];
+    arr.push(s);
+    surfacesByKey.set(s.surface, arr);
+  }
 
   const relevantDefs = defs.filter((d) => surfaceKeys.includes(d.key));
   const relevantSurfaces = config.surfaces.filter((s) => surfaceKeys.includes(s.surface));
@@ -293,28 +379,44 @@ function calculateAreaForSurfaces(
   let reusableWidthWasteArea = 0;
 
   for (const def of relevantDefs) {
-    const surface = surfaceByKey.get(def.key);
-    if (!surface) continue;
+    const surfaceEntries = surfacesByKey.get(def.key);
+    if (!surfaceEntries || surfaceEntries.length === 0) continue;
 
-    const calc = calculateStripsForWidth(def.coverWidth, surface.rollWidth, def.overlap);
-    const stripsPerSingle = calc.count;
-    const totalStrips = stripsPerSingle * def.count;
+    // NOTE: We treat multiple entries for the same surface as additive (rare, but safe).
+    for (const surface of surfaceEntries) {
+      if (!surface.stripMix) {
+        const calc = calculateStripsForWidth(def.coverWidth, surface.rollWidth, def.overlap);
+        const stripsPerSingle = calc.count;
+        const totalStrips = stripsPerSingle * def.count;
 
-    // Full strip area consumed (includes overlaps - this is NOT waste!)
-    totalStripsArea += totalStrips * def.stripLength * surface.rollWidth;
+        // Full strip area consumed (includes overlaps - this is NOT waste!)
+        totalStripsArea += totalStrips * def.stripLength * surface.rollWidth;
 
-    // Calculate weld/overlap area: number of overlaps × overlap width × strip length
-    const overlapsPerSingle = Math.max(0, stripsPerSingle - 1);
-    const totalOverlaps = overlapsPerSingle * def.count;
-    totalWeldArea += totalOverlaps * calc.actualOverlap * def.stripLength;
+        // Calculate weld/overlap area
+        const overlapsPerSingle = Math.max(0, stripsPerSingle - 1);
+        const totalOverlaps = overlapsPerSingle * def.count;
+        totalWeldArea += totalOverlaps * calc.actualOverlap * def.stripLength;
 
-    // Edge waste only (excess material on last strip beyond what's needed)
-    // Note: overlap area is NOT waste - it's required for welding
-    const edgeWasteWidth = calc.wasteArea;
-    const edgeWasteArea = edgeWasteWidth * def.stripLength * def.count;
-    const isReusable = edgeWasteWidth >= WASTE_THRESHOLD && def.stripLength >= MIN_REUSABLE_OFFCUT_LENGTH;
-    if (isReusable) {
-      reusableWidthWasteArea += edgeWasteArea;
+        // Edge waste only
+        const edgeWasteWidth = calc.wasteArea;
+        const edgeWasteArea = edgeWasteWidth * def.stripLength * def.count;
+        const isReusable = edgeWasteWidth >= WASTE_THRESHOLD && def.stripLength >= MIN_REUSABLE_OFFCUT_LENGTH;
+        if (isReusable) reusableWidthWasteArea += edgeWasteArea;
+      } else {
+        const widths = buildWidthsFromMix(surface.stripMix);
+        const evalRes = evaluateMixedStrips(def.coverWidth, widths, def.overlap);
+        if (!evalRes.isValid) continue;
+
+        totalStripsArea += evalRes.materialWidthUsed * def.stripLength * def.count;
+        const overlapsPerSingle = Math.max(0, evalRes.stripCount - 1);
+        const totalOverlaps = overlapsPerSingle * def.count;
+        totalWeldArea += totalOverlaps * evalRes.actualOverlap * def.stripLength;
+
+        const edgeWasteWidth = evalRes.edgeWasteWidth;
+        const edgeWasteArea = edgeWasteWidth * def.stripLength * def.count;
+        const isReusable = edgeWasteWidth >= WASTE_THRESHOLD && def.stripLength >= MIN_REUSABLE_OFFCUT_LENGTH;
+        if (isReusable) reusableWidthWasteArea += edgeWasteArea;
+      }
     }
   }
 
@@ -621,31 +723,53 @@ export function calculateSurfaceDetails(
     const surface = bottomSurfaces[0];
     const def = defs.find(d => d.key === 'bottom');
     if (def) {
-      const calc = calculateStripsForWidth(def.coverWidth, surface.rollWidth, def.overlap);
       const rollNumbers = getRollNumbersForSurface(surface.surfaceLabel);
-      
-      // Net cover area = pool length × pool width (the actual floor area to cover)
+
       const coverArea = def.stripLength * def.coverWidth;
-      
-      // Total foil area = strips × roll width × strip length (full material used)
-      const totalFoilAreaRaw = surface.stripCount * surface.rollWidth * surface.stripLength;
-      
-      // Weld area = overlaps between strips
-      const overlapsCount = Math.max(0, calc.count - 1);
-      const weldArea = overlapsCount * calc.actualOverlap * def.stripLength;
-      
-      // Waste area = edge waste (total foil - cover area - weld area)
-      const wasteArea = Math.max(0, totalFoilAreaRaw - coverArea - weldArea);
-      
-      results.push({
-        surfaceKey: 'bottom',
-        surfaceLabel: 'Dno',
-        strips: [{
+
+      let totalFoilAreaRaw: number;
+      let weldArea: number;
+      let wasteArea: number;
+      let strips: SurfaceDetailedResult['strips'];
+
+      if (surface.stripMix && surface.stripMix.length > 0) {
+        const widths = buildWidthsFromMix(surface.stripMix);
+        const evalRes = evaluateMixedStrips(def.coverWidth, widths, def.overlap);
+        totalFoilAreaRaw = evalRes.materialWidthUsed * def.stripLength;
+        weldArea = Math.max(0, evalRes.stripCount - 1) * evalRes.actualOverlap * def.stripLength;
+        wasteArea = Math.max(0, totalFoilAreaRaw - coverArea - weldArea);
+
+        // Display as grouped by width
+        const byWidth = new Map<RollWidth, number>();
+        for (const w of widths) byWidth.set(w, (byWidth.get(w) ?? 0) + 1);
+        const ordered = ([
+          ROLL_WIDTH_WIDE as RollWidth,
+          ROLL_WIDTH_NARROW as RollWidth,
+        ]).filter((w) => byWidth.has(w));
+        strips = ordered.map((w) => ({
+          count: byWidth.get(w) ?? 0,
+          rollWidth: w,
+          stripLength: surface.stripLength,
+          rollNumber: rollNumbers[0],
+        }));
+      } else {
+        const calc = calculateStripsForWidth(def.coverWidth, surface.rollWidth, def.overlap);
+        totalFoilAreaRaw = surface.stripCount * surface.rollWidth * surface.stripLength;
+        const overlapsCount = Math.max(0, calc.count - 1);
+        weldArea = overlapsCount * calc.actualOverlap * def.stripLength;
+        wasteArea = Math.max(0, totalFoilAreaRaw - coverArea - weldArea);
+        strips = [{
           count: surface.stripCount,
           rollWidth: surface.rollWidth,
           stripLength: surface.stripLength,
           rollNumber: rollNumbers[0],
-        }],
+        }];
+      }
+
+      results.push({
+        surfaceKey: 'bottom',
+        surfaceLabel: 'Dno',
+        strips,
         coverArea: Math.round(coverArea * 10) / 10,
         totalFoilArea: Math.ceil(totalFoilAreaRaw),
         weldArea: Math.round(weldArea * 10) / 10,
@@ -933,6 +1057,67 @@ export function autoOptimizeMixConfig(
       wastePerSurface = optimalResult.totalWaste;
     }
 
+    // Special-case: bottom can be optimally covered with mixed widths (e.g. 2×1.65 + 1×2.05)
+    // Only when main foil supports both widths and priority is minWaste.
+    if (!forceNarrow && priority === 'minWaste' && def.key === 'bottom') {
+      const candidates: Array<{ mix: Array<{ rollWidth: RollWidth; count: number }>; eval: MixedStripEval }> = [];
+      const maxWidth = ROLL_WIDTH_WIDE;
+      const minWidth = ROLL_WIDTH_NARROW;
+      const minStrips = Math.max(1, Math.ceil(def.coverWidth / maxWidth));
+      const maxStrips = Math.ceil(def.coverWidth / minWidth) + 2;
+
+      for (let n = minStrips; n <= maxStrips; n++) {
+        for (let wideCount = 0; wideCount <= n; wideCount++) {
+          const narrowCount = n - wideCount;
+          if (wideCount === 0 && narrowCount === 0) continue;
+          const mix: Array<{ rollWidth: RollWidth; count: number }> = [
+            ...(wideCount > 0 ? [{ rollWidth: ROLL_WIDTH_WIDE as RollWidth, count: wideCount }] : []),
+            ...(narrowCount > 0 ? [{ rollWidth: ROLL_WIDTH_NARROW as RollWidth, count: narrowCount }] : []),
+          ];
+          const widths = buildWidthsFromMix(mix);
+          const evalRes = evaluateMixedStrips(def.coverWidth, widths, def.overlap);
+          if (!evalRes.isValid) continue;
+          candidates.push({ mix, eval: evalRes });
+        }
+      }
+
+      // Pick best: min edge waste, then fewer strips
+      candidates.sort((a, b) => {
+        const aWaste = a.eval.edgeWasteWidth * def.stripLength;
+        const bWaste = b.eval.edgeWasteWidth * def.stripLength;
+        if (Math.abs(aWaste - bWaste) > 1e-6) return aWaste - bWaste;
+        return a.eval.stripCount - b.eval.stripCount;
+      });
+
+      const best = candidates[0];
+      if (best) {
+        const areaPerSurface = def.stripLength * def.coverWidth;
+        const totalArea = areaPerSurface * def.count;
+        const totalStrips = best.eval.stripCount * def.count;
+        const edgeWasteArea = best.eval.edgeWasteWidth * def.stripLength * def.count;
+
+        // Choose a representative width for legacy fields (prefer wide if present)
+        const hasWide = best.mix.some((m) => m.rollWidth === ROLL_WIDTH_WIDE);
+        optimalWidth = hasWide ? ROLL_WIDTH_WIDE : ROLL_WIDTH_NARROW;
+
+        surfaces.push({
+          surface: def.key,
+          surfaceLabel: def.label,
+          rollWidth: optimalWidth,
+          stripMix: best.mix,
+          stripCount: totalStrips,
+          areaM2: totalArea,
+          wasteM2: edgeWasteArea,
+          isManualOverride: false,
+          stripLength: def.stripLength,
+          coverWidth: def.coverWidth,
+          foilAssignment: def.foilAssignment,
+        });
+
+        continue;
+      }
+    }
+
     const calc = calculateStripsForWidth(def.coverWidth, optimalWidth, def.overlap);
     const areaPerSurface = def.stripLength * def.coverWidth;
     const totalArea = areaPerSurface * def.count;
@@ -1075,13 +1260,21 @@ export function packStripsIntoRolls(config: MixConfiguration): RollAllocation[] 
   const allStrips: StripToPack[] = [];
   
   config.surfaces.forEach((surface) => {
-    for (let i = 0; i < surface.stripCount; i++) {
-      allStrips.push({
-        surface: surface.surfaceLabel,
-        stripIndex: i + 1,
-        length: surface.stripLength,
-        rollWidth: surface.rollWidth,
-      });
+    const mix = surface.stripMix && surface.stripMix.length > 0
+      ? surface.stripMix
+      : [{ rollWidth: surface.rollWidth, count: surface.stripCount }];
+
+    let stripIndex = 1;
+    for (const group of mix) {
+      for (let i = 0; i < group.count; i++) {
+        allStrips.push({
+          surface: surface.surfaceLabel,
+          stripIndex,
+          length: surface.stripLength,
+          rollWidth: group.rollWidth,
+        });
+        stripIndex++;
+      }
     }
   });
 
