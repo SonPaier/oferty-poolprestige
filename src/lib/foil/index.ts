@@ -44,6 +44,7 @@ export {
   usesButtJoint,
   partitionSurfacesByFoilType,
   calculateButtJointMeters,
+  getUnusableWaste,
   ROLL_WIDTH_NARROW,
   ROLL_WIDTH_WIDE,
   ROLL_LENGTH,
@@ -57,4 +58,5 @@ export type {
   SurfaceKey,
   RollWidth,
   FoilCalculationResult,
+  UnusableWaste,
 } from './mixPlanner';
