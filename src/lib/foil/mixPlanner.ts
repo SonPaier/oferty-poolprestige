@@ -812,17 +812,25 @@ function getSurfaceDefinitions(dimensions: PoolDimensions, foilSubtype?: FoilSub
     });
   }
 
-  // Paddling pool (STRUCTURAL foil for bottom)
+  // Paddling pool bottom (STRUCTURAL foil) - strips laid parallel to longer edge, butt joint
   if (dimensions.wadingPool?.enabled) {
     const pool = dimensions.wadingPool;
+    
+    // Strips are laid parallel to the longer edge of the wading pool floor
+    // coverWidth = shorter edge (the width that strips need to cover)
+    // stripLength = longer edge (each strip runs full length of this edge)
+    // Butt joint = no overlap between strips (structural foil requirement)
+    const longerEdge = Math.max(pool.length, pool.width);
+    const shorterEdge = Math.min(pool.length, pool.width);
     
     surfaces.push({
       key: 'paddling',
       label: 'Brodzik (dno)',
-      stripLength: Math.max(pool.length, pool.width),
-      coverWidth: pool.depth + FOLD_AT_BOTTOM,
+      stripLength: longerEdge,
+      coverWidth: shorterEdge,
       count: 1,
-      overlap: MIN_OVERLAP_WALL,
+      overlap: BUTT_JOINT_OVERLAP, // Butt joint - no overlap for structural foil
+      isButtJoint: true,
       foilAssignment: 'structural', // Bottom always structural
     });
     
@@ -1270,32 +1278,46 @@ export function calculateSurfaceDetails(
     }
   }
 
-  // Paddling pool
+  // Paddling pool bottom - structural foil with butt joint (no overlap)
   if (paddlingSurfaces.length > 0) {
     const surface = paddlingSurfaces[0];
     const def = defs.find(d => d.key === 'paddling');
     if (def) {
+      // Recalculate strip count based on actual coverWidth (shorter edge of wading pool)
       const calc = calculateStripsForWidth(def.coverWidth, surface.rollWidth, def.overlap);
       const rollNumbers = getRollNumbersForSurface(surface.surfaceLabel);
       
-      const totalFoilAreaRaw = surface.stripCount * surface.rollWidth * surface.stripLength;
-      const overlapsCount = Math.max(0, calc.count - 1);
-      const weldArea = overlapsCount * calc.actualOverlap * def.stripLength;
-      const coverArea = totalFoilAreaRaw - weldArea;
+      // Use the correct strip count from calculation
+      const stripCount = calc.count;
+      
+      // Total foil area = strips × rollWidth × stripLength
+      const totalFoilAreaRaw = stripCount * surface.rollWidth * def.stripLength;
+      
+      // Net cover area (actual wading pool floor area)
+      const coverArea = def.coverWidth * def.stripLength;
+      
+      // Waste = foil area - cover area (edge waste from strips being wider than needed)
+      const wasteWidth = (stripCount * surface.rollWidth) - def.coverWidth;
+      const wasteArea = wasteWidth * def.stripLength;
+      
+      // Butt joint: weldArea = 0 (no overlap), but we track butt joint length separately
+      // Note: butt joint length = (stripCount - 1) × stripLength
+      const buttJointLength = Math.max(0, stripCount - 1) * def.stripLength;
       
       results.push({
         surfaceKey: 'paddling',
         surfaceLabel: 'Brodzik',
         strips: [{
-          count: surface.stripCount,
+          count: stripCount,
           rollWidth: surface.rollWidth,
-          stripLength: surface.stripLength,
+          stripLength: def.stripLength,
           rollNumber: rollNumbers[0],
         }],
         coverArea: Math.round(coverArea * 10) / 10,
         totalFoilArea: Math.ceil(totalFoilAreaRaw),
-        weldArea: Math.round(weldArea * 10) / 10,
-        wasteArea: 0,
+        weldArea: 0, // Butt joint - no overlap area
+        wasteArea: Math.round(wasteArea * 10) / 10,
+        isButtJoint: true,
       });
     }
   }
