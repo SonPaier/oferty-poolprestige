@@ -185,8 +185,8 @@ function calculateStripsForWidth(
   rollWidth: RollWidth,
   minOverlap: number
 ): { count: number; coveredWidth: number; wasteArea: number; totalCoveredWidth: number; materialWidthUsed: number; actualOverlap: number } {
-  // Max overlap is typically ~15cm for good welding practice
-  const MAX_OVERLAP = 0.15;
+  // Max overlap is 10cm for optimal material usage
+  const MAX_OVERLAP = 0.10;
   
   if (coverWidth <= 0) {
     return { count: 0, coveredWidth: 0, wasteArea: 0, totalCoveredWidth: 0, materialWidthUsed: 0, actualOverlap: 0 };
@@ -264,7 +264,7 @@ function evaluateMixedStrips(
   stripWidths: RollWidth[],
   minOverlap: number
 ): MixedStripEval {
-  const MAX_OVERLAP = 0.15;
+  const MAX_OVERLAP = 0.10;
 
   if (coverWidth <= 0) {
     return {
