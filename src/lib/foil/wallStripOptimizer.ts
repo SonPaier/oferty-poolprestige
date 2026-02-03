@@ -423,12 +423,45 @@ export function generateWallStripConfigurations(
   return validPlans;
 }
 
+function estimateAdditionalWallRollArea(
+  plan: WallStripPlan,
+  bottomStrips: BottomStripInfo[]
+): number {
+  // How much FULL roll area we need to order specifically for walls,
+  // assuming we can pack wall strips into offcuts from bottom rolls.
+  // If a wall strip fits into a bottom offcut (same width), it does not require a new roll.
+  const usedBottom = new Set<number>();
+  let additionalArea = 0;
+
+  for (const strip of plan.strips) {
+    let paired = false;
+    for (let bi = 0; bi < bottomStrips.length; bi++) {
+      if (usedBottom.has(bi)) continue;
+      const bottom = bottomStrips[bi];
+      if (bottom.rollWidth !== strip.rollWidth) continue;
+
+      if (strip.totalLength <= bottom.offcutLength + 0.001) {
+        usedBottom.add(bi);
+        paired = true;
+        break;
+      }
+    }
+
+    if (!paired) {
+      additionalArea += strip.rollWidth * ROLL_LENGTH;
+    }
+  }
+
+  return additionalArea;
+}
+
 /**
  * Select the optimal wall strip configuration based on priority
  */
 export function selectOptimalWallPlan(
   plans: WallStripPlan[],
-  priority: OptimizationPriority
+  priority: OptimizationPriority,
+  bottomStrips: BottomStripInfo[] = []
 ): WallStripPlan | null {
   if (plans.length === 0) return null;
   
@@ -444,11 +477,13 @@ export function selectOptimalWallPlan(
             + plan.totalFoilArea * 0.01;
     } else {
       // minRolls:
-      // 1. Minimalizuj całkowite m² folii
-      // 2. Minimalizuj odpad
-      // 3. Mniej pasów = prostsza instalacja
-      score = plan.totalFoilArea * 1000 
-            + plan.wasteArea * 10 
+      // 1. Minimalizuj dodatkową powierzchnię rolek wymaganych SPECJALNIE na ściany
+      //    (czyli preferuj takie pasy ścian, które mieszczą się w resztkach z dna).
+      // 2. Dopiero potem minimalizuj m² folii na ściany (gdy dodatkowe rolki są równe).
+      const additionalWallRollArea = estimateAdditionalWallRollArea(plan, bottomStrips);
+      score = additionalWallRollArea * 1_000_000
+            + plan.totalFoilArea * 1000
+            + plan.wasteArea * 10
             + plan.totalStripCount;
     }
     
@@ -469,7 +504,8 @@ export function getOptimalWallStripPlan(
   priority: OptimizationPriority = 'minWaste'
 ): WallStripPlan | null {
   const plans = generateWallStripConfigurations(dimensions, config, foilSubtype);
-  return selectOptimalWallPlan(plans, priority);
+  const bottomStrips = getBottomStripsInfo(config);
+  return selectOptimalWallPlan(plans, priority, bottomStrips);
 }
 
 /**
