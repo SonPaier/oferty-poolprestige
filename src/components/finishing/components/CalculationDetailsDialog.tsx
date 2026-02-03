@@ -58,8 +58,8 @@ export function CalculationDetailsDialog({
   }, [foilSubtype, dimensions, optimizationPriority]);
 
   const pricingResult = useMemo(
-    () => calculateFoilAreaForPricing(mixConfig, dimensions, foilSubtype),
-    [mixConfig, dimensions, foilSubtype]
+    () => calculateFoilAreaForPricing(mixConfig, dimensions, foilSubtype, optimizationPriority),
+    [mixConfig, dimensions, foilSubtype, optimizationPriority]
   );
 
   // Get detailed surface calculations from the table

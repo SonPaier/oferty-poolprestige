@@ -316,7 +316,8 @@ export function FinishingWizardProvider({
     const pricingResult = calculateFoilAreaForPricing(
       autoConfig,
       configuratorState.dimensions,
-      state.selectedSubtype
+      state.selectedSubtype,
+      'minWaste' // default priority
     );
 
     const mainArea = state.manualFoilQty ?? pricingResult.mainFoilArea;

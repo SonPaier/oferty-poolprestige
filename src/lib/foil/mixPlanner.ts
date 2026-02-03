@@ -665,26 +665,38 @@ function calculateAreaForSurfaces(
  * - odejmujemy odpad, który *może* być użyty ponownie (>= 30cm szer. oraz >= 2m dł.)
  * - dodajemy odpad z końcówek rolek, którego nie da się użyć (dł. < 2m)
  * - zaokrąglamy w GÓRĘ do 1 m² (pełne metry)
+ * 
+ * IMPORTANT: This function now uses calculateSurfaceDetails internally to ensure
+ * consistency between pricing display and the detailed breakdown table.
  */
 export function calculateFoilAreaForPricing(
   config: MixConfiguration,
   dimensions: PoolDimensions,
-  foilSubtype?: FoilSubtype | null
+  foilSubtype?: FoilSubtype | null,
+  priority: OptimizationPriority = 'minWaste'
 ): FoilPricingResult {
-  // Main surfaces: bottom, wall-long, wall-short, dividing-wall
-  const mainKeys: SurfaceKey[] = ['bottom', 'walls', 'wall-long', 'wall-short', 'dividing-wall'];
+  // Use calculateSurfaceDetails to get consistent values with the table
+  const surfaceDetails = calculateSurfaceDetails(config, dimensions, foilSubtype, priority);
+  
+  // Main surfaces: bottom, walls, dividing-wall
+  const mainSurfaceKeys: SurfaceKey[] = ['bottom', 'walls', 'dividing-wall'];
   // Structural surfaces: stairs, paddling
-  const structuralKeys: SurfaceKey[] = ['stairs', 'paddling'];
-
-  const mainResult = calculateAreaForSurfaces(mainKeys, config, dimensions, foilSubtype);
-  const structuralResult = calculateAreaForSurfaces(structuralKeys, config, dimensions, foilSubtype);
-
+  const structuralSurfaceKeys: SurfaceKey[] = ['stairs', 'paddling'];
+  
+  const mainSurfaces = surfaceDetails.filter(s => mainSurfaceKeys.includes(s.surfaceKey));
+  const structuralSurfaces = surfaceDetails.filter(s => structuralSurfaceKeys.includes(s.surfaceKey));
+  
+  const mainFoilArea = mainSurfaces.reduce((sum, s) => sum + s.totalFoilArea, 0);
+  const mainWeldArea = mainSurfaces.reduce((sum, s) => sum + s.weldArea, 0);
+  const structuralFoilArea = structuralSurfaces.reduce((sum, s) => sum + s.totalFoilArea, 0);
+  const structuralWeldArea = structuralSurfaces.reduce((sum, s) => sum + s.weldArea, 0);
+  
   return {
-    mainFoilArea: mainResult.area,
-    mainWeldArea: mainResult.weldArea,
-    structuralFoilArea: structuralResult.area,
-    structuralWeldArea: structuralResult.weldArea,
-    totalArea: mainResult.area + structuralResult.area,
+    mainFoilArea,
+    mainWeldArea,
+    structuralFoilArea,
+    structuralWeldArea,
+    totalArea: mainFoilArea + structuralFoilArea,
   };
 }
 
