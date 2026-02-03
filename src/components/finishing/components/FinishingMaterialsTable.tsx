@@ -117,7 +117,7 @@ export function FinishingMaterialsTable({
                   )}
                   onClick={() => handleEditStart('foil', foilQty)}
                 >
-                  {foilQty.toFixed(2)}
+                  {foilQty}
                   {manualFoilQty !== null && (
                     <Badge variant="outline" className="ml-1 text-xs px-1">
                       ręczna
@@ -168,7 +168,7 @@ export function FinishingMaterialsTable({
                 </div>
               </TableCell>
               <TableCell className="text-right">
-                {structuralFoilLineItem.quantity.toFixed(2)}
+                {structuralFoilLineItem.quantity}
               </TableCell>
               <TableCell>{structuralFoilLineItem.unit}</TableCell>
               <TableCell className="text-right">

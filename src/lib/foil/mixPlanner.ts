@@ -209,10 +209,24 @@ function calculateStripsForWidth(
 export interface FoilPricingResult {
   /** Main foil (bottom, walls, dividing wall) area for pricing in m² */
   mainFoilArea: number;
+  /** Main foil weld/overlap area in m² */
+  mainWeldArea: number;
   /** Structural foil (stairs, paddling pool bottom) area for pricing in m² */
   structuralFoilArea: number;
+  /** Structural foil weld/overlap area in m² */
+  structuralWeldArea: number;
   /** Total area for pricing (main + structural) */
   totalArea: number;
+}
+
+/**
+ * Result from area calculation for surfaces
+ */
+interface SurfaceAreaResult {
+  /** Total area (rounded up to 1 m²) */
+  area: number;
+  /** Weld/overlap area in m² */
+  weldArea: number;
 }
 
 /**
@@ -223,7 +237,7 @@ function calculateAreaForSurfaces(
   config: MixConfiguration,
   dimensions: PoolDimensions,
   foilSubtype?: FoilSubtype | null
-): number {
+): SurfaceAreaResult {
   const defs = getSurfaceDefinitions(dimensions, foilSubtype);
   const surfaceByKey = new Map<SurfaceKey, SurfaceRollConfig>(
     config.surfaces.map((s) => [s.surface, s])
@@ -233,6 +247,7 @@ function calculateAreaForSurfaces(
   const relevantSurfaces = config.surfaces.filter((s) => surfaceKeys.includes(s.surface));
 
   let totalStripsArea = 0;
+  let totalWeldArea = 0;
   let reusableWidthWasteArea = 0;
 
   for (const def of relevantDefs) {
@@ -245,6 +260,11 @@ function calculateAreaForSurfaces(
 
     // Full strip area consumed (includes overlaps - this is NOT waste!)
     totalStripsArea += totalStrips * def.stripLength * surface.rollWidth;
+
+    // Calculate weld/overlap area: number of overlaps × overlap width × strip length
+    const overlapsPerSingle = Math.max(0, stripsPerSingle - 1);
+    const totalOverlaps = overlapsPerSingle * def.count;
+    totalWeldArea += totalOverlaps * calc.actualOverlap * def.stripLength;
 
     // Edge waste only (excess material on last strip beyond what's needed)
     // Note: overlap area is NOT waste - it's required for welding
@@ -269,7 +289,13 @@ function calculateAreaForSurfaces(
     return sum;
   }, 0);
 
-  return totalStripsArea - reusableWidthWasteArea + unusableRollEndWasteArea;
+  const rawArea = totalStripsArea - reusableWidthWasteArea + unusableRollEndWasteArea;
+  
+  return {
+    // Round UP to nearest 1 m² (whole number)
+    area: Math.ceil(rawArea),
+    weldArea: Math.round(totalWeldArea * 10) / 10, // Round weld area to 0.1
+  };
 }
 
 /**
@@ -277,7 +303,7 @@ function calculateAreaForSurfaces(
  * - liczymy pełną powierzchnię pasów (z zakładami = pełna szerokość rolki na pas)
  * - odejmujemy odpad, który *może* być użyty ponownie (>= 30cm szer. oraz >= 2m dł.)
  * - dodajemy odpad z końcówek rolek, którego nie da się użyć (dł. < 2m)
- * - zaokrąglamy w GÓRĘ do 0.1 m²
+ * - zaokrąglamy w GÓRĘ do 1 m² (pełne metry)
  */
 export function calculateFoilAreaForPricing(
   config: MixConfiguration,
@@ -289,17 +315,15 @@ export function calculateFoilAreaForPricing(
   // Structural surfaces: stairs, paddling
   const structuralKeys: SurfaceKey[] = ['stairs', 'paddling'];
 
-  const mainRaw = calculateAreaForSurfaces(mainKeys, config, dimensions, foilSubtype);
-  const structuralRaw = calculateAreaForSurfaces(structuralKeys, config, dimensions, foilSubtype);
-
-  // Round UP to nearest 0.1 m² for pricing
-  const mainFoilArea = Math.ceil(mainRaw * 10) / 10;
-  const structuralFoilArea = Math.ceil(structuralRaw * 10) / 10;
+  const mainResult = calculateAreaForSurfaces(mainKeys, config, dimensions, foilSubtype);
+  const structuralResult = calculateAreaForSurfaces(structuralKeys, config, dimensions, foilSubtype);
 
   return {
-    mainFoilArea,
-    structuralFoilArea,
-    totalArea: mainFoilArea + structuralFoilArea,
+    mainFoilArea: mainResult.area,
+    mainWeldArea: mainResult.weldArea,
+    structuralFoilArea: structuralResult.area,
+    structuralWeldArea: structuralResult.weldArea,
+    totalArea: mainResult.area + structuralResult.area,
   };
 }
 

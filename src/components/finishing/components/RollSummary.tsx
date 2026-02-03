@@ -14,8 +14,12 @@ interface RollSummaryProps {
   isMainFoilStructural?: boolean;
   /** Main foil area for pricing */
   mainFoilAreaForPricing?: number;
+  /** Main foil weld/overlap area */
+  mainWeldArea?: number;
   /** Structural foil area for pricing */
   structuralFoilAreaForPricing?: number;
+  /** Structural foil weld/overlap area */
+  structuralWeldArea?: number;
   /** @deprecated Use mainFoilAreaForPricing instead */
   foilAreaForPricing?: number;
 }
@@ -29,6 +33,8 @@ interface FoilPoolSummaryProps {
   icon: React.ReactNode;
   /** Override display area (for pricing alignment) */
   displayArea?: number;
+  /** Weld/overlap area */
+  weldArea?: number;
 }
 
 function FoilPoolSummary({ 
@@ -39,6 +45,7 @@ function FoilPoolSummary({
   colorClass,
   icon,
   displayArea,
+  weldArea,
 }: FoilPoolSummaryProps) {
   const calculatedArea = surfaces.reduce((sum, s) => sum + s.areaM2, 0);
   const totalArea = displayArea ?? calculatedArea;
@@ -110,14 +117,20 @@ function FoilPoolSummary({
         </div>
 
         {/* Totals */}
-        <div className="grid grid-cols-3 gap-2 text-sm mb-3">
+        <div className="grid grid-cols-4 gap-2 text-sm mb-3">
           <div>
             <span className="text-muted-foreground">Pokrycie:</span>
-            <span className="ml-1 font-medium">{totalArea.toFixed(2)} m²</span>
+            <span className="ml-1 font-medium">{totalArea} m²</span>
           </div>
+          {weldArea !== undefined && weldArea > 0 && (
+            <div>
+              <span className="text-muted-foreground">Zakład:</span>
+              <span className="ml-1 font-medium">{weldArea.toFixed(1)} m²</span>
+            </div>
+          )}
           <div>
             <span className="text-muted-foreground">Odpad:</span>
-            <span className="ml-1 font-medium">{totalWaste.toFixed(2)} m²</span>
+            <span className="ml-1 font-medium">{totalWaste.toFixed(1)} m²</span>
           </div>
           <div>
             <span className="text-muted-foreground">Wykorzystanie:</span>
@@ -136,7 +149,9 @@ export function RollSummary({
   config, 
   isMainFoilStructural = false, 
   mainFoilAreaForPricing,
+  mainWeldArea,
   structuralFoilAreaForPricing,
+  structuralWeldArea,
   foilAreaForPricing, // legacy fallback
 }: RollSummaryProps) {
   const { main, structural } = partitionSurfacesByFoilType(config.surfaces);
@@ -193,6 +208,7 @@ export function RollSummary({
         colorClass="bg-blue-50/50 dark:bg-blue-900/10 border-blue-200 dark:border-blue-800"
         icon={<Package className="h-5 w-5 text-blue-600 dark:text-blue-400" />}
         displayArea={mainFoilAreaForPricing}
+        weldArea={mainWeldArea}
       />
 
       {/* Structural foil */}
@@ -205,6 +221,7 @@ export function RollSummary({
           colorClass="bg-amber-50/50 dark:bg-amber-900/10 border-amber-200 dark:border-amber-800"
           icon={<Layers className="h-5 w-5 text-amber-600 dark:text-amber-400" />}
           displayArea={structuralFoilAreaForPricing}
+          weldArea={structuralWeldArea}
         />
       )}
     </div>
