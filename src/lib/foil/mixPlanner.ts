@@ -846,11 +846,12 @@ export function assignWallLabelsToStrips(
 export function calculateSurfaceDetails(
   config: MixConfiguration,
   dimensions: PoolDimensions,
-  foilSubtype?: FoilSubtype | null
+  foilSubtype?: FoilSubtype | null,
+  priority: OptimizationPriority = 'minWaste'
 ): SurfaceDetailedResult[] {
   const results: SurfaceDetailedResult[] = [];
   const defs = getSurfaceDefinitions(dimensions, foilSubtype);
-  const rolls = packStripsIntoRolls(config, dimensions);
+  const rolls = packStripsIntoRolls(config, dimensions, foilSubtype, priority);
 
   const rollBySurfaceStrip = new Map<string, number>();
   for (const r of rolls) {
@@ -989,53 +990,29 @@ export function calculateSurfaceDetails(
       // Technical constraint: for depth <= 1.55m, 1.65m roll is sufficient and preferred
       // However, for roll pairing optimization, we can use 2.05m if it reduces total rolls
       
-      if (depth <= DEPTH_THRESHOLD_FOR_WIDE) {
-        // Shallow pool: prefer 1.65m for walls, but allow 2.05m for the longest walls if it helps pairing
-        // For 10x5 pool with depth 1.5m: walls are 10+5+10+5 = 30m
-        // With 1×2.05 bottom and 2×1.65 bottom, we have 15m offcuts from each
-        // Best pairing: 15m (1.65 offcut) + 10m wall = 25m roll
-        // So walls of 10m should use 1.65m, walls of 5m can use either
-        
-        // Assign: prioritize matching bottom offcut widths
-        // Bottom 10m strips leave 15m offcuts - pair with walls
+      // ONLY use mixed wall widths for minRolls priority; minWaste uses depth-based uniform width
+      if (priority === 'minRolls') {
+        // Shallow pool with minRolls: allow mixed widths for pairing with bottom strips
         const bottomStripLength = bottomSurface?.stripLength ?? 10;
         const bottomOffcutLength = ROLL_LENGTH - bottomStripLength;
         
-        // Walls that fit with bottom offcut (offcut + wall <= 25m)
         for (const wall of sortedWalls) {
           const fitsWithOffcut = wall.length <= bottomOffcutLength + 0.1;
           
           if (fitsWithOffcut) {
-            // This wall can pair with a bottom strip offcut
-            // Prefer the width that has more available bottom strips
             if (wideBottomStrips > 0 && wall.length <= bottomOffcutLength) {
               assignedWidths[wall.idx] = ROLL_WIDTH_WIDE;
               wideBottomStrips--;
             } else if (narrowBottomStrips > 0) {
               assignedWidths[wall.idx] = ROLL_WIDTH_NARROW;
               narrowBottomStrips--;
-            } else {
-              // No matching bottom strips left, use depth-based preference
-              assignedWidths[wall.idx] = fallbackWidth;
             }
-          } else {
-            // Wall is too long for pairing - use depth-based width
-            assignedWidths[wall.idx] = fallbackWidth;
           }
         }
-        
-        wallWidthsForSegments.push(...assignedWidths);
-      } else if (depth <= DEPTH_THRESHOLD_FOR_DOUBLE_NARROW) {
-        // Medium depth: use 2.05m for all walls
-        for (let i = 0; i < walls.length; i++) {
-          wallWidthsForSegments.push(ROLL_WIDTH_WIDE);
-        }
-      } else {
-        // Deep pool: use 1.65m (will need 2 strips stacked per wall)
-        for (let i = 0; i < walls.length; i++) {
-          wallWidthsForSegments.push(ROLL_WIDTH_NARROW);
-        }
       }
+      // For minWaste, all walls use fallbackWidth (depth-based) - already set above
+      
+      wallWidthsForSegments.push(...assignedWidths);
     }
     
     // ===== 2. HORIZONTAL OVERLAP CALCULATION (top/bottom) =====
@@ -1245,9 +1222,11 @@ export function getReusableOffcuts(config: MixConfiguration): ReusableOffcut[] {
 /** Dimensions-aware reusable offcuts (preferred). */
 export function getReusableOffcutsWithDimensions(
   config: MixConfiguration,
-  dimensions: PoolDimensions
+  dimensions: PoolDimensions,
+  foilSubtype?: FoilSubtype | null,
+  priority: OptimizationPriority = 'minWaste'
 ): ReusableOffcut[] {
-  const rolls = packStripsIntoRolls(config, dimensions);
+  const rolls = packStripsIntoRolls(config, dimensions, foilSubtype, priority);
   const offcuts: ReusableOffcut[] = [];
 
   for (const roll of rolls) {
@@ -1566,7 +1545,8 @@ export function updateSurfaceRollWidth(
 export function packStripsIntoRolls(
   config: MixConfiguration,
   dimensions?: PoolDimensions,
-  foilSubtype?: FoilSubtype | null
+  foilSubtype?: FoilSubtype | null,
+  priority: OptimizationPriority = 'minWaste'
 ): RollAllocation[] {
   interface StripToPack {
     surface: string;
@@ -1633,7 +1613,8 @@ export function packStripsIntoRolls(
     
     const assignedWidths: RollWidth[] = new Array(walls.length).fill(fallbackWidth);
     
-    if (!narrowOnly && depth <= DEPTH_THRESHOLD_FOR_WIDE) {
+    // ONLY use mixed wall widths for minRolls priority; minWaste uses depth-based uniform width
+    if (priority === 'minRolls' && !narrowOnly && depth <= DEPTH_THRESHOLD_FOR_WIDE) {
       for (const wall of sortedWalls) {
         const fitsWithOffcut = wall.length <= bottomOffcutLength + 0.1;
         
@@ -1647,7 +1628,7 @@ export function packStripsIntoRolls(
           }
         }
       }
-    } else if (!narrowOnly && depth <= DEPTH_THRESHOLD_FOR_DOUBLE_NARROW) {
+    } else if (!narrowOnly && depth > DEPTH_THRESHOLD_FOR_WIDE && depth <= DEPTH_THRESHOLD_FOR_DOUBLE_NARROW) {
       for (let i = 0; i < walls.length; i++) {
         assignedWidths[i] = ROLL_WIDTH_WIDE;
       }
