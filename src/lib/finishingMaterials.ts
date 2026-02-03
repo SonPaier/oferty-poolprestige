@@ -170,8 +170,8 @@ export function calculatePoolAreas(dimensions: {
   const wallArea = perimeter * avgDepth;
   
   // === STAIRS ===
-  // stairsProjection = floor footprint (width × total depth) - to subtract from main bottom
-  // stairsArea = actual foil needed (treads + risers)
+  // stairsProjection = floor footprint (width × stepDepth × stepCount) - to subtract from main bottom
+  // stairsArea = actual foil needed (ONLY treads/footprint - risers are NOT covered with anti-slip foil)
   let stairsArea = 0;
   let stairsProjection = 0;
   if (stairs?.enabled) {
@@ -180,15 +180,13 @@ export function calculatePoolAreas(dimensions: {
       : (stairs.width === 'full' ? (stairs.direction === 'along-length' ? length : width) : 1.5);
     const stepCount = stairs.stepCount || 4;
     const stepDepth = stairs.stepDepth || 0.30;
-    const stepHeight = stairs.stepHeight || (depth / (stepCount + 1));
     
-    // Projection = floor area occupied by stairs block
+    // Projection = floor area occupied by stairs block (same as foil footprint)
     stairsProjection = stairsWidth * stepDepth * stepCount;
     
-    // Foil area = treads (horizontal) + risers (vertical)
-    const treadsArea = stairsWidth * stepDepth * stepCount;
-    const risersArea = stairsWidth * stepHeight * stepCount;
-    stairsArea = treadsArea + risersArea;
+    // Foil area = ONLY treads (horizontal footprint) - NO risers
+    // This is net surface area, actual material needed is calculated in mixPlanner
+    stairsArea = stairsProjection; // Same as footprint
   }
   
   // === WADING POOL ===
