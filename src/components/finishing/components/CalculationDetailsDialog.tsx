@@ -202,14 +202,10 @@ export function CalculationDetailsDialog({
                       Folia główna ({SUBTYPE_NAMES[foilSubtype]})
                     </span>
                   </div>
-                  <div className="grid grid-cols-4 gap-4 text-center">
+                  <div className="grid grid-cols-3 gap-4 text-center">
                     <div>
                       <div className="text-xl font-bold">{mainFoilQty} m²</div>
                       <div className="text-xs text-muted-foreground">Ilość folii</div>
-                    </div>
-                    <div>
-                      <div className="text-xl font-bold">{pricingResult.mainWeldArea.toFixed(1)} m²</div>
-                      <div className="text-xs text-muted-foreground">w tym zakład</div>
                     </div>
                     <div>
                       <div className="text-xl font-bold">{formatPrice(foilPricePerM2)} zł</div>
@@ -232,14 +228,10 @@ export function CalculationDetailsDialog({
                         Folia strukturalna (schody + brodzik)
                       </span>
                     </div>
-                    <div className="grid grid-cols-4 gap-4 text-center">
+                    <div className="grid grid-cols-3 gap-4 text-center">
                       <div>
                         <div className="text-xl font-bold">{structuralFoilQty} m²</div>
                         <div className="text-xs text-muted-foreground">Ilość folii</div>
-                      </div>
-                      <div>
-                        <div className="text-xl font-bold">{pricingResult.structuralWeldArea.toFixed(1)} m²</div>
-                        <div className="text-xs text-muted-foreground">w tym zakład</div>
                       </div>
                       <div>
                         <div className="text-xl font-bold">{formatPrice(210)} zł</div>
