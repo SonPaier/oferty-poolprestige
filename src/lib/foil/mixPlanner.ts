@@ -653,17 +653,18 @@ export function calculateSurfaceDetails(
   if (wallSurfaces.length > 0) {
     const walls = getWallSegments(dimensions);
     const perimeter = walls.reduce((sum, w) => sum + w.length, 0);
-    const depth = dimensions.depth + FOLD_AT_BOTTOM;
+    const coverHeight = dimensions.depth + FOLD_AT_BOTTOM;
     
-    // Optimal width based on wall depth
-    const wallRollWidth = depth <= 1.50 ? ROLL_WIDTH_NARROW : ROLL_WIDTH_WIDE;
+    // Use narrow (1.65m) if it can cover the height, otherwise use wide (2.05m)
+    // Rule: height <= 1.65m → 1.65m roll; height > 1.65m → 2.05m roll
+    const wallRollWidth = coverHeight <= ROLL_WIDTH_NARROW ? ROLL_WIDTH_NARROW : ROLL_WIDTH_WIDE;
     
     // One continuous strip covers entire perimeter + overlap for joining ends
     const joinOverlap = MIN_OVERLAP_WALL; // 10cm for joining ends
     const stripLength = perimeter + joinOverlap; // e.g., 24m + 0.1m = 24.1m
     
     // Calculate cover area and total foil area
-    const coverArea = perimeter * depth; // Net area to cover
+    const coverArea = perimeter * coverHeight; // Net area to cover
     const totalFoilAreaRaw = stripLength * wallRollWidth; // Full material used
     const weldArea = joinOverlap * wallRollWidth; // Only the joining overlap
     
