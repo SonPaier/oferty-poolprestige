@@ -949,12 +949,37 @@ export function calculateSurfaceDetails(
         const overlapsCount = Math.max(0, calc.count - 1);
         weldArea = overlapsCount * calc.actualOverlap * def.stripLength;
         wasteArea = Math.max(0, totalFoilAreaRaw - coverArea - weldArea);
-        strips = [{
-          count: surface.stripCount,
-          rollWidth: surface.rollWidth,
-          stripLength: surface.stripLength,
-          rollNumber: getRollNumbersForSurface(bottomLabel)[0],
-        }];
+        
+        // Group by roll number even for single-width configuration
+        const perRoll: Array<{ rollNumber: number; rollWidth: RollWidth; count: number }> = [];
+        for (const r of rolls) {
+          const bottomStripsInRoll = r.strips.filter((s) => s.surface === bottomLabel);
+          if (bottomStripsInRoll.length === 0) continue;
+          perRoll.push({
+            rollNumber: r.rollNumber,
+            rollWidth: r.rollWidth,
+            count: bottomStripsInRoll.length,
+          });
+        }
+        
+        perRoll.sort((a, b) => {
+          if (a.rollWidth !== b.rollWidth) return b.rollWidth - a.rollWidth;
+          return a.rollNumber - b.rollNumber;
+        });
+        
+        strips = perRoll.length > 0 
+          ? perRoll.map((p) => ({
+              count: p.count,
+              rollWidth: p.rollWidth,
+              stripLength: surface.stripLength,
+              rollNumber: p.rollNumber,
+            }))
+          : [{
+              count: surface.stripCount,
+              rollWidth: surface.rollWidth,
+              stripLength: surface.stripLength,
+              rollNumber: getRollNumbersForSurface(bottomLabel)[0],
+            }];
       }
 
       // Add roll-end waste to total foil area (we need to order it)
