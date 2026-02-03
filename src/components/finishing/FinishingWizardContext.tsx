@@ -5,7 +5,8 @@ import {
   CalculatedMaterial, 
   calculateMaterials, 
   calculatePoolAreas,
-  getFoilLineItem 
+  getFoilLineItems,
+  FoilLineItem,
 } from '@/lib/finishingMaterials';
 import { useConfigurator } from '@/context/ConfiguratorContext';
 import { autoOptimizeMixConfig, calculateFoilAreaForPricing } from '@/lib/foil/mixPlanner';
@@ -217,7 +218,8 @@ interface FinishingWizardContextType {
   state: FinishingWizardState;
   dispatch: React.Dispatch<FinishingWizardAction>;
   // Computed values
-  foilLineItem: ReturnType<typeof getFoilLineItem> | null;
+  foilLineItem: FoilLineItem | null;
+  structuralFoilLineItem: FoilLineItem | null;
   totalNet: number;
   canProceed: boolean;
 }
@@ -291,24 +293,32 @@ export function FinishingWizardProvider({
     configuratorState.dimensions.wadingPool?.enabled,
   ]);
 
-  // Computed: foil line item
-  const foilLineItem = useMemo(() => {
-    if (!state.selectedSubtype) return null;
+  // Computed: foil line items (main + structural)
+  const { foilLineItem, structuralFoilLineItem } = useMemo(() => {
+    if (!state.selectedSubtype) return { foilLineItem: null, structuralFoilLineItem: null };
 
     const autoConfig = autoOptimizeMixConfig(configuratorState.dimensions, state.selectedSubtype);
-    const autoFoilQty = calculateFoilAreaForPricing(
+    const pricingResult = calculateFoilAreaForPricing(
       autoConfig,
       configuratorState.dimensions,
       state.selectedSubtype
     );
 
-    const foilQty = state.manualFoilQty ?? autoFoilQty;
-    return getFoilLineItem(
+    const mainArea = state.manualFoilQty ?? pricingResult.mainFoilArea;
+    const structuralArea = pricingResult.structuralFoilArea;
+
+    const items = getFoilLineItems(
       state.selectedSubtype,
-      foilQty,
+      mainArea,
+      structuralArea,
       state.subtypePrices[state.selectedSubtype],
       state.selectedProductName
     );
+
+    return { 
+      foilLineItem: items.main, 
+      structuralFoilLineItem: items.structural,
+    };
   }, [
     state.selectedSubtype,
     state.manualFoilQty,
@@ -325,13 +335,13 @@ export function FinishingWizardProvider({
 
   // Computed: total net price
   const totalNet = useMemo(() => {
-    if (!foilLineItem) return 0;
+    const foilTotal = (foilLineItem?.total ?? 0) + (structuralFoilLineItem?.total ?? 0);
     const materialsTotal = state.materials.reduce((sum, m) => {
       const qty = m.manualQty ?? m.suggestedQty;
       return sum + qty * m.pricePerUnit;
     }, 0);
-    return foilLineItem.total + materialsTotal;
-  }, [foilLineItem, state.materials]);
+    return foilTotal + materialsTotal;
+  }, [foilLineItem, structuralFoilLineItem, state.materials]);
 
   // Can proceed to next step
   const canProceed = useMemo(() => {
@@ -343,10 +353,11 @@ export function FinishingWizardProvider({
       state,
       dispatch,
       foilLineItem,
+      structuralFoilLineItem,
       totalNet,
       canProceed,
     }),
-    [state, foilLineItem, totalNet, canProceed]
+    [state, foilLineItem, structuralFoilLineItem, totalNet, canProceed]
   );
 
   return (

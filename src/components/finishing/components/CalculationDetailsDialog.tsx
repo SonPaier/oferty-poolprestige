@@ -52,13 +52,16 @@ export function CalculationDetailsDialog({
     setMixConfig(autoOptimizeMixConfig(dimensions, foilSubtype));
   }, [foilSubtype, dimensions]);
 
-  const calculatedFoilQty = useMemo(
+  const pricingResult = useMemo(
     () => calculateFoilAreaForPricing(mixConfig, dimensions, foilSubtype),
     [mixConfig, dimensions, foilSubtype]
   );
 
-  const foilQty = manualFoilQty ?? calculatedFoilQty;
-  const foilTotal = foilQty * foilPricePerM2;
+  // For unified structural foil, use totalArea; otherwise main + structural shown separately
+  const mainFoilQty = manualFoilQty ?? pricingResult.mainFoilArea;
+  const structuralFoilQty = pricingResult.structuralFoilArea;
+  const totalFoilQty = manualFoilQty ?? pricingResult.totalArea;
+  const foilTotal = mainFoilQty * foilPricePerM2;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -163,30 +166,77 @@ export function CalculationDetailsDialog({
               </div>
             </section>
 
-            {/* Foil calculation */}
+            {/* Foil calculation - separated by type */}
             {foilSubtype && (
               <section>
-                <h3 className="font-semibold text-lg mb-3">🎨 Folia {SUBTYPE_NAMES[foilSubtype]}</h3>
-                <div className="p-4 rounded-lg border bg-muted/30">
+                <h3 className="font-semibold text-lg mb-3">🎨 Wycena folii</h3>
+                
+                {/* Main foil */}
+                <div className="p-4 rounded-lg border bg-blue-50/50 dark:bg-blue-900/10 mb-3">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="font-medium text-blue-700 dark:text-blue-300">
+                      Folia główna ({SUBTYPE_NAMES[foilSubtype]})
+                    </span>
+                  </div>
                   <div className="grid grid-cols-3 gap-4 text-center">
                     <div>
-                      <div className="text-2xl font-bold">{foilQty.toFixed(2)} m²</div>
-                      <div className="text-sm text-muted-foreground">
-                        Ilość folii
-                        {manualFoilQty && (
-                          <span className="ml-1 text-xs text-amber-600">(ręcznie)</span>
-                        )}
+                      <div className="text-xl font-bold">{mainFoilQty.toFixed(2)} m²</div>
+                      <div className="text-xs text-muted-foreground">Ilość folii</div>
+                    </div>
+                    <div>
+                      <div className="text-xl font-bold">{formatPrice(foilPricePerM2)} zł</div>
+                      <div className="text-xs text-muted-foreground">Cena za m²</div>
+                    </div>
+                    <div>
+                      <div className="text-xl font-bold text-blue-600 dark:text-blue-400">
+                        {formatPrice(mainFoilQty * foilPricePerM2)} zł
                       </div>
-                    </div>
-                    <div>
-                      <div className="text-2xl font-bold">{formatPrice(foilPricePerM2)} zł</div>
-                      <div className="text-sm text-muted-foreground">Cena za m²</div>
-                    </div>
-                    <div>
-                      <div className="text-2xl font-bold text-primary">{formatPrice(foilTotal)} zł</div>
-                      <div className="text-sm text-muted-foreground">Razem folia</div>
+                      <div className="text-xs text-muted-foreground">Razem</div>
                     </div>
                   </div>
+                </div>
+
+                {/* Structural foil (only if present) */}
+                {structuralFoilQty > 0 && foilSubtype !== 'strukturalna' && (
+                  <div className="p-4 rounded-lg border bg-amber-50/50 dark:bg-amber-900/10 mb-3">
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="font-medium text-amber-700 dark:text-amber-300">
+                        Folia strukturalna (schody + brodzik)
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-3 gap-4 text-center">
+                      <div>
+                        <div className="text-xl font-bold">{structuralFoilQty.toFixed(2)} m²</div>
+                        <div className="text-xs text-muted-foreground">Ilość folii</div>
+                      </div>
+                      <div>
+                        <div className="text-xl font-bold">{formatPrice(210)} zł</div>
+                        <div className="text-xs text-muted-foreground">Cena za m²</div>
+                      </div>
+                      <div>
+                        <div className="text-xl font-bold text-amber-600 dark:text-amber-400">
+                          {formatPrice(structuralFoilQty * 210)} zł
+                        </div>
+                        <div className="text-xs text-muted-foreground">Razem</div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Total */}
+                <div className="p-4 rounded-lg border bg-primary/10">
+                  <div className="flex justify-between items-center">
+                    <span className="font-semibold">Razem folia:</span>
+                    <span className="text-2xl font-bold text-primary">
+                      {formatPrice(
+                        mainFoilQty * foilPricePerM2 + 
+                        (foilSubtype !== 'strukturalna' ? structuralFoilQty * 210 : 0)
+                      )} zł
+                    </span>
+                  </div>
+                  {manualFoilQty && (
+                    <div className="text-xs text-amber-600 mt-1">(ilość główna ustawiona ręcznie)</div>
+                  )}
                 </div>
               </section>
             )}
@@ -197,7 +247,9 @@ export function CalculationDetailsDialog({
               <RollSummary 
                 config={mixConfig} 
                 isMainFoilStructural={foilSubtype === 'strukturalna'} 
-                foilAreaForPricing={foilQty}
+                mainFoilAreaForPricing={mainFoilQty}
+                structuralFoilAreaForPricing={structuralFoilQty}
+                foilAreaForPricing={totalFoilQty}
               />
             </section>
 

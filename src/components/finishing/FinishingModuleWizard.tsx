@@ -18,7 +18,7 @@ interface FinishingModuleWizardProps {
 }
 
 function WizardContent({ onNext, onBack }: FinishingModuleWizardProps) {
-  const { state, dispatch, foilLineItem, totalNet, canProceed } = useFinishingWizard();
+  const { state, dispatch, foilLineItem, structuralFoilLineItem, totalNet, canProceed } = useFinishingWizard();
   const { state: configuratorState } = useConfigurator();
   const [showDetailsDialog, setShowDetailsDialog] = useState(false);
   
@@ -179,6 +179,7 @@ function WizardContent({ onNext, onBack }: FinishingModuleWizardProps) {
             )}
             <FinishingMaterialsTable
               foilLineItem={foilLineItem}
+              structuralFoilLineItem={structuralFoilLineItem}
               materials={state.materials}
               onUpdateMaterial={handleUpdateMaterial}
               onUpdateFoilQuantity={handleUpdateFoilQuantity}

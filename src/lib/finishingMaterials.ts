@@ -243,14 +243,25 @@ export function calculateMaterialsTotal(materials: CalculatedMaterial[]): number
 }
 
 /**
- * Get foil line item for offer
+ * Foil line item structure
+ */
+export interface FoilLineItem {
+  name: string;
+  quantity: number;
+  unit: string;
+  pricePerUnit: number;
+  total: number;
+}
+
+/**
+ * Get foil line item for offer (single item)
  */
 export function getFoilLineItem(
   subtype: FoilSubtype,
   totalArea: number,
   pricePerM2: number,
   selectedProductName?: string | null
-): { name: string; quantity: number; unit: string; pricePerUnit: number; total: number } {
+): FoilLineItem {
   const name = selectedProductName 
     ? `Folia ${selectedProductName}`
     : `Folia ${SUBTYPE_NAMES[subtype].toLowerCase()} - kolor do sprecyzowania`;
@@ -262,4 +273,42 @@ export function getFoilLineItem(
     pricePerUnit: pricePerM2,
     total: Math.ceil(totalArea * pricePerM2 * 100) / 100,
   };
+}
+
+/**
+ * Get separate foil line items (main + structural)
+ */
+export function getFoilLineItems(
+  subtype: FoilSubtype,
+  mainArea: number,
+  structuralArea: number,
+  mainPricePerM2: number,
+  selectedProductName?: string | null
+): { main: FoilLineItem; structural: FoilLineItem | null } {
+  const mainName = selectedProductName 
+    ? `Folia ${selectedProductName}`
+    : `Folia ${SUBTYPE_NAMES[subtype].toLowerCase()} - kolor do sprecyzowania`;
+  
+  const main: FoilLineItem = {
+    name: mainName,
+    quantity: Math.ceil(mainArea * 100) / 100,
+    unit: 'm²',
+    pricePerUnit: mainPricePerM2,
+    total: Math.ceil(mainArea * mainPricePerM2 * 100) / 100,
+  };
+
+  // Structural foil only if area > 0 and main foil is not already structural
+  let structural: FoilLineItem | null = null;
+  if (structuralArea > 0 && subtype !== 'strukturalna') {
+    const structuralPrice = DEFAULT_SUBTYPE_PRICES['strukturalna']; // 210 zł/m²
+    structural = {
+      name: 'Folia strukturalna (schody + brodzik)',
+      quantity: Math.ceil(structuralArea * 100) / 100,
+      unit: 'm²',
+      pricePerUnit: structuralPrice,
+      total: Math.ceil(structuralArea * structuralPrice * 100) / 100,
+    };
+  }
+
+  return { main, structural };
 }

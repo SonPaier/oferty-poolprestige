@@ -13,16 +13,11 @@ import { Badge } from '@/components/ui/badge';
 import { Edit2, RotateCcw } from 'lucide-react';
 import { formatPrice } from '@/lib/calculations';
 import { cn } from '@/lib/utils';
-import { CalculatedMaterial } from '@/lib/finishingMaterials';
+import { CalculatedMaterial, FoilLineItem } from '@/lib/finishingMaterials';
 
 interface FinishingMaterialsTableProps {
-  foilLineItem: {
-    name: string;
-    quantity: number;
-    unit: string;
-    pricePerUnit: number;
-    total: number;
-  };
+  foilLineItem: FoilLineItem;
+  structuralFoilLineItem?: FoilLineItem | null;
   materials: CalculatedMaterial[];
   onUpdateMaterial: (id: string, manualQty: number | null) => void;
   onUpdateFoilQuantity: (qty: number | null) => void;
@@ -31,6 +26,7 @@ interface FinishingMaterialsTableProps {
 
 export function FinishingMaterialsTable({
   foilLineItem,
+  structuralFoilLineItem,
   materials,
   onUpdateMaterial,
   onUpdateFoilQuantity,
@@ -71,11 +67,12 @@ export function FinishingMaterialsTable({
   // Calculate totals
   const foilQty = manualFoilQty ?? foilLineItem.quantity;
   const foilTotal = foilQty * foilLineItem.pricePerUnit;
+  const structuralTotal = structuralFoilLineItem?.total ?? 0;
   const materialsTotal = materials.reduce((sum, m) => {
     const qty = m.manualQty ?? m.suggestedQty;
     return sum + qty * m.pricePerUnit;
   }, 0);
-  const grandTotal = foilTotal + materialsTotal;
+  const grandTotal = foilTotal + structuralTotal + materialsTotal;
 
   return (
     <div className="space-y-4">
@@ -161,6 +158,31 @@ export function FinishingMaterialsTable({
             </TableCell>
           </TableRow>
 
+          {/* Structural foil line item (if present) */}
+          {structuralFoilLineItem && (
+            <TableRow className="bg-amber-50/50 dark:bg-amber-900/10">
+              <TableCell>
+                <div>
+                  <p className="font-medium">{structuralFoilLineItem.name}</p>
+                  <p className="text-xs text-muted-foreground">Folia antypoślizgowa</p>
+                </div>
+              </TableCell>
+              <TableCell className="text-right">
+                {structuralFoilLineItem.quantity.toFixed(2)}
+              </TableCell>
+              <TableCell>{structuralFoilLineItem.unit}</TableCell>
+              <TableCell className="text-right">
+                {formatPrice(structuralFoilLineItem.pricePerUnit)} zł
+              </TableCell>
+              <TableCell className="text-right font-medium">
+                {formatPrice(structuralFoilLineItem.total)} zł
+              </TableCell>
+              <TableCell>
+                {/* Structural foil quantity is auto-calculated, no manual edit */}
+              </TableCell>
+            </TableRow>
+          )}
+
           {/* Other materials */}
           {materials.map((material) => {
             const qty = material.manualQty ?? material.suggestedQty;
@@ -244,11 +266,17 @@ export function FinishingMaterialsTable({
 
       {/* Totals */}
       <div className="flex justify-end">
-        <div className="w-64 space-y-2 text-sm">
+        <div className="w-72 space-y-2 text-sm">
           <div className="flex justify-between">
-            <span className="text-muted-foreground">Folia:</span>
+            <span className="text-muted-foreground">Folia główna:</span>
             <span className="font-medium">{formatPrice(foilTotal)} zł</span>
           </div>
+          {structuralFoilLineItem && (
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Folia strukturalna:</span>
+              <span className="font-medium">{formatPrice(structuralTotal)} zł</span>
+            </div>
+          )}
           <div className="flex justify-between">
             <span className="text-muted-foreground">Materiały:</span>
             <span className="font-medium">{formatPrice(materialsTotal)} zł</span>

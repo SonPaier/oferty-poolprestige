@@ -12,7 +12,11 @@ interface RollSummaryProps {
   config: MixConfiguration;
   /** Whether main foil is structural (allows merging both pools) */
   isMainFoilStructural?: boolean;
-  /** Total foil area for pricing (from poolAreas.totalArea) */
+  /** Main foil area for pricing */
+  mainFoilAreaForPricing?: number;
+  /** Structural foil area for pricing */
+  structuralFoilAreaForPricing?: number;
+  /** @deprecated Use mainFoilAreaForPricing instead */
   foilAreaForPricing?: number;
 }
 
@@ -128,7 +132,13 @@ function FoilPoolSummary({
   );
 }
 
-export function RollSummary({ config, isMainFoilStructural = false, foilAreaForPricing }: RollSummaryProps) {
+export function RollSummary({ 
+  config, 
+  isMainFoilStructural = false, 
+  mainFoilAreaForPricing,
+  structuralFoilAreaForPricing,
+  foilAreaForPricing, // legacy fallback
+}: RollSummaryProps) {
   const { main, structural } = partitionSurfacesByFoilType(config.surfaces);
   
   // Pack strips SEPARATELY for each foil type (not together!)
@@ -182,6 +192,7 @@ export function RollSummary({ config, isMainFoilStructural = false, foilAreaForP
         totalRolls205={mainRolls205}
         colorClass="bg-blue-50/50 dark:bg-blue-900/10 border-blue-200 dark:border-blue-800"
         icon={<Package className="h-5 w-5 text-blue-600 dark:text-blue-400" />}
+        displayArea={mainFoilAreaForPricing}
       />
 
       {/* Structural foil */}
@@ -193,6 +204,7 @@ export function RollSummary({ config, isMainFoilStructural = false, foilAreaForP
           totalRolls205={0}
           colorClass="bg-amber-50/50 dark:bg-amber-900/10 border-amber-200 dark:border-amber-800"
           icon={<Layers className="h-5 w-5 text-amber-600 dark:text-amber-400" />}
+          displayArea={structuralFoilAreaForPricing}
         />
       )}
     </div>
