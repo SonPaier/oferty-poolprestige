@@ -213,67 +213,113 @@ function distributeVerticalOverlap(
 /**
  * Calculate waste for a strip configuration
  */
+/**
+ * Pack wall strips into rolls (same width strips can share a roll)
+ * Returns the actual number of rolls needed and waste
+ */
+function packStripsIntoRolls(
+  strips: WallStripConfig[]
+): { rollsNeeded: number; totalWaste: number; reusableWaste: number; nonReusableWaste: number } {
+  // Group strips by width
+  const byWidth = new Map<RollWidth, WallStripConfig[]>();
+  for (const strip of strips) {
+    const existing = byWidth.get(strip.rollWidth) || [];
+    existing.push(strip);
+    byWidth.set(strip.rollWidth, existing);
+  }
+  
+  let rollsNeeded = 0;
+  let totalWaste = 0;
+  let reusableWaste = 0;
+  let nonReusableWaste = 0;
+  
+  for (const [_width, widthStrips] of byWidth) {
+    // Sort by length descending (First Fit Decreasing)
+    const sorted = [...widthStrips].sort((a, b) => b.totalLength - a.totalLength);
+    const rolls: number[] = []; // Each element is remaining space in that roll
+    
+    for (const strip of sorted) {
+      // Find first roll that can fit this strip
+      let placed = false;
+      for (let i = 0; i < rolls.length; i++) {
+        if (rolls[i] >= strip.totalLength) {
+          rolls[i] -= strip.totalLength;
+          placed = true;
+          break;
+        }
+      }
+      if (!placed) {
+        // Need a new roll
+        rolls.push(ROLL_LENGTH - strip.totalLength);
+      }
+    }
+    
+    rollsNeeded += rolls.length;
+    for (const remaining of rolls) {
+      totalWaste += remaining;
+      if (remaining >= MIN_REUSABLE_OFFCUT_LENGTH) {
+        reusableWaste += remaining;
+      } else if (remaining > 0.01) {
+        nonReusableWaste += remaining;
+      }
+    }
+  }
+  
+  return { rollsNeeded, totalWaste, reusableWaste, nonReusableWaste };
+}
+
 function calculateWasteForPlan(
   strips: WallStripConfig[],
   bottomStrips: BottomStripInfo[],
   _depth: number
-): { wasteArea: number; reusableArea: number; rollCount165: number; rollCount205: number; pairedLeftover: number } {
+): { wasteArea: number; reusableArea: number; rollCount165: number; rollCount205: number; pairedLeftover: number; actualRollsNeeded: number } {
+  // First, pack wall strips into rolls (considering that multiple strips can share a roll)
+  const packing = packStripsIntoRolls(strips);
+  
+  // Calculate area-based waste using the actual roll width
   let wasteArea = 0;
   let reusableArea = 0;
+  let pairedLeftover = 0;
+  
+  // Count rolls by width
   let rollCount165 = 0;
   let rollCount205 = 0;
-  let pairedLeftover = 0;  // How much space is wasted when pairing with bottom offcuts
-  
-  // Track which bottom strips are "used" for pairing
-  const usedBottomIndices = new Set<number>();
-  
   for (const strip of strips) {
-    const rollWaste = ROLL_LENGTH - strip.totalLength;
-    
-    // Check if this can pair with a bottom strip of same width
-    let paired = false;
+    if (strip.rollWidth === ROLL_WIDTH_NARROW) rollCount165++;
+    else rollCount205++;
+  }
+  
+  // For waste calculation, use the packed rolls info
+  // We need to convert linear waste to area (multiply by average width or dominant width)
+  const dominantWidth = strips.length > 0 ? strips[0].rollWidth : ROLL_WIDTH_NARROW;
+  wasteArea = packing.nonReusableWaste * dominantWidth;
+  reusableArea = packing.reusableWaste * dominantWidth;
+  
+  // Check if wall strips can pair with bottom offcuts (cross-surface optimization)
+  const usedBottomIndices = new Set<number>();
+  for (const strip of strips) {
     for (let bi = 0; bi < bottomStrips.length; bi++) {
       if (usedBottomIndices.has(bi)) continue;
-      
       const bottom = bottomStrips[bi];
       if (bottom.rollWidth !== strip.rollWidth) continue;
       
-      // Can they share a roll?
       if (strip.totalLength + bottom.length <= ROLL_LENGTH + 0.001) {
-        // They can pair!
-        paired = true;
         usedBottomIndices.add(bi);
-        
-        const combinedWaste = ROLL_LENGTH - strip.totalLength - bottom.length;
-        pairedLeftover += combinedWaste;  // Track leftover from pairing
-        
-        if (combinedWaste >= MIN_REUSABLE_OFFCUT_LENGTH) {
-          reusableArea += combinedWaste * strip.rollWidth;
-        } else if (combinedWaste > 0.01) {
-          wasteArea += combinedWaste * strip.rollWidth;
-        }
+        const leftover = ROLL_LENGTH - strip.totalLength - bottom.length;
+        pairedLeftover += leftover;
         break;
       }
     }
-    
-    if (!paired) {
-      // This strip needs its own roll
-      if (rollWaste >= MIN_REUSABLE_OFFCUT_LENGTH) {
-        reusableArea += rollWaste * strip.rollWidth;
-      } else if (rollWaste > 0.01) {
-        wasteArea += rollWaste * strip.rollWidth;
-      }
-    }
-    
-    // Count rolls by width
-    if (strip.rollWidth === ROLL_WIDTH_NARROW) {
-      rollCount165++;
-    } else {
-      rollCount205++;
-    }
   }
   
-  return { wasteArea, reusableArea, rollCount165, rollCount205, pairedLeftover };
+  return { 
+    wasteArea, 
+    reusableArea, 
+    rollCount165, 
+    rollCount205, 
+    pairedLeftover,
+    actualRollsNeeded: packing.rollsNeeded
+  };
 }
 
 /**
@@ -471,26 +517,30 @@ export function selectOptimalWallPlan(
   const scoredPlans = plans.map(plan => {
     let score: number;
     
-    // Recalculate waste with pairedLeftover tracking
-    const { wasteArea, pairedLeftover } = calculateWasteForPlan(plan.strips, bottomStrips, 0);
+    // Recalculate waste with proper strip packing (multiple strips can share a roll)
+    const { wasteArea, pairedLeftover, actualRollsNeeded } = calculateWasteForPlan(plan.strips, bottomStrips, 0);
     
     if (priority === 'minWaste') {
-      // 1. Minimalizuj odpad nieużyteczny
-      // 2. Minimalizuj resztki z parowania (preferuj dokładne dopasowanie do offcutów)
-      // 3. Minimalizuj liczbę pasów (= mniej rolek)
-      // 4. Mniejsza powierzchnia folii
-      score = wasteArea * 1_000_000 
-            + pairedLeftover * 10_000  // Prefer exact fits over loose fits
-            + plan.totalStripCount * 100 
+      // For minWaste, the key insight is:
+      // 1. Fewer strips = fewer welds = better quality installation
+      // 2. When multiple configurations fit in the same number of rolls,
+      //    prefer fewer strips even if waste is slightly higher
+      // 3. Non-reusable waste difference of <1m² is negligible
+      
+      // Calculate if waste difference is significant (> 1m²)
+      const wasteSignificance = wasteArea > 1 ? wasteArea * 10_000 : 0;
+      
+      score = actualRollsNeeded * 100_000_000  // Primary: minimize rolls
+            + wasteSignificance                 // Secondary: only if waste > 1m²
+            + plan.totalStripCount * 10_000     // Tertiary: minimize welds
+            + pairedLeftover * 100
             + plan.totalFoilArea * 0.01;
     } else {
       // minRolls:
       // 1. Minimalizuj dodatkową powierzchnię rolek wymaganych SPECJALNIE na ściany
-      //    (czyli preferuj takie pasy ścian, które mieszczą się w resztkach z dna).
-      // 2. Minimalizuj resztki z parowania
-      // 3. Dopiero potem minimalizuj m² folii na ściany (gdy dodatkowe rolki są równe).
       const additionalWallRollArea = estimateAdditionalWallRollArea(plan, bottomStrips);
       score = additionalWallRollArea * 1_000_000
+            + actualRollsNeeded * 100_000
             + pairedLeftover * 10_000
             + plan.totalFoilArea * 1000
             + wasteArea * 10
