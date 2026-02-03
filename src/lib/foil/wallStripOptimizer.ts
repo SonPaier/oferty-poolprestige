@@ -122,66 +122,27 @@ function getBottomStripsInfo(config: MixConfiguration): BottomStripInfo[] {
 function generateWallPartitions(wallCount: number): number[][][] {
   const partitions: number[][][] = [];
   
-  // Helper: generate all ways to split walls into k groups
-  // Each group is a contiguous range of wall indices (wrapping around)
-  function generateKPartitions(k: number): number[][][] {
-    if (k === 1) {
-      // Single group with all walls
-      return [[Array.from({ length: wallCount }, (_, i) => i)]];
-    }
-    
-    if (k === wallCount) {
-      // Each wall in its own group
-      return [Array.from({ length: wallCount }, (_, i) => [i])];
-    }
-    
-    const result: number[][][] = [];
-    
-    // For k groups, we need to choose k-1 split points among wallCount positions
-    // Each split creates a new group
-    function generateSplits(startWall: number, remaining: number, current: number[][]): void {
-      if (remaining === 0) {
-        // Last group gets all remaining walls
-        const lastGroup: number[] = [];
-        for (let i = startWall; i < wallCount; i++) {
-          lastGroup.push(i);
-        }
-        // Also wrap around to include walls before the first split
-        for (let i = 0; i < current[0][0]; i++) {
-          lastGroup.push(i);
-        }
-        if (lastGroup.length > 0) {
-          result.push([...current, lastGroup]);
-        }
-        return;
-      }
-      
-      // For remaining groups, try all valid end positions
-      const minWallsPerGroup = 1;
-      const maxEndWall = wallCount - remaining * minWallsPerGroup;
-      
-      for (let endWall = startWall + minWallsPerGroup - 1; endWall < maxEndWall; endWall++) {
-        const group: number[] = [];
-        for (let i = startWall; i <= endWall; i++) {
-          group.push(i);
-        }
-        generateSplits(endWall + 1, remaining - 1, [...current, group]);
-      }
-    }
-    
-    // Start from wall 0, need k-1 more splits after the first group
-    for (let firstGroupEnd = 0; firstGroupEnd < wallCount - k + 1; firstGroupEnd++) {
-      const firstGroup = Array.from({ length: firstGroupEnd + 1 }, (_, i) => i);
-      generateSplits(firstGroupEnd + 1, k - 1, [firstGroup]);
-    }
-    
-    return result;
+  // 1 grupa: wszystkie ściany razem
+  partitions.push([Array.from({ length: wallCount }, (_, i) => i)]);
+  
+  // wallCount grup: każda ściana osobno
+  partitions.push(Array.from({ length: wallCount }, (_, i) => [i]));
+  
+  // 2 grupy: wszystkie możliwe podziały na dwie ciągłe części
+  for (let splitPoint = 1; splitPoint < wallCount; splitPoint++) {
+    const group1 = Array.from({ length: splitPoint }, (_, i) => i);
+    const group2 = Array.from({ length: wallCount - splitPoint }, (_, i) => i + splitPoint);
+    partitions.push([group1, group2]);
   }
   
-  // Generate partitions for 1, 2, 3, 4 strips
-  for (let k = 1; k <= wallCount; k++) {
-    const kPartitions = generateKPartitions(k);
-    partitions.push(...kPartitions);
+  // 3 grupy: wszystkie możliwe podziały na trzy ciągłe części
+  for (let split1 = 1; split1 < wallCount - 1; split1++) {
+    for (let split2 = split1 + 1; split2 < wallCount; split2++) {
+      const group1 = Array.from({ length: split1 }, (_, i) => i);
+      const group2 = Array.from({ length: split2 - split1 }, (_, i) => i + split1);
+      const group3 = Array.from({ length: wallCount - split2 }, (_, i) => i + split2);
+      partitions.push([group1, group2, group3]);
+    }
   }
   
   return partitions;
@@ -211,82 +172,42 @@ function calculateTotalVerticalOverlap(stripCount: number): number {
  * (e.g., strips that would leave reusable offcuts when paired with bottom)
  */
 function distributeVerticalOverlap(
-  strips: Array<{ wallIndices: number[]; baseLength: number }>,
-  totalOverlap: number,
-  bottomStrips: BottomStripInfo[],
-  availableWidths: RollWidth[]
+  strips: Array<{ wallIndices: number[]; baseLength: number; rollWidth: RollWidth }>,
+  _totalOverlap: number,
+  _bottomStrips: BottomStripInfo[],
+  _availableWidths: RollWidth[]
 ): number[] {
   const stripCount = strips.length;
   if (stripCount === 0) return [];
-  if (stripCount === 1) return [totalOverlap];
+  if (stripCount === 1) return [_totalOverlap];
   
-  // Default: even distribution
-  const baseOverlapPerStrip = totalOverlap / stripCount;
-  const overlaps = new Array(stripCount).fill(baseOverlapPerStrip);
+  const overlapsPerStrip = new Array(stripCount).fill(0);
+  const overlapPerJoin = DEFAULT_VERTICAL_JOIN_OVERLAP; // 0.1m
   
-  // Try to optimize: move overlap to strips where it helps
-  // A strip benefits from more overlap if:
-  // 1. Its base length + extra overlap still fits in a roll
-  // 2. It creates a better pairing opportunity with bottom offcuts
-  
-  const bottomOffcutLengths = bottomStrips
-    .filter(b => availableWidths.includes(b.rollWidth))
-    .map(b => b.offcutLength)
-    .filter(len => len >= MIN_REUSABLE_OFFCUT_LENGTH);
-  
-  if (bottomOffcutLengths.length === 0) {
-    // No pairing opportunities, use even distribution
-    return overlaps;
-  }
-  
-  // Sort strips by base length (ascending) - shorter strips can absorb more overlap
-  const sortedIndices = strips
-    .map((s, i) => ({ index: i, baseLength: s.baseLength }))
-    .sort((a, b) => a.baseLength - b.baseLength);
-  
-  // Try to push overlap to shorter strips
-  let remainingOverlap = totalOverlap;
-  const assignedOverlaps = new Array(stripCount).fill(0);
-  
-  for (const { index, baseLength } of sortedIndices) {
-    // How much overlap can this strip absorb?
-    const maxOverlap = Math.min(
-      MAX_VERTICAL_JOIN_OVERLAP * 2,  // Don't exceed reasonable max
-      ROLL_LENGTH - baseLength,        // Must fit in roll
-      remainingOverlap                 // Can't assign more than remaining
-    );
+  // Dla każdego łączenia (cyklicznie)
+  for (let i = 0; i < stripCount; i++) {
+    const idx1 = i;
+    const idx2 = (i + 1) % stripCount;
     
-    // Try to find a good pairing with bottom offcuts
-    let bestOverlap = MIN_VERTICAL_JOIN_OVERLAP;
+    const strip1 = strips[idx1];
+    const strip2 = strips[idx2];
     
-    for (const offcutLen of bottomOffcutLengths) {
-      // If baseLength + overlap ≈ offcutLen, we can pair them
-      const idealOverlap = offcutLen - baseLength;
-      if (idealOverlap >= MIN_VERTICAL_JOIN_OVERLAP && idealOverlap <= maxOverlap) {
-        bestOverlap = Math.max(bestOverlap, idealOverlap);
-      }
+    // Przypisz zakład do tańszego pasa (węższa rolka = tańsza)
+    // Przy równych szerokościach - do dłuższego pasa
+    let targetIdx: number;
+    
+    if (strip1.rollWidth !== strip2.rollWidth) {
+      // Różne szerokości - zakład do węższego (tańszego)
+      targetIdx = strip1.rollWidth < strip2.rollWidth ? idx1 : idx2;
+    } else {
+      // Ta sama szerokość - zakład do dłuższego
+      targetIdx = strip1.baseLength >= strip2.baseLength ? idx1 : idx2;
     }
     
-    // Ensure we have at least minimum overlap
-    const assignedOverlap = Math.max(MIN_VERTICAL_JOIN_OVERLAP, Math.min(maxOverlap, bestOverlap));
-    assignedOverlaps[index] = assignedOverlap;
-    remainingOverlap -= assignedOverlap;
+    overlapsPerStrip[targetIdx] += overlapPerJoin;
   }
   
-  // If we have remaining overlap, distribute it evenly
-  if (remainingOverlap > 0.01) {
-    const extraPerStrip = remainingOverlap / stripCount;
-    for (let i = 0; i < stripCount; i++) {
-      // Only add if it still fits in roll
-      const newOverlap = assignedOverlaps[i] + extraPerStrip;
-      const stripLen = strips[i].baseLength + newOverlap;
-      if (fitsInRoll(stripLen)) {
-        assignedOverlaps[i] = newOverlap;
-      }
-    }
-  }
-  
-  return assignedOverlaps;
+  return overlapsPerStrip;
 }
 
 /**
@@ -381,26 +302,15 @@ function buildWallStripPlan(
     }
   }
   
-  // Distribute vertical overlap optimally
-  const overlaps = distributeVerticalOverlap(
-    basicStrips,
-    totalVerticalOverlap,
-    bottomStrips,
-    availableWidths
-  );
-  
-  // Assign roll widths to each strip
+  // First assign roll widths to each strip (before distributing overlaps)
   // Strategy: use preferred width unless pairing benefits from different width
-  const strips: WallStripConfig[] = basicStrips.map((strip, i) => {
-    const totalLength = strip.baseLength + overlaps[i];
-    
-    // Choose width: prefer matching bottom offcuts if possible
+  const stripsWithWidths = basicStrips.map((strip) => {
     let bestWidth = preferredWidth;
     if (availableWidths.length > 1) {
-      // Check if any width gives better pairing
+      // Check if any width gives better pairing with bottom offcuts
       for (const width of availableWidths) {
         const matchingOffcuts = bottomStrips.filter(
-          b => b.rollWidth === width && b.offcutLength >= totalLength - 0.1
+          b => b.rollWidth === width && b.offcutLength >= strip.baseLength - 0.1
         );
         if (matchingOffcuts.length > 0) {
           bestWidth = width;
@@ -408,6 +318,20 @@ function buildWallStripPlan(
         }
       }
     }
+    return { ...strip, rollWidth: bestWidth };
+  });
+  
+  // Distribute vertical overlap optimally (now with rollWidth info)
+  const overlaps = distributeVerticalOverlap(
+    stripsWithWidths,
+    totalVerticalOverlap,
+    bottomStrips,
+    availableWidths
+  );
+  
+  // Build final strip configs with overlaps applied
+  const strips: WallStripConfig[] = stripsWithWidths.map((strip, i) => {
+    const totalLength = strip.baseLength + overlaps[i];
     
     return {
       wallLabels: strip.wallLabels,
@@ -415,7 +339,7 @@ function buildWallStripPlan(
       baseLength: strip.baseLength,
       verticalOverlap: overlaps[i],
       totalLength: Math.round(totalLength * 10) / 10,
-      rollWidth: bestWidth,
+      rollWidth: strip.rollWidth,
     };
   });
   
@@ -494,29 +418,30 @@ export function selectOptimalWallPlan(
 ): WallStripPlan | null {
   if (plans.length === 0) return null;
   
-  // Score each plan based on priority
   const scoredPlans = plans.map(plan => {
     let score: number;
     
     if (priority === 'minWaste') {
-      // Primary: minimize waste area
-      // Secondary: fewer strips (simpler installation)
-      // Tertiary: less total foil area
-      score = plan.wasteArea * 1000 + plan.totalStripCount * 10 + plan.totalFoilArea * 0.01;
+      // 1. Minimalizuj odpad
+      // 2. Minimalizuj liczbę pasów (= mniej rolek)
+      // 3. Mniejsza powierzchnia folii
+      score = plan.wasteArea * 100000 
+            + plan.totalStripCount * 1000 
+            + plan.totalFoilArea * 0.01;
     } else {
-      // minRolls: minimize total m² of foil to order
-      // Primary: minimize total foil area (fewer/smaller rolls)
-      // Secondary: minimize waste (better utilization)
-      // Tertiary: fewer strips
-      score = plan.totalFoilArea * 100 + plan.wasteArea * 10 + plan.totalStripCount;
+      // minRolls:
+      // 1. Minimalizuj całkowite m² folii
+      // 2. Minimalizuj odpad
+      // 3. Mniej pasów = prostsza instalacja
+      score = plan.totalFoilArea * 1000 
+            + plan.wasteArea * 10 
+            + plan.totalStripCount;
     }
     
     return { ...plan, score };
   });
   
-  // Sort by score (ascending = better)
   scoredPlans.sort((a, b) => a.score - b.score);
-  
   return scoredPlans[0];
 }
 
