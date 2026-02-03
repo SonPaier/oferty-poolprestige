@@ -30,6 +30,11 @@ export const MIN_OVERLAP_WALL = 0.10;
 export const FOLD_AT_BOTTOM = 0.15;
 export const BUTT_JOINT_OVERLAP = 0; // Structural foil uses butt joint (no overlap)
 
+// Wall overlap thresholds (for horizontal top/bottom overlaps)
+export const DEPTH_THRESHOLD_FOR_WIDE = 1.55; // Depth threshold for using 2.05m roll on walls
+export const MIN_HORIZONTAL_OVERLAP = 0.05;   // Min 5cm for top/bottom weld
+export const MAX_HORIZONTAL_OVERLAP = 0.10;   // Max 10cm for top/bottom weld
+
 export type RollWidth = typeof ROLL_WIDTH_NARROW | typeof ROLL_WIDTH_WIDE;
 
 /**
@@ -642,10 +647,10 @@ export function assignWallLabelsToStrips(
 ): WallStripInfo[] {
   const walls = getWallSegments(dimensions);
   const perimeter = walls.reduce((sum, w) => sum + w.length, 0);
-  const depth = dimensions.depth + FOLD_AT_BOTTOM;
+  const depth = dimensions.depth;
   
-  // Determine optimal roll width for wall strips
-  const rollWidth = depth <= 1.50 ? ROLL_WIDTH_NARROW : ROLL_WIDTH_WIDE;
+  // Determine optimal roll width for wall strips (use new threshold)
+  const rollWidth = depth <= DEPTH_THRESHOLD_FOR_WIDE ? ROLL_WIDTH_NARROW : ROLL_WIDTH_WIDE;
   
   const strips: WallStripInfo[] = [];
   let remainingLength = perimeter;
@@ -782,41 +787,63 @@ export function calculateSurfaceDetails(
   if (wallSurfaces.length > 0) {
     const walls = getWallSegments(dimensions);
     const perimeter = walls.reduce((sum, w) => sum + w.length, 0);
-    const coverHeight = dimensions.depth + FOLD_AT_BOTTOM;
+    const depth = dimensions.depth;
     
-    // Use narrow (1.65m) if it can cover the height, otherwise use wide (2.05m)
-    const wallRollWidth = coverHeight <= ROLL_WIDTH_NARROW ? ROLL_WIDTH_NARROW : ROLL_WIDTH_WIDE;
+    // ===== 1. ROLL WIDTH SELECTION =====
+    // Use narrow (1.65m) if depth <= 1.55m, otherwise use wide (2.05m)
+    const wallRollWidth = depth <= DEPTH_THRESHOLD_FOR_WIDE ? ROLL_WIDTH_NARROW : ROLL_WIDTH_WIDE;
     
-    // Calculate how many strips we need based on roll length
-    const stripJoinOverlap = MIN_OVERLAP_WALL; // 10cm for joining strip ends
-    const totalLengthNeeded = perimeter + stripJoinOverlap; // Include joining overlap
+    // ===== 2. HORIZONTAL OVERLAP CALCULATION (top/bottom) =====
+    // Calculate foil overhang beyond pool depth
+    const foilOverhang = wallRollWidth - depth;
+    const overlapPerSide = foilOverhang / 2;
     
-    // Number of strips needed (each strip can be at most ROLL_LENGTH)
-    const stripCount = Math.ceil(totalLengthNeeded / ROLL_LENGTH);
+    let actualTopBottomOverlap: number;
+    let edgeWastePerSide: number;
     
-    // Calculate actual strip lengths - try to split evenly at corners
-    const stripLengths: number[] = [];
-    let remainingLength = totalLengthNeeded;
-    
-    if (stripCount === 1) {
-      // Single strip covers entire perimeter
-      stripLengths.push(totalLengthNeeded);
+    if (overlapPerSide >= MIN_HORIZONTAL_OVERLAP && overlapPerSide <= MAX_HORIZONTAL_OVERLAP) {
+      // Fits within acceptable weld range - no edge waste
+      actualTopBottomOverlap = overlapPerSide;
+      edgeWastePerSide = 0;
+    } else if (overlapPerSide > MAX_HORIZONTAL_OVERLAP) {
+      // Too much overhang - use max weld, rest is waste
+      actualTopBottomOverlap = MAX_HORIZONTAL_OVERLAP;
+      edgeWastePerSide = overlapPerSide - MAX_HORIZONTAL_OVERLAP;
     } else {
-      // Multiple strips - divide as evenly as possible
-      const baseLength = Math.floor(totalLengthNeeded / stripCount * 10) / 10;
-      for (let i = 0; i < stripCount - 1; i++) {
-        // Try to use full roll length for efficiency, or split evenly
-        const thisLength = Math.min(ROLL_LENGTH, baseLength + (i === 0 ? stripJoinOverlap : 0));
-        stripLengths.push(thisLength);
-        remainingLength -= thisLength;
-      }
-      // Last strip gets the remainder
-      stripLengths.push(Math.max(0, remainingLength));
+      // Less than minimum - use minimum (shouldn't happen with proper roll selection)
+      actualTopBottomOverlap = MIN_HORIZONTAL_OVERLAP;
+      edgeWastePerSide = 0;
     }
     
-    // Calculate total used foil and waste
-    let totalUsedFoilArea = 0;
-    let totalUnusableWaste = 0;
+    // ===== 3. STRIP COUNT AND LENGTHS =====
+    // Vertical join overlap: 0.1m per join
+    const verticalJoinOverlap = MIN_OVERLAP_WALL; // 10cm
+    
+    // Number of strips needed (each strip can be at most ROLL_LENGTH = 25m)
+    const stripCount = Math.ceil(perimeter / ROLL_LENGTH);
+    
+    // Total vertical overlap: stripCount joins × 0.1m
+    const totalVerticalOverlap = stripCount * verticalJoinOverlap;
+    
+    // Total foil length needed
+    const totalLengthNeeded = perimeter + totalVerticalOverlap;
+    
+    // Calculate actual strip lengths
+    const stripLengths: number[] = [];
+    
+    if (stripCount === 1) {
+      // Single strip covers entire perimeter + overlap
+      stripLengths.push(perimeter + verticalJoinOverlap);
+    } else {
+      // Multiple strips - divide perimeter evenly, add overlap per strip
+      const baseLength = perimeter / stripCount;
+      for (let i = 0; i < stripCount; i++) {
+        // Each strip gets: baseLength + verticalJoinOverlap
+        stripLengths.push(baseLength + verticalJoinOverlap);
+      }
+    }
+    
+    // ===== 4. BUILD STRIP INFO WITH WALL LABELS =====
     const strips: Array<{
       count: number;
       rollWidth: RollWidth;
@@ -825,74 +852,58 @@ export function calculateSurfaceDetails(
       wallLabels?: string[];
     }> = [];
     
-    // Build wall label mapping with CORRECT continuous assignment
-    // If strip 1 covers A-B-C, strip 2 should cover C-D-A (continuing from C)
-    let cumulativeLength = 0;
+    // Track cumulative position around perimeter for corner labeling
+    let cumulativePerimeterPos = 0;
     
     for (let i = 0; i < stripLengths.length; i++) {
       const stripLen = stripLengths[i];
-      totalUsedFoilArea += stripLen * wallRollWidth;
+      // Base perimeter length for this strip (without overlap)
+      const perimeterCovered = perimeter / stripCount;
       
-      // Calculate waste for this strip (25m roll - strip length)
-      const rollWaste = ROLL_LENGTH - stripLen;
-      const isWasteReusable = rollWaste >= MIN_REUSABLE_OFFCUT_LENGTH;
-      if (!isWasteReusable && rollWaste > 0) {
-        totalUnusableWaste += rollWaste * wallRollWidth;
-      }
-      
-      // Determine which walls this strip covers
-      const startLength = cumulativeLength;
-      const endLength = cumulativeLength + stripLen;
+      // Determine which corners this strip covers
+      const startPos = cumulativePerimeterPos;
+      const endPos = startPos + perimeterCovered;
       const coveredCorners: string[] = [];
       
-      // Walk through walls to find which corners are covered
-      let len = 0;
+      // Walk through walls to find covered corners
+      let posInPerimeter = 0;
       for (let wIdx = 0; wIdx < walls.length; wIdx++) {
-        const wallStart = len;
-        const wallEnd = len + walls[wIdx].length;
+        const wallStartPos = posInPerimeter;
+        const wallEndPos = posInPerimeter + walls[wIdx].length;
+        const cornerAtStart = walls[wIdx].label.split('-')[0];
+        const cornerAtEnd = walls[wIdx].label.split('-')[1];
         
-        // If this strip starts within this wall or before it
-        if (startLength <= wallStart && wallStart < endLength) {
-          // Strip includes the start of this wall (corner at start)
-          const startCorner = walls[wIdx].label.split('-')[0];
-          if (coveredCorners.length === 0 || coveredCorners[coveredCorners.length - 1] !== startCorner) {
-            coveredCorners.push(startCorner);
+        // If strip starts at or before this wall start and extends past it
+        if (startPos <= wallStartPos && endPos > wallStartPos) {
+          if (coveredCorners.length === 0 || coveredCorners[coveredCorners.length - 1] !== cornerAtStart) {
+            coveredCorners.push(cornerAtStart);
           }
         }
         
-        // If strip ends within or after this wall
-        if (startLength < wallEnd && endLength >= wallEnd) {
-          // Strip includes the end of this wall (corner at end)
-          const endCorner = walls[wIdx].label.split('-')[1];
-          if (coveredCorners.length === 0 || coveredCorners[coveredCorners.length - 1] !== endCorner) {
-            coveredCorners.push(endCorner);
+        // If strip covers the end of this wall
+        if (startPos < wallEndPos && endPos >= wallEndPos) {
+          if (coveredCorners.length === 0 || coveredCorners[coveredCorners.length - 1] !== cornerAtEnd) {
+            coveredCorners.push(cornerAtEnd);
           }
         }
         
-        len = wallEnd;
+        posInPerimeter = wallEndPos;
       }
       
-      // Handle wrap-around for last strip going back to A
-      if (endLength >= perimeter) {
+      // Handle wrap-around for last strip
+      if (endPos >= perimeter || i === stripCount - 1) {
         if (coveredCorners.length === 0 || coveredCorners[coveredCorners.length - 1] !== 'A') {
           coveredCorners.push('A');
         }
       }
       
-      // If still empty, determine from position
-      if (coveredCorners.length === 0) {
-        let currentLen = 0;
-        for (let wIdx = 0; wIdx < walls.length; wIdx++) {
-          if (startLength < currentLen + walls[wIdx].length) {
-            coveredCorners.push(walls[wIdx].label.split('-')[0]);
-            coveredCorners.push(walls[wIdx].label.split('-')[1]);
-            break;
-          }
-          currentLen += walls[wIdx].length;
-        }
+      // If still empty, use first wall's corners
+      if (coveredCorners.length === 0 && walls.length > 0) {
+        coveredCorners.push(walls[0].label.split('-')[0]);
+        coveredCorners.push(walls[0].label.split('-')[1]);
       }
       
-      // Create label like "A-B-C" from corners [A, B, C]
+      // Create label like "A-B-C" from corners array
       const combinedLabel = coveredCorners.join('-') || 'A-B';
       
       strips.push({
@@ -903,34 +914,47 @@ export function calculateSurfaceDetails(
         rollNumber: i + 1,
       });
       
-      cumulativeLength += stripLen;
+      cumulativePerimeterPos += perimeterCovered;
     }
     
-    // Net cover area = perimeter × height
-    const coverArea = perimeter * coverHeight;
+    // ===== 5. CALCULATE AREAS =====
+    // Total foil used = totalLengthNeeded × rollWidth
+    const totalUsedFoilArea = totalLengthNeeded * wallRollWidth;
     
-    // Wall weld/overlap area calculation:
-    // 1. Each strip has TOP overlap (0.1m × length) and BOTTOM overlap (0.1m × length)
-    // 2. Plus strip-to-strip joins where strips meet horizontally
-    const topBottomOverlap = MIN_OVERLAP_WALL; // 10cm top and bottom
-    const topBottomWeldArea = perimeter * topBottomOverlap * 2; // top + bottom across entire perimeter
+    // Net cover area = perimeter × depth (actual pool wall surface)
+    const coverArea = perimeter * depth;
     
-    // Strip join overlap (where strips meet end-to-end)
-    const stripJoinWeldArea = stripCount > 1 ? (stripCount - 1) * stripJoinOverlap * wallRollWidth : 0;
+    // Vertical weld area = stripCount × overlap × rollWidth
+    const verticalWeldArea = stripCount * verticalJoinOverlap * wallRollWidth;
     
-    const totalWeldArea = topBottomWeldArea + stripJoinWeldArea;
+    // Horizontal weld area = (top + bottom overlap) × total foil length
+    const horizontalWeldArea = (actualTopBottomOverlap * 2) * totalLengthNeeded;
     
-    // Total foil area = used area (includes overlaps)
-    const totalFoilAreaRaw = totalUsedFoilArea;
+    const totalWeldArea = verticalWeldArea + horizontalWeldArea;
+    
+    // Edge waste (if overhang exceeds max weld)
+    const edgeWasteArea = (edgeWastePerSide * 2) * totalLengthNeeded;
+    
+    // Roll-end waste calculation
+    let totalRollEndWaste = 0;
+    for (const stripLen of stripLengths) {
+      const rollWaste = ROLL_LENGTH - stripLen;
+      const isReusable = rollWaste >= MIN_REUSABLE_OFFCUT_LENGTH;
+      if (!isReusable && rollWaste > 0) {
+        totalRollEndWaste += rollWaste * wallRollWidth;
+      }
+    }
+    
+    const totalWasteArea = edgeWasteArea + totalRollEndWaste;
     
     results.push({
       surfaceKey: 'walls',
       surfaceLabel: 'Ściany',
       strips,
       coverArea: Math.round(coverArea * 10) / 10,
-      totalFoilArea: Math.ceil(totalFoilAreaRaw),
+      totalFoilArea: Math.ceil(totalUsedFoilArea),
       weldArea: Math.round(totalWeldArea * 10) / 10,
-      wasteArea: Math.round(totalUnusableWaste * 10) / 10,
+      wasteArea: Math.round(totalWasteArea * 10) / 10,
     });
   }
 
