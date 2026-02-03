@@ -7,7 +7,7 @@ import {
 } from '@/components/ui/dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { FoilLayoutVisualization } from '@/components/FoilLayoutVisualization';
+import { Pool2DFoilLayout } from './Pool2DFoilLayout';
 import { PoolAreas, CalculatedMaterial, FoilSubtype, SUBTYPE_NAMES } from '@/lib/finishingMaterials';
 
 import { formatPrice } from '@/lib/calculations';
@@ -287,12 +287,10 @@ export function CalculationDetailsDialog({
             {/* Foil strip visualization with tabs */}
             <section>
               <h3 className="font-semibold text-lg mb-3">🔧 Wizualizacja rozkładu pasów folii</h3>
-              <Tabs defaultValue="2d" className="w-full">
-                <TabsList className="grid w-full grid-cols-4 mb-4">
+              <Tabs defaultValue="3d" className="w-full">
+                <TabsList className="grid w-full grid-cols-2 mb-4">
                   <TabsTrigger value="3d">Widok 3D</TabsTrigger>
-                  <TabsTrigger value="2d">2D Rozłożone</TabsTrigger>
-                  <TabsTrigger value="1.65">Rolka 1.65m</TabsTrigger>
-                  <TabsTrigger value="2.05">Rolka 2.05m</TabsTrigger>
+                  <TabsTrigger value="2d">Widok 2D</TabsTrigger>
                 </TabsList>
                 
                 <TabsContent value="3d">
@@ -311,30 +309,15 @@ export function CalculationDetailsDialog({
                 </TabsContent>
 
                 <TabsContent value="2d">
-                  <FoilLayoutVisualization
+                  <Pool2DFoilLayout
                     dimensions={dimensions}
-                    rollWidth={mixConfig.surfaces[0]?.rollWidth || 1.65}
-                    label="Rozkład pasów - wszystkie powierzchnie"
-                    showAntiSlipIndicators={dimensions.stairs?.enabled || dimensions.wadingPool?.enabled}
+                    mixConfig={mixConfig}
+                    foilSubtype={foilSubtype}
+                    height={400}
                   />
-                </TabsContent>
-                
-                <TabsContent value="1.65">
-                  <FoilLayoutVisualization
-                    dimensions={dimensions}
-                    rollWidth={1.65}
-                    label="Rozkład pasów dla rolki 1.65m"
-                    showAntiSlipIndicators={dimensions.stairs?.enabled || dimensions.wadingPool?.enabled}
-                  />
-                </TabsContent>
-                
-                <TabsContent value="2.05">
-                  <FoilLayoutVisualization
-                    dimensions={dimensions}
-                    rollWidth={2.05}
-                    label="Rozkład pasów dla rolki 2.05m"
-                    showAntiSlipIndicators={dimensions.stairs?.enabled || dimensions.wadingPool?.enabled}
-                  />
+                  <p className="text-xs text-muted-foreground mt-2">
+                    💡 Scroll, aby powiększyć/pomniejszyć. Kliknij i przeciągnij, aby przesuwać widok.
+                  </p>
                 </TabsContent>
               </Tabs>
             </section>
