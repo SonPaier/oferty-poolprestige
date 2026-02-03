@@ -216,12 +216,13 @@ function distributeVerticalOverlap(
 function calculateWasteForPlan(
   strips: WallStripConfig[],
   bottomStrips: BottomStripInfo[],
-  depth: number
-): { wasteArea: number; reusableArea: number; rollCount165: number; rollCount205: number } {
+  _depth: number
+): { wasteArea: number; reusableArea: number; rollCount165: number; rollCount205: number; pairedLeftover: number } {
   let wasteArea = 0;
   let reusableArea = 0;
   let rollCount165 = 0;
   let rollCount205 = 0;
+  let pairedLeftover = 0;  // How much space is wasted when pairing with bottom offcuts
   
   // Track which bottom strips are "used" for pairing
   const usedBottomIndices = new Set<number>();
@@ -244,6 +245,8 @@ function calculateWasteForPlan(
         usedBottomIndices.add(bi);
         
         const combinedWaste = ROLL_LENGTH - strip.totalLength - bottom.length;
+        pairedLeftover += combinedWaste;  // Track leftover from pairing
+        
         if (combinedWaste >= MIN_REUSABLE_OFFCUT_LENGTH) {
           reusableArea += combinedWaste * strip.rollWidth;
         } else if (combinedWaste > 0.01) {
@@ -270,7 +273,7 @@ function calculateWasteForPlan(
     }
   }
   
-  return { wasteArea, reusableArea, rollCount165, rollCount205 };
+  return { wasteArea, reusableArea, rollCount165, rollCount205, pairedLeftover };
 }
 
 /**
@@ -468,22 +471,29 @@ export function selectOptimalWallPlan(
   const scoredPlans = plans.map(plan => {
     let score: number;
     
+    // Recalculate waste with pairedLeftover tracking
+    const { wasteArea, pairedLeftover } = calculateWasteForPlan(plan.strips, bottomStrips, 0);
+    
     if (priority === 'minWaste') {
-      // 1. Minimalizuj odpad
-      // 2. Minimalizuj liczbę pasów (= mniej rolek)
-      // 3. Mniejsza powierzchnia folii
-      score = plan.wasteArea * 100000 
-            + plan.totalStripCount * 1000 
+      // 1. Minimalizuj odpad nieużyteczny
+      // 2. Minimalizuj resztki z parowania (preferuj dokładne dopasowanie do offcutów)
+      // 3. Minimalizuj liczbę pasów (= mniej rolek)
+      // 4. Mniejsza powierzchnia folii
+      score = wasteArea * 1_000_000 
+            + pairedLeftover * 10_000  // Prefer exact fits over loose fits
+            + plan.totalStripCount * 100 
             + plan.totalFoilArea * 0.01;
     } else {
       // minRolls:
       // 1. Minimalizuj dodatkową powierzchnię rolek wymaganych SPECJALNIE na ściany
       //    (czyli preferuj takie pasy ścian, które mieszczą się w resztkach z dna).
-      // 2. Dopiero potem minimalizuj m² folii na ściany (gdy dodatkowe rolki są równe).
+      // 2. Minimalizuj resztki z parowania
+      // 3. Dopiero potem minimalizuj m² folii na ściany (gdy dodatkowe rolki są równe).
       const additionalWallRollArea = estimateAdditionalWallRollArea(plan, bottomStrips);
       score = additionalWallRollArea * 1_000_000
+            + pairedLeftover * 10_000
             + plan.totalFoilArea * 1000
-            + plan.wasteArea * 10
+            + wasteArea * 10
             + plan.totalStripCount;
     }
     
