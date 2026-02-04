@@ -30,10 +30,8 @@ export type ExtendedSurfaceType =
   // Paddling pool surfaces
   | 'paddling-bottom'       // Paddling pool bottom (anti-slip)
   | 'paddling-wall'         // Paddling pool external walls (regular foil)
-  // Dividing wall surfaces
-  | 'dividing-wall-pool'    // Wall facing main pool (regular foil)
-  | 'dividing-wall-paddling' // Wall facing paddling pool (regular foil)
-  | 'dividing-wall-top';    // Top of dividing wall (horizontal, like step)
+  // Dividing wall - single strip covering inner perimeter
+  | 'dividing-wall-inner';  // Inner perimeter of dividing wall (single surface)
 
 /**
  * Foil assignment type - determines which foil pool a surface belongs to
@@ -59,9 +57,7 @@ export const SURFACE_FOIL_ASSIGNMENT: Record<ExtendedSurfaceType, FoilAssignment
   'l-arm': 'main',
   
   // Dividing wall (murek) - uses MAIN foil (same as pool walls)
-  'dividing-wall-pool': 'main',
-  'dividing-wall-paddling': 'main',
-  'dividing-wall-top': 'main',
+  'dividing-wall-inner': 'main',
   
   // Stairs - always use STRUCTURAL anti-slip foil
   'stairs-step': 'structural',
@@ -110,15 +106,12 @@ export interface StairsPlanResult {
   antiSlipProductId?: string;
 }
 
-// Dividing wall breakdown
+// Dividing wall breakdown - simplified to single inner perimeter strip
 export interface DividingWallPlan {
-  poolSideArea: number;      // Wall facing main pool (height = poolDepth - paddlingDepth)
-  paddlingSideArea: number;  // Wall facing paddling pool (height = dividingWallOffset)
-  topArea: number;           // Top of wall (horizontal, treated like step)
-  poolSideHeight: number;    // Height from pool bottom to wall top
-  paddlingSideHeight: number; // Height of wall above paddling pool floor (= dividingWallOffset)
-  wallWidth: number;         // Width of dividing wall (same as paddling pool width)
-  wallThickness: number;     // Thickness of wall (default 0.15m)
+  innerPerimeter: number;    // 2×width + 2×length of wading pool
+  wallHeight: number;        // paddlingDepth - dividingWallOffset
+  stripWidth: number;        // wallHeight + OVERLAP_WALL_TOP + OVERLAP_WALL_BOTTOM
+  area: number;              // innerPerimeter × stripWidth
 }
 
 // Paddling pool plan result

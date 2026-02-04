@@ -835,18 +835,20 @@ function getSurfaceDefinitions(dimensions: PoolDimensions, foilSubtype?: FoilSub
       foilAssignment: 'structural', // Bottom always structural
     });
     
-    // Dividing wall (if enabled) uses MAIN foil
-    if (pool.hasDividingWall && pool.dividingWallOffset && pool.dividingWallOffset > 0) {
-      const wallOffsetM = pool.dividingWallOffset / 100; // Convert cm to m
-      const wallHeight = depth - pool.depth + wallOffsetM;
+    // Dividing wall (if enabled) uses MAIN foil - simplified inner perimeter calculation
+    if (pool.hasDividingWall) {
+      const wallOffsetM = (pool.dividingWallOffset || 0) / 100; // Convert cm to m
+      const innerPerimeter = 2 * pool.width + 2 * pool.length;  // Inner perimeter of wading pool
+      const wallHeight = pool.depth - wallOffsetM;  // e.g., 0.4m - 0.1m = 0.3m
+      const stripWidth = wallHeight + 0.07 + 0.07;  // wallHeight + OVERLAP_WALL_TOP + OVERLAP_WALL_BOTTOM
       
       surfaces.push({
         key: 'dividing-wall',
-        label: 'Murek brodzika',
-        stripLength: pool.width,
-        coverWidth: wallHeight,
+        label: `Murek brodzika (${innerPerimeter.toFixed(1)}m × ${stripWidth.toFixed(2)}m)`,
+        stripLength: innerPerimeter,  // Length = inner perimeter
+        coverWidth: stripWidth,       // Width = wall height + overlaps
         count: 1,
-        overlap: MIN_OVERLAP_WALL,
+        overlap: 0,  // No additional overlap needed - already included in stripWidth
         foilAssignment: 'main', // Dividing wall uses main foil
       });
     }
@@ -1353,31 +1355,29 @@ export function calculateSurfaceDetails(
     }
   }
 
-  // Dividing wall
+  // Dividing wall - simplified inner perimeter calculation
   if (dividingWallSurfaces.length > 0) {
     const surface = dividingWallSurfaces[0];
     const def = defs.find(d => d.key === 'dividing-wall');
     if (def) {
-      const calc = calculateStripsForWidth(def.coverWidth, surface.rollWidth, def.overlap);
       const rollNumbers = getRollNumbersForMainSurface(surface.surfaceLabel);
       
-      const totalFoilAreaRaw = surface.stripCount * surface.rollWidth * surface.stripLength;
-      const overlapsCount = Math.max(0, calc.count - 1);
-      const weldArea = overlapsCount * calc.actualOverlap * def.stripLength;
-      const coverArea = totalFoilAreaRaw - weldArea;
+      // Simplified: area = innerPerimeter × stripWidth (already calculated in def)
+      const netArea = def.stripLength * def.coverWidth;  // innerPerimeter × stripWidth
+      const totalFoilArea = Math.ceil(netArea);  // Round up to full m²
       
       results.push({
         surfaceKey: 'dividing-wall',
-        surfaceLabel: 'Murek brodzika',
+        surfaceLabel: surface.surfaceLabel,  // Already includes dimensions like "Murek brodzika (8.0m × 0.44m)"
         strips: [{
-          count: surface.stripCount,
+          count: 1,
           rollWidth: surface.rollWidth,
           stripLength: surface.stripLength,
-          rollNumber: rollNumbers[0] ?? 1, // Default for dividing wall (main foil)
+          rollNumber: rollNumbers[0] ?? 1,
         }],
-        coverArea: Math.round(coverArea * 10) / 10,
-        totalFoilArea: Math.ceil(totalFoilAreaRaw),
-        weldArea: Math.round(weldArea * 10) / 10,
+        coverArea: Math.round(netArea * 100) / 100,
+        totalFoilArea: totalFoilArea,
+        weldArea: 0,  // Overlaps are already included in stripWidth
         wasteArea: 0,
       });
     }
