@@ -222,38 +222,16 @@ export function FoilLayoutVisualization({
         surfaceType: 'paddling',
       });
 
-      // ===== DIVIDING WALL =====
+      // ===== DIVIDING WALL - simplified single surface =====
       if (paddlingPlan.dividingWall) {
         const dw = paddlingPlan.dividingWall;
         
-        // Pool side (taller wall)
+        // Single inner perimeter strip
         result.push({
-          name: `Murek - strona basenu (${dw.wallWidth}m × ${dw.poolSideHeight.toFixed(2)}m)`,
-          realWidth: dw.poolSideHeight,
-          realHeight: dw.wallWidth,
-          strips: calculateStrips(dw.wallWidth, dw.poolSideHeight),
-          isAntiSlip: false,
-          surfaceType: 'dividing-wall',
-        });
-
-        // Paddling side (if has height)
-        if (dw.paddlingSideArea > 0) {
-          result.push({
-            name: `Murek - strona brodzika (${dw.wallWidth}m × ${dw.paddlingSideHeight.toFixed(2)}m)`,
-            realWidth: dw.paddlingSideHeight,
-            realHeight: dw.wallWidth,
-            strips: calculateStrips(dw.wallWidth, dw.paddlingSideHeight),
-            isAntiSlip: false,
-            surfaceType: 'dividing-wall',
-          });
-        }
-
-        // Top of wall
-        result.push({
-          name: `Murek - góra (${dw.wallWidth}m × ${dw.wallThickness}m)`,
-          realWidth: dw.wallThickness,
-          realHeight: dw.wallWidth,
-          strips: calculateStrips(dw.wallWidth, dw.wallThickness),
+          name: `Murek brodzika (${dw.innerPerimeter.toFixed(1)}m × ${dw.stripWidth.toFixed(2)}m)`,
+          realWidth: dw.stripWidth,
+          realHeight: dw.innerPerimeter,
+          strips: calculateStrips(dw.innerPerimeter, dw.stripWidth),
           isAntiSlip: false,
           surfaceType: 'dividing-wall',
         });

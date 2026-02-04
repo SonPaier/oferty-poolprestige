@@ -33,8 +33,9 @@ import {
   DividingWallPlan, 
   ExtendedSurfaceType,
   ExtendedSurfacePlan,
-  DIVIDING_WALL_THICKNESS,
   SURFACE_FOIL_ASSIGNMENT,
+  OVERLAP_WALL_TOP,
+  OVERLAP_WALL_BOTTOM,
 } from './types';
 
 /**
@@ -94,93 +95,38 @@ export function planPaddlingPoolSurface(
     foilAssignment: SURFACE_FOIL_ASSIGNMENT[wallType],
   });
   
-  // DIVIDING WALL (if enabled)
+  // DIVIDING WALL (if enabled) - simplified to single inner perimeter strip
   let dividingWall: DividingWallPlan | undefined;
   
   if (hasDividingWall) {
-    // Pool side height: from pool floor to wall top
-    // = poolDepth - paddlingDepth (since wall top is at paddlingDepth - wallOffset from water surface)
-    // Actually: wall top is at depth (paddlingDepth - wallOffset)
-    // Pool side height = poolDepth - (paddlingDepth - wallOffset) = poolDepth - paddlingDepth + wallOffset
-    // Wait, let me recalculate based on the user's example:
-    // Pool 1.4m, paddling 0.4m, wall offset 0.2m
-    // Pool side: 1.4 - 0.4 = 1.0m (from pool floor at -1.4m to wall top at -0.2m... no that's 1.2m)
-    // 
-    // Let me re-read the user's specification:
-    // "od strony basenu mur brodzika będzie miał 1.2m wysokości" - but they said 1.0m in the plan
-    // 
-    // Actually user said: "głębokość_basenu - głębokość_brodzika = 1.4m - 0.4m = 1.0m"
-    // So pool side height = poolDepth - paddlingDepth (NOT including wallOffset)
-    // The wall top is at -0.2m (paddlingDepth - wallOffset = 0.4 - 0.2 = 0.2m from surface)
-    // The pool floor is at -1.4m
-    // So the wall height on pool side = 1.4 - 0.2 = 1.2m
-    // 
-    // But user's calculation says 1.0m... Let me check the ASCII diagram:
-    // "ściana podniesiona 1.0m (od strony basenu) (1.4m - 0.4m = 1.0m)"
-    // 
-    // I think the user means the wall goes from pool floor to paddling floor level,
-    // not to the wall top. The wall offset is ABOVE the paddling floor.
-    // So: pool side = poolDepth - paddlingDepth (wall from pool floor to paddling floor)
-    //     paddling side = wallOffset (wall from paddling floor to wall top)
-    //     top = horizontal surface of wall
+    // New simplified formula:
+    // innerPerimeter = 2 × width + 2 × length
+    // wallHeight = paddlingDepth - wallOffset (height of wall above paddling floor)
+    // stripWidth = wallHeight + OVERLAP_WALL_TOP + OVERLAP_WALL_BOTTOM
+    // area = innerPerimeter × stripWidth
     
-    const poolSideHeight = poolDepth - paddlingDepth;  // From pool floor to paddling floor level
-    const paddlingSideHeight = wallOffsetM;            // From paddling floor to wall top
-    const wallThickness = DIVIDING_WALL_THICKNESS;     // 15cm
-    
-    // Areas
-    const poolSideArea = width * poolSideHeight;
-    const paddlingSideArea = width * paddlingSideHeight;
-    const topArea = width * wallThickness;
+    const innerPerimeter = 2 * width + 2 * length;
+    const wallHeight = paddlingDepth - wallOffsetM;  // e.g., 0.4m - 0.1m = 0.3m
+    const stripWidth = wallHeight + OVERLAP_WALL_TOP + OVERLAP_WALL_BOTTOM;  // e.g., 0.3 + 0.07 + 0.07 = 0.44m
+    const area = innerPerimeter * stripWidth;  // e.g., 8m × 0.44m = 3.52 m²
     
     dividingWall = {
-      poolSideArea,
-      paddlingSideArea,
-      topArea,
-      poolSideHeight,
-      paddlingSideHeight,
-      wallWidth: width,
-      wallThickness,
+      innerPerimeter,
+      wallHeight,
+      stripWidth,
+      area,
     };
     
-    // Add dividing wall surfaces - these use MAIN foil (same as pool walls)
-    
-    // Pool side of dividing wall (MAIN foil)
-    const poolSideType: ExtendedSurfaceType = 'dividing-wall-pool';
+    // Add single dividing wall surface - uses MAIN foil
+    const dividingWallType: ExtendedSurfaceType = 'dividing-wall-inner';
     surfaces.push({
-      type: poolSideType,
-      width: poolSideHeight,
-      length: width,
-      area: poolSideArea,
+      type: dividingWallType,
+      width: stripWidth,           // Strip width (height + overlaps)
+      length: innerPerimeter,      // Inner perimeter of wading pool
+      area: area,
       strips: [],
-      recommendedRollWidth: poolSideHeight <= 1.4 ? ROLL_WIDTH_NARROW : ROLL_WIDTH_WIDE,
-      foilAssignment: SURFACE_FOIL_ASSIGNMENT[poolSideType], // 'main'
-    });
-    
-    // Paddling side of dividing wall (MAIN foil)
-    if (paddlingSideHeight > 0) {
-      const paddlingSideType: ExtendedSurfaceType = 'dividing-wall-paddling';
-      surfaces.push({
-        type: paddlingSideType,
-        width: paddlingSideHeight,
-        length: width,
-        area: paddlingSideArea,
-        strips: [],
-        recommendedRollWidth: ROLL_WIDTH_NARROW, // Usually small height
-        foilAssignment: SURFACE_FOIL_ASSIGNMENT[paddlingSideType], // 'main'
-      });
-    }
-    
-    // Top of dividing wall (horizontal, MAIN foil)
-    const topType: ExtendedSurfaceType = 'dividing-wall-top';
-    surfaces.push({
-      type: topType,
-      width: wallThickness,
-      length: width,
-      area: topArea,
-      strips: [],
-      recommendedRollWidth: ROLL_WIDTH_NARROW,
-      foilAssignment: SURFACE_FOIL_ASSIGNMENT[topType], // 'main'
+      recommendedRollWidth: ROLL_WIDTH_NARROW,  // Always narrow for wall strips
+      foilAssignment: SURFACE_FOIL_ASSIGNMENT[dividingWallType], // 'main'
     });
   }
   
@@ -207,9 +153,7 @@ export function calculateTotalPaddlingArea(
   let totalArea = plan.bottomArea + plan.wallsArea;
   
   if (plan.dividingWall) {
-    totalArea += plan.dividingWall.poolSideArea;
-    totalArea += plan.dividingWall.paddlingSideArea;
-    totalArea += plan.dividingWall.topArea;
+    totalArea += plan.dividingWall.area;  // Simplified: single area value
   }
   
   return totalArea;
