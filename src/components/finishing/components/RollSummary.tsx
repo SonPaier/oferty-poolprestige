@@ -288,7 +288,7 @@ function UnusableWasteTable({ wastes }: UnusableWasteTableProps) {
                 </div>
               </TableCell>
               <TableCell>
-                {waste.length}m × {waste.rollWidth}m
+                {waste.length}m × {waste.width}m
               </TableCell>
               <TableCell className="text-muted-foreground text-sm">
                 {waste.source}
