@@ -4,7 +4,8 @@ import { useSettings } from '@/context/SettingsContext';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Shovel, HardHat, Info, AlertCircle, Wrench, Building, Save } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Shovel, HardHat, Info, AlertCircle, Wrench, Building, Save, Check } from 'lucide-react';
 import { ExcavationSettings, ExcavationData, calculateExcavation } from '@/types/offers';
 import { formatPrice } from '@/lib/calculations';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
@@ -63,10 +64,10 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
     dimensions.depth + excavationSettings.marginDepth
   );
   
-  // Editable rate
+  // Editable rate - track original and current
   const [excavationRate, setExcavationRate] = useState(excavationSettings.pricePerM3);
   const [showRateDialog, setShowRateDialog] = useState(false);
-  const [pendingRate, setPendingRate] = useState(excavationSettings.pricePerM3);
+  const [rateChanged, setRateChanged] = useState(false);
   
   // VAT selection
   const [vatRate, setVatRate] = useState<VatRate>(23);
@@ -120,23 +121,32 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
     }));
   }, [excavationVolume, excavationRate]);
 
-  // Handle rate change with dialog
-  const handleRateChange = useCallback((newRate: number) => {
-    if (newRate !== excavationSettings.pricePerM3) {
-      setPendingRate(newRate);
+  // Track if rate changed from settings
+  useEffect(() => {
+    setRateChanged(excavationRate !== excavationSettings.pricePerM3);
+  }, [excavationRate, excavationSettings.pricePerM3]);
+
+  // Handle rate change - just update local state
+  const handleRateChange = (newRate: number) => {
+    setExcavationRate(newRate);
+  };
+
+  // Show dialog when user clicks confirm button
+  const handleConfirmRateChange = () => {
+    if (rateChanged) {
       setShowRateDialog(true);
     }
-    setExcavationRate(newRate);
-  }, [excavationSettings.pricePerM3]);
+  };
 
   // Save rate to global settings
   const handleSaveRateToSettings = async () => {
     await setExcavationSettings({
       ...excavationSettings,
-      pricePerM3: pendingRate,
+      pricePerM3: excavationRate,
     });
     toast.success('Stawka zapisana w ustawieniach');
     setShowRateDialog(false);
+    setRateChanged(false);
   };
 
   // Keep rate only for this offer
@@ -392,6 +402,17 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
                           className="input-field w-28 text-right"
                         />
                         <span className="text-sm text-muted-foreground">zł/m³</span>
+                        {rateChanged && (
+                          <Button 
+                            size="sm" 
+                            variant="outline"
+                            onClick={handleConfirmRateChange}
+                            className="ml-2"
+                          >
+                            <Check className="w-4 h-4 mr-1" />
+                            Zatwierdź
+                          </Button>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -683,7 +704,7 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
               Zmiana stawki za wykop
             </AlertDialogTitle>
             <AlertDialogDescription>
-              Zmieniono stawkę z {formatPrice(excavationSettings.pricePerM3)}/m³ na {formatPrice(pendingRate)}/m³.
+              Zmieniono stawkę z {formatPrice(excavationSettings.pricePerM3)}/m³ na {formatPrice(excavationRate)}/m³.
               <br /><br />
               Czy chcesz zapisać nową stawkę w ustawieniach, aby była używana dla przyszłych ofert?
             </AlertDialogDescription>
