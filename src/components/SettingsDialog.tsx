@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { 
   Dialog, 
   DialogContent, 
@@ -55,6 +55,20 @@ export function SettingsDialog({
   const [paymentTermsTemplate, setPaymentTermsTemplate] = useState(
     companySettings.paymentTermsTemplate || 'Zaliczka 30% przy zamówieniu, pozostałe 70% przed montażem.'
   );
+
+  // Keep dialog form state in sync with the latest saved settings
+  // (otherwise the dialog can show stale values after settings were changed elsewhere)
+  useEffect(() => {
+    if (!open) return;
+
+    setCompany(companySettings);
+    setExcavation(excavationSettings);
+    setEmailTemplate(companySettings.emailTemplate || defaultEmailTemplate);
+    setNotesTemplate(companySettings.notesTemplate || 'Oferta ważna 30 dni od daty wystawienia.');
+    setPaymentTermsTemplate(
+      companySettings.paymentTermsTemplate || 'Zaliczka 30% przy zamówieniu, pozostałe 70% przed montażem.'
+    );
+  }, [open, companySettings, excavationSettings]);
 
   const handleSave = () => {
     onSaveCompanySettings({ 
