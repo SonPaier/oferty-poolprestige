@@ -1280,10 +1280,15 @@ export function calculateSurfaceDetails(
   }
 
   // Paddling pool bottom - structural foil with butt joint (no overlap)
-  if (paddlingSurfaces.length > 0) {
+  if (paddlingSurfaces.length > 0 && dimensions.wadingPool?.enabled) {
     const surface = paddlingSurfaces[0];
     const def = defs.find(d => d.key === 'paddling');
     if (def) {
+      // Get wading pool dimensions for label
+      const pp = dimensions.wadingPool;
+      const ppLength = pp.length || 2;
+      const ppWidth = pp.width || 2;
+      
       // Recalculate strip count based on actual coverWidth (shorter edge of wading pool)
       const calc = calculateStripsForWidth(def.coverWidth, surface.rollWidth, def.overlap);
       const rollNumbers = getRollNumbersForSurface(surface.surfaceLabel);
@@ -1305,9 +1310,12 @@ export function calculateSurfaceDetails(
       // Note: butt joint length = (stripCount - 1) × stripLength
       const buttJointLength = Math.max(0, stripCount - 1) * def.stripLength;
       
+      // Build detailed label with wading pool dimensions
+      const paddlingLabel = `Brodzik (${ppLength.toFixed(1)}m × ${ppWidth.toFixed(1)}m)`;
+      
       results.push({
         surfaceKey: 'paddling',
-        surfaceLabel: 'Brodzik',
+        surfaceLabel: paddlingLabel,
         strips: [{
           count: stripCount,
           rollWidth: surface.rollWidth,
@@ -1391,13 +1399,116 @@ export function getReusableOffcutsWithDimensions(
   const rolls = packStripsIntoRolls(config, dimensions, foilSubtype, priority);
   const offcuts: ReusableOffcut[] = [];
 
+  // Reusable offcuts from roll packing (bottom, walls)
   for (const roll of rolls) {
-    if (roll.wasteLength >= MIN_REUSABLE_OFFCUT_LENGTH) {
+    if (roll.wasteLength >= MIN_REUSABLE_OFFCUT_LENGTH && roll.rollWidth >= WASTE_THRESHOLD) {
       offcuts.push({
         rollNumber: roll.rollNumber,
         rollWidth: roll.rollWidth,
         length: Math.round(roll.wasteLength * 10) / 10,
         area: Math.round(roll.wasteLength * roll.rollWidth * 100) / 100,
+      });
+    }
+  }
+
+  // Add reusable offcuts from structural surfaces (stairs, paddling)
+  // These are offcuts that are >= 2m length AND >= 0.5m width
+  
+  // Find structural roll number (same as in getUnusableWaste)
+  const mainRolls = rolls.filter(r => 
+    !r.strips.some(s => s.surface === 'Schody' || s.surface === 'Brodzik')
+  );
+  const maxMainRollNumber = mainRolls.length > 0 ? Math.max(...mainRolls.map(r => r.rollNumber)) : 0;
+  const structuralRollInMain = rolls.find(r => 
+    r.strips.some(s => s.surface === 'Schody' || s.surface === 'Brodzik')
+  );
+  const structuralRollNumber = structuralRollInMain?.rollNumber ?? (maxMainRollNumber + 1);
+
+  // Calculate structural wastes
+  const structuralWastes: StructuralWastePiece[] = [];
+  
+  if (dimensions.stairs?.enabled) {
+    const stairs = dimensions.stairs;
+    const stairsWidth = typeof stairs.width === 'number' ? stairs.width : Math.min(dimensions.length, dimensions.width);
+    const stepDepth = stairs.stepDepth || 0.30;
+    const stepCount = stairs.stepCount || 4;
+    const stairsFootprintLength = stepDepth * stepCount;
+    
+    const wasteWidth = ROLL_WIDTH_NARROW - stairsFootprintLength;
+    const wasteLength = stairsWidth;
+    const wasteArea = wasteWidth * wasteLength;
+    
+    if (wasteArea > 0.01) {
+      structuralWastes.push({
+        source: 'stairs',
+        length: wasteLength,
+        width: wasteWidth,
+        area: wasteArea,
+      });
+    }
+  }
+  
+  if (dimensions.wadingPool?.enabled) {
+    const pp = dimensions.wadingPool;
+    const ppWidth = pp.width || 2;
+    const ppLength = pp.length || 2;
+    
+    const longerEdge = Math.max(ppWidth, ppLength);
+    const shorterEdge = Math.min(ppWidth, ppLength);
+    
+    const stripCount = Math.ceil(shorterEdge / ROLL_WIDTH_NARROW);
+    const totalFoilWidth = stripCount * ROLL_WIDTH_NARROW;
+    const wasteWidth = totalFoilWidth - shorterEdge;
+    const wasteLength = longerEdge;
+    const wasteArea = wasteWidth * wasteLength;
+    
+    if (wasteArea > 0.01) {
+      structuralWastes.push({
+        source: 'paddling',
+        length: wasteLength,
+        width: wasteWidth,
+        area: wasteArea,
+      });
+    }
+  }
+
+  // Check cross-utilization first
+  const stairsWaste = structuralWastes.find(w => w.source === 'stairs');
+  const paddlingWaste = structuralWastes.find(w => w.source === 'paddling');
+  
+  let stairsWasteUtilized = false;
+  let paddlingWasteUtilized = false;
+  
+  if (stairsWaste && paddlingWaste) {
+    const stairsToPaddling = canWasteCoverSurface(stairsWaste, 'paddling', dimensions);
+    if (stairsToPaddling.canCover) {
+      stairsWasteUtilized = true;
+    }
+    
+    const paddlingToStairs = canWasteCoverSurface(paddlingWaste, 'stairs', dimensions);
+    if (paddlingToStairs.canCover) {
+      paddlingWasteUtilized = true;
+    }
+  }
+
+  // Add reusable (not cross-utilized) structural offcuts to list
+  for (const waste of structuralWastes) {
+    const isUtilized = (waste.source === 'stairs' && stairsWasteUtilized) ||
+                       (waste.source === 'paddling' && paddlingWasteUtilized);
+    
+    if (isUtilized) {
+      continue; // Cross-utilized, don't add to offcuts list
+    }
+    
+    // Check if waste is REUSABLE: length >= 2m AND width >= 0.5m
+    const isReusable = waste.length >= MIN_REUSABLE_OFFCUT_LENGTH && waste.width >= WASTE_THRESHOLD;
+    
+    if (isReusable) {
+      offcuts.push({
+        rollNumber: structuralRollNumber,
+        rollWidth: ROLL_WIDTH_NARROW, // Structural always uses 1.65m
+        length: Math.round(waste.length * 100) / 100,
+        area: Math.round(waste.area * 100) / 100,
       });
     }
   }
@@ -1510,9 +1621,25 @@ export function getUnusableWaste(
   // Calculate structural wastes (stairs and paddling) with cross-utilization
   const structuralWastes: StructuralWastePiece[] = [];
   
-  // Determine structural roll number - all structural surfaces share the same roll
-  const maxMainRollNumber = rolls.length > 0 ? Math.max(...rolls.map(r => r.rollNumber)) : 0;
-  const structuralRollNumber = maxMainRollNumber + 1;
+  // Use the structural roll number from surface details - this is the roll that actually
+  // contains stairs and paddling strips (typically #3 for a pool with 2 main rolls)
+  // We find the roll number by looking at where structural surfaces are packed
+  const { structural } = partitionSurfacesByFoilType(config.surfaces);
+  const structuralConfig = { ...config, surfaces: structural };
+  const structuralRolls = packStripsIntoRolls(structuralConfig, dimensions, foilSubtype, priority);
+  
+  // Get the first structural roll number, or calculate based on main rolls
+  // The key insight: structural surfaces share a single roll with a consistent number
+  const mainRolls = rolls.filter(r => 
+    !r.strips.some(s => s.surface === 'Schody' || s.surface === 'Brodzik')
+  );
+  const maxMainRollNumber = mainRolls.length > 0 ? Math.max(...mainRolls.map(r => r.rollNumber)) : 0;
+  
+  // Find actual structural roll number from the main pack
+  const structuralRollInMain = rolls.find(r => 
+    r.strips.some(s => s.surface === 'Schody' || s.surface === 'Brodzik')
+  );
+  const structuralRollNumber = structuralRollInMain?.rollNumber ?? (maxMainRollNumber + 1);
   
   // Calculate stairs waste
   if (dimensions.stairs?.enabled) {
@@ -1523,6 +1650,7 @@ export function getUnusableWaste(
     const stairsFootprintLength = stepDepth * stepCount;
     
     // Waste dimensions: (1.65 - footprintLength) × stairsWidth
+    // This is the edge trim after cutting steps from the roll
     const wasteWidth = ROLL_WIDTH_NARROW - stairsFootprintLength;
     const wasteLength = stairsWidth;
     const wasteArea = wasteWidth * wasteLength;
@@ -1554,7 +1682,7 @@ export function getUnusableWaste(
     const totalFoilWidth = stripCount * ROLL_WIDTH_NARROW;
     const wasteWidth = totalFoilWidth - shorterEdge;
     
-    // Waste piece dimensions
+    // Waste piece dimensions: longitudinal strip along the longer edge
     const wasteLength = longerEdge;
     const wasteArea = wasteWidth * wasteLength;
     
@@ -1569,30 +1697,43 @@ export function getUnusableWaste(
   }
   
   // Check cross-utilization between stairs and paddling wastes
-  let stairsWasteReduced = false;
-  let paddlingWasteReduced = false;
+  // A waste piece that's usable (>= 2m AND >= 0.5m) goes to reusable offcuts, not here
+  // A waste piece from one surface that can cover another should also not be reported as waste
   
-  for (const waste of structuralWastes) {
-    // Check if this waste can cover the other surface
-    if (waste.source === 'stairs' && !paddlingWasteReduced) {
-      const crossCheck = canWasteCoverSurface(waste, 'paddling', dimensions);
-      if (crossCheck.canCover && crossCheck.usedArea >= waste.area * 0.5) {
-        // Stairs waste can be used for paddling - mark as utilized (not waste)
-        stairsWasteReduced = true;
-        continue; // Don't add to unusable waste
-      }
-    }
-    if (waste.source === 'paddling' && !stairsWasteReduced) {
-      const crossCheck = canWasteCoverSurface(waste, 'stairs', dimensions);
-      if (crossCheck.canCover && crossCheck.usedArea >= waste.area * 0.5) {
-        // Paddling waste can be used for stairs - mark as utilized
-        paddlingWasteReduced = true;
-        continue; // Don't add to unusable waste
-      }
+  const stairsWaste = structuralWastes.find(w => w.source === 'stairs');
+  const paddlingWaste = structuralWastes.find(w => w.source === 'paddling');
+  
+  let stairsWasteUtilized = false;
+  let paddlingWasteUtilized = false;
+  
+  // Check if stairs waste can cover paddling needs
+  if (stairsWaste && paddlingWaste) {
+    const stairsToPaddling = canWasteCoverSurface(stairsWaste, 'paddling', dimensions);
+    if (stairsToPaddling.canCover) {
+      stairsWasteUtilized = true;
     }
     
-    // Check if waste is unusable (< 2m length OR < 0.5m width)
-    if (isWasteUnusable(waste.length, waste.width)) {
+    const paddlingToStairs = canWasteCoverSurface(paddlingWaste, 'stairs', dimensions);
+    if (paddlingToStairs.canCover) {
+      paddlingWasteUtilized = true;
+    }
+  }
+  
+  // Only add to unusable waste list if:
+  // 1. Waste is not cross-utilized, AND
+  // 2. Waste is unusable (< 2m length OR < 0.5m width)
+  for (const waste of structuralWastes) {
+    const isUtilized = (waste.source === 'stairs' && stairsWasteUtilized) ||
+                       (waste.source === 'paddling' && paddlingWasteUtilized);
+    
+    if (isUtilized) {
+      continue; // Cross-utilized, skip
+    }
+    
+    // Check if waste is unusable: length < 2m OR width < 0.5m
+    const isUnusable = isWasteUnusable(waste.length, waste.width);
+    
+    if (isUnusable) {
       wastes.push({
         rollNumber: structuralRollNumber,
         rollWidth: ROLL_WIDTH_NARROW,
@@ -1602,6 +1743,7 @@ export function getUnusableWaste(
         source: waste.source === 'stairs' ? 'Schody' : 'Brodzik',
       });
     }
+    // If NOT unusable (>= 2m AND >= 0.5m), it's reusable - goes to getReusableOffcutsWithDimensions
   }
 
   return wastes;
