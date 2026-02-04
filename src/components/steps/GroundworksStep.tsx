@@ -1,13 +1,27 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useConfigurator } from '@/context/ConfiguratorContext';
+import { useSettings } from '@/context/SettingsContext';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Shovel, HardHat, Info, AlertCircle, Wrench, Building } from 'lucide-react';
+import { Shovel, HardHat, Info, AlertCircle, Wrench, Building, Save } from 'lucide-react';
 import { ExcavationSettings, ExcavationData, calculateExcavation } from '@/types/offers';
 import { formatPrice } from '@/lib/calculations';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableFooter } from '@/components/ui/table';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { toast } from 'sonner';
 
 interface GroundworksStepProps {
   onNext: () => void;
@@ -16,19 +30,69 @@ interface GroundworksStepProps {
 }
 
 type ScopeType = 'our' | 'investor';
+type UnitType = 'm3' | 'ryczalt';
+type VatRate = 0 | 8 | 23;
+
+interface ExcavationLineItem {
+  id: string;
+  name: string;
+  quantity: number;
+  unit: UnitType;
+  rate: number;
+  netValue: number;
+}
 
 export function GroundworksStep({ onNext, onBack, excavationSettings }: GroundworksStepProps) {
   const { state, dispatch } = useConfigurator();
+  const { setExcavationSettings } = useSettings();
   const { dimensions, sections } = state;
   
-  // Excavation state
+  // Excavation state - editable dimensions
   const [excavationScope, setExcavationScope] = useState<ScopeType>(
     (sections.roboty_ziemne?.scope as ScopeType) || 'our'
   );
-  const [excavation, setExcavation] = useState<ExcavationData>(() => 
-    calculateExcavation(dimensions, excavationSettings)
+  
+  // Editable excavation dimensions
+  const [excLength, setExcLength] = useState(() => 
+    dimensions.length + (excavationSettings.marginWidth * 2)
   );
-  const [customRemovalPrice, setCustomRemovalPrice] = useState(excavationSettings.removalFixedPrice);
+  const [excWidth, setExcWidth] = useState(() => 
+    dimensions.width + (excavationSettings.marginWidth * 2)
+  );
+  const [excDepth, setExcDepth] = useState(() => 
+    dimensions.depth + excavationSettings.marginDepth
+  );
+  
+  // Editable rate
+  const [excavationRate, setExcavationRate] = useState(excavationSettings.pricePerM3);
+  const [showRateDialog, setShowRateDialog] = useState(false);
+  const [pendingRate, setPendingRate] = useState(excavationSettings.pricePerM3);
+  
+  // VAT selection
+  const [vatRate, setVatRate] = useState<VatRate>(23);
+  
+  // Line items
+  const [lineItems, setLineItems] = useState<ExcavationLineItem[]>(() => {
+    const volume = excLength * excWidth * excDepth;
+    return [
+      {
+        id: 'wykop',
+        name: 'Wykop',
+        quantity: volume,
+        unit: 'm3' as UnitType,
+        rate: excavationSettings.pricePerM3,
+        netValue: volume * excavationSettings.pricePerM3,
+      },
+      {
+        id: 'wywoz',
+        name: 'Wywóz ziemi',
+        quantity: 1,
+        unit: 'ryczalt' as UnitType,
+        rate: excavationSettings.removalFixedPrice,
+        netValue: excavationSettings.removalFixedPrice,
+      },
+    ];
+  });
 
   // Construction state
   const [constructionScope, setConstructionScope] = useState<ScopeType>(
@@ -37,14 +101,86 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
   const [constructionNotes, setConstructionNotes] = useState('');
   const [constructionCost, setConstructionCost] = useState(0);
 
-  // Calculate excavation
+  // Recalculate volume when dimensions change
+  const excavationVolume = excLength * excWidth * excDepth;
+  
+  // Update line items when dimensions or rate changes
   useEffect(() => {
-    const calc = calculateExcavation(dimensions, excavationSettings);
-    setExcavation({
-      ...calc,
-      removalFixedPrice: customRemovalPrice,
+    setLineItems(prev => prev.map(item => {
+      if (item.id === 'wykop') {
+        const newQuantity = item.unit === 'm3' ? excavationVolume : item.quantity;
+        return {
+          ...item,
+          quantity: newQuantity,
+          rate: excavationRate,
+          netValue: item.unit === 'm3' ? excavationVolume * excavationRate : item.rate,
+        };
+      }
+      return item;
+    }));
+  }, [excavationVolume, excavationRate]);
+
+  // Handle rate change with dialog
+  const handleRateChange = useCallback((newRate: number) => {
+    if (newRate !== excavationSettings.pricePerM3) {
+      setPendingRate(newRate);
+      setShowRateDialog(true);
+    }
+    setExcavationRate(newRate);
+  }, [excavationSettings.pricePerM3]);
+
+  // Save rate to global settings
+  const handleSaveRateToSettings = async () => {
+    await setExcavationSettings({
+      ...excavationSettings,
+      pricePerM3: pendingRate,
     });
-  }, [dimensions, excavationSettings, customRemovalPrice]);
+    toast.success('Stawka zapisana w ustawieniach');
+    setShowRateDialog(false);
+  };
+
+  // Keep rate only for this offer
+  const handleKeepRateLocal = () => {
+    setShowRateDialog(false);
+  };
+
+  // Update line item
+  const updateLineItem = (id: string, field: keyof ExcavationLineItem, value: any) => {
+    setLineItems(prev => prev.map(item => {
+      if (item.id !== id) return item;
+      
+      const updated = { ...item, [field]: value };
+      
+      // Recalculate net value
+      if (field === 'unit') {
+        if (value === 'm3') {
+          updated.quantity = excavationVolume;
+          updated.netValue = excavationVolume * updated.rate;
+        } else {
+          updated.netValue = updated.rate;
+        }
+      } else if (field === 'quantity' || field === 'rate') {
+        updated.netValue = updated.unit === 'm3' 
+          ? updated.quantity * updated.rate 
+          : updated.rate;
+      }
+      
+      return updated;
+    }));
+  };
+
+  // Calculate totals
+  const totalNet = lineItems.reduce((sum, item) => sum + item.netValue, 0);
+  const vatAmount = totalNet * (vatRate / 100);
+  const totalGross = totalNet + vatAmount;
+
+  // Build excavation data for state
+  const excavation: ExcavationData = {
+    excavationVolume,
+    excavationPricePerM3: excavationRate,
+    excavationTotal: lineItems.find(i => i.id === 'wykop')?.netValue || 0,
+    removalFixedPrice: lineItems.find(i => i.id === 'wywoz')?.netValue || 0,
+  };
 
   // Save excavation scope to sections
   useEffect(() => {
@@ -55,12 +191,17 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
         data: {
           ...sections.roboty_ziemne,
           scope: excavationScope,
-          excavation: excavationScope === 'our' ? excavation : null,
+          excavation: excavationScope === 'our' ? {
+            ...excavation,
+            customDimensions: { length: excLength, width: excWidth, depth: excDepth },
+            lineItems,
+            vatRate,
+          } : null,
           items: [],
         },
       },
     });
-  }, [excavationScope, excavation]);
+  }, [excavationScope, excavation, excLength, excWidth, excDepth, lineItems, vatRate]);
 
   // Save construction scope to sections
   useEffect(() => {
@@ -78,14 +219,6 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
       },
     });
   }, [constructionScope, constructionNotes, constructionCost]);
-
-  const excavationDimensions = {
-    length: dimensions.length + (excavationSettings.marginWidth * 2),
-    width: dimensions.width + (excavationSettings.marginWidth * 2),
-    depth: dimensions.depth + excavationSettings.marginDepth,
-  };
-
-  const totalExcavationCost = excavation.excavationTotal + excavation.removalFixedPrice;
 
   return (
     <div className="animate-slide-up">
@@ -164,25 +297,25 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
                 <div className="grid grid-cols-3 gap-4">
                   <div className="p-3 rounded-lg bg-muted/30 text-center">
                     <p className="text-xs text-muted-foreground">Długość</p>
-                    <p className="text-lg font-bold">{excavationDimensions.length.toFixed(1)} m</p>
+                    <p className="text-lg font-bold">{excLength.toFixed(1)} m</p>
                   </div>
                   <div className="p-3 rounded-lg bg-muted/30 text-center">
                     <p className="text-xs text-muted-foreground">Szerokość</p>
-                    <p className="text-lg font-bold">{excavationDimensions.width.toFixed(1)} m</p>
+                    <p className="text-lg font-bold">{excWidth.toFixed(1)} m</p>
                   </div>
                   <div className="p-3 rounded-lg bg-muted/30 text-center">
                     <p className="text-xs text-muted-foreground">Głębokość</p>
-                    <p className="text-lg font-bold">{excavationDimensions.depth.toFixed(1)} m</p>
+                    <p className="text-lg font-bold">{excDepth.toFixed(1)} m</p>
                   </div>
                 </div>
                 <p className="text-sm text-muted-foreground mt-3 text-center">
-                  Objętość wykopu: <strong>{excavation.excavationVolume.toFixed(1)} m³</strong>
+                  Objętość wykopu: <strong>{excavationVolume.toFixed(1)} m³</strong>
                 </p>
               </div>
             </div>
           ) : (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Left: Excavation info */}
+            <div className="space-y-6">
+              {/* Dimensions section */}
               <div className="glass-card p-6">
                 <h3 className="text-base font-medium mb-4">Wymiary wykopu</h3>
                 
@@ -192,24 +325,49 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
                     <div className="text-sm">
                       <p className="font-medium">Kalkulacja wykopu</p>
                       <p className="text-muted-foreground">
-                        Basen: {dimensions.length}×{dimensions.width}m + margines {excavationSettings.marginWidth}m z każdej strony
+                        Basen: {dimensions.length}×{dimensions.width}m + margines {excavationSettings.marginWidth}m z każdej strony.
+                        Możesz edytować wymiary poniżej.
                       </p>
                     </div>
                   </div>
                 </div>
 
-                <div className="grid grid-cols-3 gap-4 mb-6">
-                  <div className="p-3 rounded-lg bg-muted/30 text-center">
-                    <p className="text-xs text-muted-foreground">Długość</p>
-                    <p className="text-lg font-bold">{excavationDimensions.length.toFixed(1)} m</p>
+                <div className="grid grid-cols-3 gap-4 mb-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="exc-length">Długość (m)</Label>
+                    <Input
+                      id="exc-length"
+                      type="number"
+                      min="1"
+                      step="0.1"
+                      value={excLength}
+                      onChange={(e) => setExcLength(parseFloat(e.target.value) || 0)}
+                      className="input-field"
+                    />
                   </div>
-                  <div className="p-3 rounded-lg bg-muted/30 text-center">
-                    <p className="text-xs text-muted-foreground">Szerokość</p>
-                    <p className="text-lg font-bold">{excavationDimensions.width.toFixed(1)} m</p>
+                  <div className="space-y-2">
+                    <Label htmlFor="exc-width">Szerokość (m)</Label>
+                    <Input
+                      id="exc-width"
+                      type="number"
+                      min="1"
+                      step="0.1"
+                      value={excWidth}
+                      onChange={(e) => setExcWidth(parseFloat(e.target.value) || 0)}
+                      className="input-field"
+                    />
                   </div>
-                  <div className="p-3 rounded-lg bg-muted/30 text-center">
-                    <p className="text-xs text-muted-foreground">Głębokość</p>
-                    <p className="text-lg font-bold">{excavationDimensions.depth.toFixed(1)} m</p>
+                  <div className="space-y-2">
+                    <Label htmlFor="exc-depth">Głębokość (m)</Label>
+                    <Input
+                      id="exc-depth"
+                      type="number"
+                      min="0.5"
+                      step="0.1"
+                      value={excDepth}
+                      onChange={(e) => setExcDepth(parseFloat(e.target.value) || 0)}
+                      className="input-field"
+                    />
                   </div>
                 </div>
 
@@ -218,65 +376,132 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
                     <div>
                       <p className="text-xs text-muted-foreground">Objętość wykopu</p>
                       <p className="text-2xl font-bold text-primary">
-                        {excavation.excavationVolume.toFixed(1)} m³
+                        {excavationVolume.toFixed(1)} m³
                       </p>
                     </div>
-                    <div className="text-right">
-                      <p className="text-xs text-muted-foreground">Stawka</p>
-                      <p className="text-lg font-semibold">
-                        {formatPrice(excavation.excavationPricePerM3)}/m³
-                      </p>
+                    <div className="text-right space-y-2">
+                      <Label htmlFor="exc-rate" className="text-xs text-muted-foreground">Stawka za m³</Label>
+                      <div className="flex items-center gap-2">
+                        <Input
+                          id="exc-rate"
+                          type="number"
+                          min="0"
+                          step="10"
+                          value={excavationRate}
+                          onChange={(e) => handleRateChange(parseFloat(e.target.value) || 0)}
+                          className="input-field w-28 text-right"
+                        />
+                        <span className="text-sm text-muted-foreground">zł/m³</span>
+                      </div>
                     </div>
                   </div>
                 </div>
               </div>
 
-              {/* Right: Pricing */}
+              {/* Cost table */}
               <div className="glass-card p-6">
                 <h3 className="text-base font-medium mb-4">Koszt robót ziemnych</h3>
-
-                <div className="space-y-4">
-                  <div className="flex justify-between items-center p-3 rounded-lg bg-muted/30">
-                    <div>
-                      <p className="font-medium">Wykop</p>
-                      <p className="text-xs text-muted-foreground">
-                        {excavation.excavationVolume.toFixed(1)} m³ × {formatPrice(excavation.excavationPricePerM3)}
-                      </p>
-                    </div>
-                    <span className="text-lg font-semibold">
-                      {formatPrice(excavation.excavationTotal)}
-                    </span>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="removalPrice">Ryczałt za wywóz ziemi (PLN)</Label>
-                    <Input
-                      id="removalPrice"
-                      type="number"
-                      min="0"
-                      step="100"
-                      value={customRemovalPrice}
-                      onChange={(e) => setCustomRemovalPrice(parseFloat(e.target.value) || 0)}
-                      className="input-field"
-                    />
-                  </div>
-
-                  <div className="border-t border-border pt-4">
-                    <div className="flex justify-between items-center">
-                      <p className="font-medium">Razem roboty ziemne (netto)</p>
-                      <p className="text-2xl font-bold text-primary">
-                        {formatPrice(totalExcavationCost)}
-                      </p>
-                    </div>
-                    <div className="flex justify-between items-center mt-1 text-sm text-muted-foreground">
-                      <p>+ VAT 8%</p>
-                      <p>{formatPrice(totalExcavationCost * 0.08)}</p>
-                    </div>
-                    <div className="flex justify-between items-center mt-1">
-                      <p className="font-medium">Brutto</p>
-                      <p className="font-bold">{formatPrice(totalExcavationCost * 1.08)}</p>
-                    </div>
-                  </div>
+                
+                <div className="rounded-lg border border-border overflow-hidden">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="bg-muted/30">
+                        <TableHead className="w-[200px]">Nazwa czynności</TableHead>
+                        <TableHead className="text-right w-[100px]">Ilość</TableHead>
+                        <TableHead className="w-[120px]">Jednostka</TableHead>
+                        <TableHead className="text-right w-[120px]">Stawka (zł)</TableHead>
+                        <TableHead className="text-right w-[140px]">Wartość netto</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {lineItems.map((item) => (
+                        <TableRow key={item.id}>
+                          <TableCell className="font-medium">{item.name}</TableCell>
+                          <TableCell className="text-right">
+                            {item.unit === 'm3' ? (
+                              <span>{item.quantity.toFixed(1)}</span>
+                            ) : (
+                              <Input
+                                type="number"
+                                min="1"
+                                value={item.quantity}
+                                onChange={(e) => updateLineItem(item.id, 'quantity', parseFloat(e.target.value) || 1)}
+                                className="input-field w-20 text-right"
+                              />
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            <Select
+                              value={item.unit}
+                              onValueChange={(v) => updateLineItem(item.id, 'unit', v as UnitType)}
+                            >
+                              <SelectTrigger className="w-[100px]">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="m3">m³</SelectItem>
+                                <SelectItem value="ryczalt">ryczałt</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <Input
+                              type="number"
+                              min="0"
+                              step="10"
+                              value={item.rate}
+                              onChange={(e) => updateLineItem(item.id, 'rate', parseFloat(e.target.value) || 0)}
+                              className="input-field w-24 text-right"
+                            />
+                          </TableCell>
+                          <TableCell className="text-right font-semibold">
+                            {formatPrice(item.netValue)}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                    <TableFooter>
+                      <TableRow>
+                        <TableCell colSpan={4} className="text-right font-medium">
+                          Razem netto
+                        </TableCell>
+                        <TableCell className="text-right font-bold text-lg text-primary">
+                          {formatPrice(totalNet)}
+                        </TableCell>
+                      </TableRow>
+                      <TableRow>
+                        <TableCell colSpan={3} className="text-right text-muted-foreground">
+                          VAT
+                        </TableCell>
+                        <TableCell>
+                          <Select
+                            value={vatRate.toString()}
+                            onValueChange={(v) => setVatRate(parseInt(v) as VatRate)}
+                          >
+                            <SelectTrigger className="w-[80px]">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="0">0%</SelectItem>
+                              <SelectItem value="8">8%</SelectItem>
+                              <SelectItem value="23">23%</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </TableCell>
+                        <TableCell className="text-right text-muted-foreground">
+                          {formatPrice(vatAmount)}
+                        </TableCell>
+                      </TableRow>
+                      <TableRow className="bg-primary/5">
+                        <TableCell colSpan={4} className="text-right font-medium">
+                          Razem brutto
+                        </TableCell>
+                        <TableCell className="text-right font-bold text-xl">
+                          {formatPrice(totalGross)}
+                        </TableCell>
+                      </TableRow>
+                    </TableFooter>
+                  </Table>
                 </div>
               </div>
             </div>
@@ -448,6 +673,31 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
           )}
         </TabsContent>
       </Tabs>
+
+      {/* Rate change dialog */}
+      <AlertDialog open={showRateDialog} onOpenChange={setShowRateDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <Save className="w-5 h-5 text-primary" />
+              Zmiana stawki za wykop
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Zmieniono stawkę z {formatPrice(excavationSettings.pricePerM3)}/m³ na {formatPrice(pendingRate)}/m³.
+              <br /><br />
+              Czy chcesz zapisać nową stawkę w ustawieniach, aby była używana dla przyszłych ofert?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={handleKeepRateLocal}>
+              Tylko dla tej oferty
+            </AlertDialogCancel>
+            <AlertDialogAction onClick={handleSaveRateToSettings}>
+              Zapisz w ustawieniach
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
