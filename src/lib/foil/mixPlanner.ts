@@ -1472,34 +1472,8 @@ export function getReusableOffcutsWithDimensions(
     }
   }
 
-  // Check cross-utilization first
-  const stairsWaste = structuralWastes.find(w => w.source === 'stairs');
-  const paddlingWaste = structuralWastes.find(w => w.source === 'paddling');
-  
-  let stairsWasteUtilized = false;
-  let paddlingWasteUtilized = false;
-  
-  if (stairsWaste && paddlingWaste) {
-    const stairsToPaddling = canWasteCoverSurface(stairsWaste, 'paddling', dimensions);
-    if (stairsToPaddling.canCover) {
-      stairsWasteUtilized = true;
-    }
-    
-    const paddlingToStairs = canWasteCoverSurface(paddlingWaste, 'stairs', dimensions);
-    if (paddlingToStairs.canCover) {
-      paddlingWasteUtilized = true;
-    }
-  }
-
-  // Add reusable (not cross-utilized) structural offcuts to list
+  // Add reusable structural offcuts to list
   for (const waste of structuralWastes) {
-    const isUtilized = (waste.source === 'stairs' && stairsWasteUtilized) ||
-                       (waste.source === 'paddling' && paddlingWasteUtilized);
-    
-    if (isUtilized) {
-      continue; // Cross-utilized, don't add to offcuts list
-    }
-    
     // Check if waste is REUSABLE: length >= 2m AND width >= 0.5m
     const isReusable = waste.length >= MIN_REUSABLE_OFFCUT_LENGTH && waste.width >= WASTE_THRESHOLD;
     
@@ -1526,7 +1500,7 @@ export interface UnusableWaste {
   source: string;  // surface that generated this waste
 }
 
-/** Structural foil waste with potential for cross-utilization */
+/** Structural foil waste piece (stairs / paddling pool) */
 export interface StructuralWastePiece {
   source: 'stairs' | 'paddling';
   length: number;  // m
@@ -1540,53 +1514,6 @@ export interface StructuralWastePiece {
  */
 function isWasteUnusable(length: number, width: number): boolean {
   return length < MIN_REUSABLE_OFFCUT_LENGTH || width < WASTE_THRESHOLD;
-}
-
-/**
- * Check if waste piece A can cover the needs of surface B
- * For cross-utilization between stairs and paddling pool
- */
-function canWasteCoverSurface(
-  waste: StructuralWastePiece,
-  targetSurface: 'stairs' | 'paddling',
-  dimensions: PoolDimensions
-): { canCover: boolean; usedArea: number } {
-  if (waste.source === targetSurface) {
-    return { canCover: false, usedArea: 0 };
-  }
-  
-  // Get target surface requirements
-  if (targetSurface === 'stairs' && dimensions.stairs?.enabled) {
-    const stairs = dimensions.stairs;
-    const stairsWidth = typeof stairs.width === 'number' ? stairs.width : Math.min(dimensions.length, dimensions.width);
-    const stepDepth = stairs.stepDepth || 0.30;
-    const stepCount = stairs.stepCount || 4;
-    const stairsFootprintLength = stepDepth * stepCount;
-    
-    // Waste must fit stairs (stairsWidth × stairsFootprintLength)
-    if (waste.length >= stairsWidth && waste.width >= stairsFootprintLength) {
-      return { canCover: true, usedArea: stairsWidth * stairsFootprintLength };
-    }
-  }
-  
-  if (targetSurface === 'paddling' && dimensions.wadingPool?.enabled) {
-    const pp = dimensions.wadingPool;
-    const ppLength = pp.length || 2;
-    const ppWidth = pp.width || 2;
-    const longerEdge = Math.max(ppLength, ppWidth);
-    const shorterEdge = Math.min(ppLength, ppWidth);
-    
-    // For paddling, waste must cover at least one strip (longerEdge × 1.65m or portion)
-    // We check if waste can contribute to reducing ordered strips
-    // Waste can partially cover if: length >= longerEdge AND width can contribute to strips
-    if (waste.length >= longerEdge && waste.width > 0) {
-      // Can cover portion of paddling width
-      const usableWidth = Math.min(waste.width, shorterEdge);
-      return { canCover: true, usedArea: longerEdge * usableWidth };
-    }
-  }
-  
-  return { canCover: false, usedArea: 0 };
 }
 
 /** Get unusable waste pieces (offcuts < 2m length OR < 0.5m width) */
@@ -1618,18 +1545,10 @@ export function getUnusableWaste(
     }
   }
 
-  // Calculate structural wastes (stairs and paddling) with cross-utilization
+  // Calculate structural wastes (stairs and paddling)
   const structuralWastes: StructuralWastePiece[] = [];
   
-  // Use the structural roll number from surface details - this is the roll that actually
-  // contains stairs and paddling strips (typically #3 for a pool with 2 main rolls)
-  // We find the roll number by looking at where structural surfaces are packed
-  const { structural } = partitionSurfacesByFoilType(config.surfaces);
-  const structuralConfig = { ...config, surfaces: structural };
-  const structuralRolls = packStripsIntoRolls(structuralConfig, dimensions, foilSubtype, priority);
-  
-  // Get the first structural roll number, or calculate based on main rolls
-  // The key insight: structural surfaces share a single roll with a consistent number
+  // Structural surfaces share a single roll with a consistent number.
   const mainRolls = rolls.filter(r => 
     !r.strips.some(s => s.surface === 'Schody' || s.surface === 'Brodzik')
   );
@@ -1695,41 +1614,9 @@ export function getUnusableWaste(
       });
     }
   }
-  
-  // Check cross-utilization between stairs and paddling wastes
-  // A waste piece that's usable (>= 2m AND >= 0.5m) goes to reusable offcuts, not here
-  // A waste piece from one surface that can cover another should also not be reported as waste
-  
-  const stairsWaste = structuralWastes.find(w => w.source === 'stairs');
-  const paddlingWaste = structuralWastes.find(w => w.source === 'paddling');
-  
-  let stairsWasteUtilized = false;
-  let paddlingWasteUtilized = false;
-  
-  // Check if stairs waste can cover paddling needs
-  if (stairsWaste && paddlingWaste) {
-    const stairsToPaddling = canWasteCoverSurface(stairsWaste, 'paddling', dimensions);
-    if (stairsToPaddling.canCover) {
-      stairsWasteUtilized = true;
-    }
-    
-    const paddlingToStairs = canWasteCoverSurface(paddlingWaste, 'stairs', dimensions);
-    if (paddlingToStairs.canCover) {
-      paddlingWasteUtilized = true;
-    }
-  }
-  
-  // Only add to unusable waste list if:
-  // 1. Waste is not cross-utilized, AND
-  // 2. Waste is unusable (< 2m length OR < 0.5m width)
+
+  // Only add to unusable waste list if waste is unusable (< 2m length OR < 0.5m width).
   for (const waste of structuralWastes) {
-    const isUtilized = (waste.source === 'stairs' && stairsWasteUtilized) ||
-                       (waste.source === 'paddling' && paddlingWasteUtilized);
-    
-    if (isUtilized) {
-      continue; // Cross-utilized, skip
-    }
-    
     // Check if waste is unusable: length < 2m OR width < 0.5m
     const isUnusable = isWasteUnusable(waste.length, waste.width);
     
