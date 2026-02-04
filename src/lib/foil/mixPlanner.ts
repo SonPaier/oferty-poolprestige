@@ -1404,11 +1404,12 @@ export function getReusableOffcutsWithDimensions(
   return offcuts;
 }
 
-/** Unusable waste pieces (< 2m length) */
+/** Unusable waste pieces (< 2m length or narrow edge trims) */
 export interface UnusableWaste {
   rollNumber: number;
   rollWidth: RollWidth;
   length: number;  // waste length (m)
+  width: number;   // waste width (m) - for edge trims may be less than rollWidth
   area: number;    // waste area (m²)
   source: string;  // surface that generated this waste
 }
@@ -1435,6 +1436,7 @@ export function getUnusableWaste(
         rollNumber: roll.rollNumber,
         rollWidth: roll.rollWidth,
         length: Math.round(roll.wasteLength * 10) / 10,
+        width: roll.rollWidth, // For roll-end waste, width = roll width
         area: Math.round(roll.wasteLength * roll.rollWidth * 100) / 100,
         source,
       });
@@ -1443,45 +1445,77 @@ export function getUnusableWaste(
 
   // Add waste from structural surfaces (stairs and paddling) - these have edge waste
   const surfaceDetails = calculateSurfaceDetails(config, dimensions, foilSubtype, priority);
+  const defs = getSurfaceDefinitions(dimensions, foilSubtype);
   
-  // Find structural roll number (starts after main foil rolls)
-  const mainRollCount = rolls.length;
-  let structuralRollNumber = mainRollCount + 1;
+  // Determine structural roll numbering - use 'S1', 'S2' style by finding max main roll number
+  const maxMainRollNumber = rolls.length > 0 ? Math.max(...rolls.map(r => r.rollNumber)) : 0;
+  let structuralRollIndex = 1;
   
   for (const detail of surfaceDetails) {
-    // Only include stairs and paddling - they have edge waste calculated separately
-    if ((detail.surfaceKey === 'stairs' || detail.surfaceKey === 'paddling') && detail.wasteArea > 0) {
-      // For stairs: waste is edge trim from roll width
-      // For paddling: waste is edge trim from strips being wider than needed
-      const rollWidth = detail.strips[0]?.rollWidth || ROLL_WIDTH_NARROW;
-      
-      // Calculate waste dimensions based on surface type
-      let wasteLength: number;
-      let wasteWidth: number;
-      
-      if (detail.surfaceKey === 'stairs') {
-        // Stairs waste: (1.65 - footprintLength) × stairsWidth
-        // wasteArea is already calculated, derive dimensions
-        const stripLength = detail.strips[0]?.stripLength || 0;
-        wasteLength = stripLength; // same as stair width (transverse cut)
-        wasteWidth = detail.wasteArea / wasteLength; // derived width
-      } else {
-        // Paddling waste: edge waste from strips
-        const stripLength = detail.strips[0]?.stripLength || 0;
-        wasteLength = stripLength;
-        wasteWidth = detail.wasteArea / wasteLength;
+    if (detail.surfaceKey === 'stairs' && detail.wasteArea > 0) {
+      // Stairs waste: (1.65 - footprintLength) × stairsWidth
+      const stairs = dimensions.stairs;
+      if (stairs) {
+        const stairsWidth = typeof stairs.width === 'number' ? stairs.width : Math.min(dimensions.length, dimensions.width);
+        const stepDepth = stairs.stepDepth || 0.30;
+        const stepCount = stairs.stepCount || 4;
+        const stairsFootprintLength = stepDepth * stepCount;
+        
+        // Waste dimensions: (1.65 - footprintLength) × stairsWidth
+        const wasteWidth = ROLL_WIDTH_NARROW - stairsFootprintLength;
+        const wasteLength = stairsWidth;
+        const wasteArea = wasteWidth * wasteLength;
+        
+        if (wasteArea > 0.01) { // Only add if significant
+          wastes.push({
+            rollNumber: maxMainRollNumber + structuralRollIndex,
+            rollWidth: ROLL_WIDTH_NARROW,
+            length: Math.round(wasteLength * 100) / 100,
+            width: Math.round(wasteWidth * 100) / 100,
+            area: Math.round(wasteArea * 100) / 100,
+            source: 'Schody',
+          });
+          structuralRollIndex++;
+        }
       }
-      
-      // All structural waste is considered unusable (edge trims are typically narrow)
-      wastes.push({
-        rollNumber: structuralRollNumber,
-        rollWidth: rollWidth,
-        length: Math.round(wasteLength * 10) / 10,
-        area: Math.round(detail.wasteArea * 100) / 100,
-        source: detail.surfaceKey === 'stairs' ? 'Schody' : 'Brodzik',
-      });
-      
-      structuralRollNumber++;
+    }
+    
+    if (detail.surfaceKey === 'paddling' && detail.wasteArea > 0) {
+      // Paddling pool waste: edge waste from strips being wider than pool floor
+      const def = defs.find(d => d.key === 'paddling');
+      if (def && dimensions.wadingPool) {
+        const pp = dimensions.wadingPool;
+        const ppWidth = pp.width || 2;
+        const ppLength = pp.length || 2;
+        
+        // Strips run along longer edge
+        const longerEdge = Math.max(ppWidth, ppLength);
+        const shorterEdge = Math.min(ppWidth, ppLength);
+        
+        // Calculate strip count for shorter edge (coverWidth)
+        const stripCount = Math.ceil(shorterEdge / ROLL_WIDTH_NARROW);
+        
+        // Total foil width used = stripCount × 1.65m
+        // Waste width = (stripCount × 1.65m) - shorterEdge
+        const totalFoilWidth = stripCount * ROLL_WIDTH_NARROW;
+        const wasteWidth = totalFoilWidth - shorterEdge;
+        
+        // Waste piece dimensions
+        const wasteLength = longerEdge;
+        const wasteArea = wasteWidth * wasteLength;
+        
+        if (wasteArea > 0.01) { // Only add if significant
+          wastes.push({
+            rollNumber: maxMainRollNumber + structuralRollIndex,
+            rollWidth: ROLL_WIDTH_NARROW,
+            length: Math.round(wasteLength * 100) / 100,
+            width: Math.round(wasteWidth * 100) / 100,
+            area: Math.round(wasteArea * 100) / 100,
+            source: 'Brodzik',
+          });
+          structuralRollIndex++;
+        }
+      }
     }
   }
 
