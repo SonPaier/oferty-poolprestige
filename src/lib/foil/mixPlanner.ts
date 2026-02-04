@@ -956,10 +956,25 @@ export function calculateSurfaceDetails(
 ): SurfaceDetailedResult[] {
   const results: SurfaceDetailedResult[] = [];
   const defs = getSurfaceDefinitions(dimensions, foilSubtype);
-  const rolls = packStripsIntoRolls(config, dimensions, foilSubtype, priority);
+  
+  // Pack MAIN and STRUCTURAL foils SEPARATELY for correct roll numbering
+  const { main, structural } = partitionSurfacesByFoilType(config.surfaces);
+  
+  const mainConfig = { ...config, surfaces: main };
+  const structuralConfig = { ...config, surfaces: structural };
+  
+  const mainRolls = packStripsIntoRolls(mainConfig, dimensions, foilSubtype, priority);
+  const structuralRolls = packStripsIntoRolls(structuralConfig, dimensions, foilSubtype, priority);
 
   const rollBySurfaceStrip = new Map<string, number>();
-  for (const r of rolls) {
+  // Map main foil rolls
+  for (const r of mainRolls) {
+    for (const s of r.strips) {
+      rollBySurfaceStrip.set(`${s.surface}__${s.stripIndex}`, r.rollNumber);
+    }
+  }
+  // Map structural foil rolls (with their own numbering starting from 1)
+  for (const r of structuralRolls) {
     for (const s of r.strips) {
       rollBySurfaceStrip.set(`${s.surface}__${s.stripIndex}`, r.rollNumber);
     }
@@ -972,9 +987,16 @@ export function calculateSurfaceDetails(
   const paddlingSurfaces = config.surfaces.filter(s => s.surface === 'paddling');
   const dividingWallSurfaces = config.surfaces.filter(s => s.surface === 'dividing-wall');
   
-  // Helper to get roll numbers for a surface
-  const getRollNumbersForSurface = (surfaceLabel: string): number[] => {
-    return rolls
+  // Helper to get roll numbers for a main surface
+  const getRollNumbersForMainSurface = (surfaceLabel: string): number[] => {
+    return mainRolls
+      .filter(r => r.strips.some(s => s.surface === surfaceLabel))
+      .map(r => r.rollNumber);
+  };
+  
+  // Helper to get roll numbers for a structural surface
+  const getRollNumbersForStructuralSurface = (surfaceLabel: string): number[] => {
+    return structuralRolls
       .filter(r => r.strips.some(s => s.surface === surfaceLabel))
       .map(r => r.rollNumber);
   };
@@ -996,7 +1018,7 @@ export function calculateSurfaceDetails(
       // Calculate roll-end waste for bottom strips (unusable leftovers < 2m)
       // Only count waste from rolls that ONLY contain bottom strips
       let bottomRollEndWaste = 0;
-      for (const r of rolls) {
+      for (const r of mainRolls) {
         const bottomStripsInRoll = r.strips.filter((s) => s.surface === bottomLabel);
         const otherStripsInRoll = r.strips.filter((s) => s.surface !== bottomLabel);
         
@@ -1021,7 +1043,7 @@ export function calculateSurfaceDetails(
 
         // Display per roll number (so we don't incorrectly show 2×10m as coming from one roll)
         const perRoll: Array<{ rollNumber: number; rollWidth: RollWidth; count: number }> = [];
-        for (const r of rolls) {
+        for (const r of mainRolls) {
           const bottomStripsInRoll = r.strips.filter((s) => s.surface === bottomLabel);
           if (bottomStripsInRoll.length === 0) continue;
           perRoll.push({
@@ -1052,7 +1074,7 @@ export function calculateSurfaceDetails(
         
         // Group by roll number even for single-width configuration
         const perRoll: Array<{ rollNumber: number; rollWidth: RollWidth; count: number }> = [];
-        for (const r of rolls) {
+        for (const r of mainRolls) {
           const bottomStripsInRoll = r.strips.filter((s) => s.surface === bottomLabel);
           if (bottomStripsInRoll.length === 0) continue;
           perRoll.push({
@@ -1078,7 +1100,7 @@ export function calculateSurfaceDetails(
               count: surface.stripCount,
               rollWidth: surface.rollWidth,
               stripLength: surface.stripLength,
-              rollNumber: getRollNumbersForSurface(bottomLabel)[0],
+              rollNumber: getRollNumbersForMainSurface(bottomLabel)[0],
             }];
       }
 
@@ -1206,7 +1228,7 @@ export function calculateSurfaceDetails(
     const def = defs.find(d => d.key === 'stairs');
     if (def && dimensions.stairs) {
       const stairs = dimensions.stairs;
-      const rollNumbers = getRollNumbersForSurface(surface.surfaceLabel);
+      const rollNumbers = getRollNumbersForStructuralSurface(surface.surfaceLabel);
       
       // Stair parameters
       const stairsWidth = typeof stairs.width === 'number' ? stairs.width : Math.min(dimensions.length, dimensions.width);
@@ -1269,7 +1291,7 @@ export function calculateSurfaceDetails(
           count: 1,
           rollWidth: displayRollWidth,
           stripLength: displayStripLength,
-          rollNumber: rollNumbers[0],
+          rollNumber: rollNumbers[0] ?? 1, // Default to roll #1 for structural
         }],
         coverArea: Math.round(coverArea * 10) / 10,
         totalFoilArea: Math.ceil(totalFoilAreaRaw),
@@ -1291,7 +1313,7 @@ export function calculateSurfaceDetails(
       
       // Recalculate strip count based on actual coverWidth (shorter edge of wading pool)
       const calc = calculateStripsForWidth(def.coverWidth, surface.rollWidth, def.overlap);
-      const rollNumbers = getRollNumbersForSurface(surface.surfaceLabel);
+      const rollNumbers = getRollNumbersForStructuralSurface(surface.surfaceLabel);
       
       // Use the correct strip count from calculation
       const stripCount = calc.count;
@@ -1320,7 +1342,7 @@ export function calculateSurfaceDetails(
           count: stripCount,
           rollWidth: surface.rollWidth,
           stripLength: def.stripLength,
-          rollNumber: rollNumbers[0],
+          rollNumber: rollNumbers[0] ?? 1, // Default to roll #1 for structural
         }],
         coverArea: Math.round(coverArea * 10) / 10,
         totalFoilArea: Math.ceil(totalFoilAreaRaw),
@@ -1337,7 +1359,7 @@ export function calculateSurfaceDetails(
     const def = defs.find(d => d.key === 'dividing-wall');
     if (def) {
       const calc = calculateStripsForWidth(def.coverWidth, surface.rollWidth, def.overlap);
-      const rollNumbers = getRollNumbersForSurface(surface.surfaceLabel);
+      const rollNumbers = getRollNumbersForMainSurface(surface.surfaceLabel);
       
       const totalFoilAreaRaw = surface.stripCount * surface.rollWidth * surface.stripLength;
       const overlapsCount = Math.max(0, calc.count - 1);
@@ -1351,7 +1373,7 @@ export function calculateSurfaceDetails(
           count: surface.stripCount,
           rollWidth: surface.rollWidth,
           stripLength: surface.stripLength,
-          rollNumber: rollNumbers[0],
+          rollNumber: rollNumbers[0] ?? 1, // Default for dividing wall (main foil)
         }],
         coverArea: Math.round(coverArea * 10) / 10,
         totalFoilArea: Math.ceil(totalFoilAreaRaw),
@@ -1396,11 +1418,19 @@ export function getReusableOffcutsWithDimensions(
   foilSubtype?: FoilSubtype | null,
   priority: OptimizationPriority = 'minWaste'
 ): ReusableOffcut[] {
-  const rolls = packStripsIntoRolls(config, dimensions, foilSubtype, priority);
+  // Pack MAIN foil separately from STRUCTURAL foil to get correct roll numbering
+  const { main, structural } = partitionSurfacesByFoilType(config.surfaces);
+  
+  const mainConfig = { ...config, surfaces: main };
+  const structuralConfig = { ...config, surfaces: structural };
+  
+  const mainRolls = packStripsIntoRolls(mainConfig, dimensions, foilSubtype, priority);
+  const structuralRolls = packStripsIntoRolls(structuralConfig, dimensions, foilSubtype, priority);
+  
   const offcuts: ReusableOffcut[] = [];
 
-  // Reusable offcuts from roll packing (bottom, walls)
-  for (const roll of rolls) {
+  // Reusable offcuts from MAIN foil roll packing (bottom, walls)
+  for (const roll of mainRolls) {
     if (roll.wasteLength >= MIN_REUSABLE_OFFCUT_LENGTH && roll.rollWidth >= WASTE_THRESHOLD) {
       offcuts.push({
         rollNumber: roll.rollNumber,
@@ -1413,17 +1443,8 @@ export function getReusableOffcutsWithDimensions(
 
   // Add reusable offcuts from structural surfaces (stairs, paddling)
   // These are offcuts that are >= 2m length AND >= 0.5m width
+  // IMPORTANT: Structural foil has SEPARATE roll numbering starting from #1
   
-  // Find structural roll number (same as in getUnusableWaste)
-  const mainRolls = rolls.filter(r => 
-    !r.strips.some(s => s.surface === 'Schody' || s.surface === 'Brodzik')
-  );
-  const maxMainRollNumber = mainRolls.length > 0 ? Math.max(...mainRolls.map(r => r.rollNumber)) : 0;
-  const structuralRollInMain = rolls.find(r => 
-    r.strips.some(s => s.surface === 'Schody' || s.surface === 'Brodzik')
-  );
-  const structuralRollNumber = structuralRollInMain?.rollNumber ?? (maxMainRollNumber + 1);
-
   // Calculate structural wastes
   const structuralWastes: StructuralWastePiece[] = [];
   
@@ -1471,6 +1492,10 @@ export function getReusableOffcutsWithDimensions(
       });
     }
   }
+
+  // Structural roll number = 1 (separate pool of rolls)
+  // But for display, we prefix with "S" conceptually or just use #1
+  const structuralRollNumber = structuralRolls.length > 0 ? structuralRolls[0].rollNumber : 1;
 
   // Add reusable structural offcuts to list
   for (const waste of structuralWastes) {
@@ -1523,11 +1548,19 @@ export function getUnusableWaste(
   foilSubtype?: FoilSubtype | null,
   priority: OptimizationPriority = 'minWaste'
 ): UnusableWaste[] {
-  const rolls = packStripsIntoRolls(config, dimensions, foilSubtype, priority);
+  // Pack MAIN foil separately from STRUCTURAL foil to get correct roll numbering
+  const { main, structural } = partitionSurfacesByFoilType(config.surfaces);
+  
+  const mainConfig = { ...config, surfaces: main };
+  const structuralConfig = { ...config, surfaces: structural };
+  
+  const mainRolls = packStripsIntoRolls(mainConfig, dimensions, foilSubtype, priority);
+  const structuralRolls = packStripsIntoRolls(structuralConfig, dimensions, foilSubtype, priority);
+  
   const wastes: UnusableWaste[] = [];
 
-  // Get waste from roll packing (bottom, walls)
-  for (const roll of rolls) {
+  // Get waste from MAIN foil roll packing (bottom, walls)
+  for (const roll of mainRolls) {
     // Waste is unusable if length < 2m OR width (rollWidth) < 0.5m
     if (roll.wasteLength > 0 && isWasteUnusable(roll.wasteLength, roll.rollWidth)) {
       // Determine source based on strips in the roll
@@ -1548,17 +1581,8 @@ export function getUnusableWaste(
   // Calculate structural wastes (stairs and paddling)
   const structuralWastes: StructuralWastePiece[] = [];
   
-  // Structural surfaces share a single roll with a consistent number.
-  const mainRolls = rolls.filter(r => 
-    !r.strips.some(s => s.surface === 'Schody' || s.surface === 'Brodzik')
-  );
-  const maxMainRollNumber = mainRolls.length > 0 ? Math.max(...mainRolls.map(r => r.rollNumber)) : 0;
-  
-  // Find actual structural roll number from the main pack
-  const structuralRollInMain = rolls.find(r => 
-    r.strips.some(s => s.surface === 'Schody' || s.surface === 'Brodzik')
-  );
-  const structuralRollNumber = structuralRollInMain?.rollNumber ?? (maxMainRollNumber + 1);
+  // Structural roll number = 1 (separate pool of rolls from main foil)
+  const structuralRollNumber = structuralRolls.length > 0 ? structuralRolls[0].rollNumber : 1;
   
   // Calculate stairs waste
   if (dimensions.stairs?.enabled) {
