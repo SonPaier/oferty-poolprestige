@@ -1626,23 +1626,6 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
             </div>
           )}
 
-          <div className="flex items-center justify-between p-4 rounded-lg bg-muted/30 border border-border">
-            <div className="flex items-center gap-3">
-              <Waves className="w-5 h-5 text-primary" />
-              <div>
-                <Label htmlFor="irregular" className="font-medium">Kształt nieregularny</Label>
-                <p className="text-xs text-muted-foreground">
-                  Dopłata {companySettings.irregularSurchargePercent}% do folii
-                </p>
-              </div>
-            </div>
-            <Switch
-              id="irregular"
-              checked={dimensions.isIrregular}
-              onCheckedChange={(checked) => updateDimension('isIrregular', checked)}
-              
-            />
-          </div>
         </div>
 
         {/* Right: 3D Visualization & Calculations - sticky on scroll */}
