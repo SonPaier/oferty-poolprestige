@@ -165,7 +165,8 @@ export const ANTI_SLIP_SURFACES: ExtendedSurfaceType[] = [
 export const DIVIDING_WALL_THICKNESS = 0.15;
 
 // Algorithm constants
-export const WASTE_THRESHOLD = 0.30;        // Strip < 30cm = waste
+export const WASTE_THRESHOLD = 0.50;        // Strip < 50cm width = unusable waste
+export const MIN_USABLE_WASTE_LENGTH = 2.0; // Offcut < 2m length = unusable waste
 export const OVERLAP_STRIPS = 0.10;         // Overlap between strips: 10cm
 export const OVERLAP_WALL_BOTTOM = 0.07;    // Weld at wall bottom: 7cm
 export const OVERLAP_WALL_TOP = 0.07;       // Connection at top: 7cm

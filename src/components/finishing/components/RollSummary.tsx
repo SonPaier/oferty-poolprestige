@@ -415,7 +415,7 @@ export function RollSummary({
           <div>
             <h5 className="font-medium text-sm mb-2 flex items-center gap-2">
               <Trash2 className="h-4 w-4 text-red-600" />
-              Odpad nieużyteczny (&lt;2m)
+              Odpad nieużyteczny (&lt;2m lub &lt;0.5m)
             </h5>
             <UnusableWasteTable wastes={unusableWaste} />
           </div>
@@ -513,7 +513,7 @@ export function RollSummary({
         <div>
           <h5 className="font-medium text-sm mb-2 flex items-center gap-2">
             <Trash2 className="h-4 w-4 text-red-600" />
-            Odpad nieużyteczny (&lt;2m)
+            Odpad nieużyteczny (&lt;2m lub &lt;0.5m)
           </h5>
           <UnusableWasteTable wastes={unusableWaste} />
         </div>
