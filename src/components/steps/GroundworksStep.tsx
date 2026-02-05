@@ -105,6 +105,91 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
   );
   const [constructionNotes, setConstructionNotes] = useState('');
   const [constructionCost, setConstructionCost] = useState(0);
+  
+  // Construction technology type
+  type ConstructionTechnology = 'masonry' | 'poured';
+  const [constructionTechnology, setConstructionTechnology] = useState<ConstructionTechnology>('masonry');
+  
+  // Material heights (editable)
+  const [sandBeddingHeight, setSandBeddingHeight] = useState(0.1); // 10cm default
+  const [leanConcreteHeight, setLeanConcreteHeight] = useState(0.1); // 10cm default
+  
+  // Calculate excavation area (for material calculations)
+  const excavationArea = excLength * excWidth;
+  
+  // Construction VAT
+  const [constructionVatRate, setConstructionVatRate] = useState<VatRate>(23);
+  
+  // Construction material line items
+  interface ConstructionMaterialItem {
+    id: string;
+    name: string;
+    quantity: number;
+    unit: string;
+    rate: number;
+    netValue: number;
+  }
+  
+  const [constructionMaterials, setConstructionMaterials] = useState<ConstructionMaterialItem[]>(() => [
+    {
+      id: 'podsypka',
+      name: 'Podsypka piaskowa',
+      quantity: excavationArea * sandBeddingHeight,
+      unit: 'm³',
+      rate: 120,
+      netValue: excavationArea * sandBeddingHeight * 120,
+    },
+    {
+      id: 'chudziak',
+      name: 'Beton na chudziak B15',
+      quantity: excavationArea * leanConcreteHeight,
+      unit: 'm³',
+      rate: 350,
+      netValue: excavationArea * leanConcreteHeight * 350,
+    },
+  ]);
+  
+  // Update construction materials when dimensions or heights change
+  useEffect(() => {
+    setConstructionMaterials(prev => prev.map(item => {
+      if (item.id === 'podsypka') {
+        const qty = excavationArea * sandBeddingHeight;
+        return { ...item, quantity: qty, netValue: qty * item.rate };
+      }
+      if (item.id === 'chudziak') {
+        const qty = excavationArea * leanConcreteHeight;
+        return { ...item, quantity: qty, netValue: qty * item.rate };
+      }
+      return item;
+    }));
+  }, [excavationArea, sandBeddingHeight, leanConcreteHeight]);
+  
+  // Update construction material
+  const updateConstructionMaterial = (id: string, field: keyof ConstructionMaterialItem, value: any) => {
+    setConstructionMaterials(prev => prev.map(item => {
+      if (item.id !== id) return item;
+      const updated = { ...item, [field]: value };
+      if (field === 'quantity' || field === 'rate') {
+        updated.netValue = updated.quantity * updated.rate;
+      }
+      return updated;
+    }));
+  };
+  
+  // Calculate construction totals
+  const constructionTotalNet = constructionMaterials.reduce((sum, item) => sum + item.netValue, 0);
+  const constructionVatAmount = constructionTotalNet * (constructionVatRate / 100);
+  const constructionTotalGross = constructionTotalNet + constructionVatAmount;
+  
+  // Get pool, stairs, wading pool dimensions for display
+  const poolDims = {
+    length: dimensions.length,
+    width: dimensions.width,
+    depth: dimensions.depth,
+    depthDeep: dimensions.depthDeep,
+  };
+  const stairsDims = dimensions.stairs;
+  const wadingPoolDims = dimensions.wadingPool;
 
   // Recalculate volume when dimensions change
   const excavationVolume = excLength * excWidth * excDepth;
@@ -252,12 +337,21 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
           ...sections.prace_budowlane,
           scope: constructionScope,
           notes: constructionNotes,
-          estimatedCost: constructionScope === 'our' ? constructionCost : 0,
+          excavation: constructionScope === 'our' ? {
+            technology: constructionTechnology,
+            lineItems: constructionMaterials,
+            vatRate: constructionVatRate,
+            sandBeddingHeight,
+            leanConcreteHeight,
+            totalNet: constructionTotalNet,
+            totalGross: constructionTotalGross,
+          } : null,
+          estimatedCost: constructionScope === 'our' ? constructionTotalNet : 0,
           items: [],
         },
       },
     });
-  }, [constructionScope, constructionNotes, constructionCost]);
+  }, [constructionScope, constructionNotes, constructionTechnology, constructionMaterials, constructionVatRate, sandBeddingHeight, leanConcreteHeight, constructionTotalNet, constructionTotalGross]);
 
   return (
     <div className="animate-slide-up">
@@ -637,97 +731,215 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
               </div>
             </div>
           ) : (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Left: Work scope */}
+            <div className="space-y-6">
+              {/* Pool dimensions reference */}
               <div className="glass-card p-6">
-                <h3 className="text-base font-medium mb-4">Zakres prac budowlanych</h3>
+                <h3 className="text-base font-medium mb-4">Zapotrzebowanie materiałowe</h3>
                 
-                <div className="space-y-3">
-                  <div className="p-3 rounded-lg bg-muted/30 flex items-start gap-3">
-                    <div className="w-2 h-2 rounded-full bg-primary mt-2" />
-                    <div>
-                      <p className="font-medium">Szalunki</p>
-                      <p className="text-sm text-muted-foreground">Wykonanie szalunków pod nieczkę basenu</p>
-                    </div>
+                {/* Pool, Stairs, Wading Pool dimensions */}
+                <div className="p-4 rounded-lg bg-accent/10 border border-accent/20 mb-4">
+                  <div className="flex items-start gap-2 mb-3">
+                    <Info className="w-4 h-4 text-accent mt-0.5" />
+                    <p className="text-sm font-medium">Wymiary konstrukcji</p>
                   </div>
-                  
-                  <div className="p-3 rounded-lg bg-muted/30 flex items-start gap-3">
-                    <div className="w-2 h-2 rounded-full bg-primary mt-2" />
-                    <div>
-                      <p className="font-medium">Zbrojenie</p>
-                      <p className="text-sm text-muted-foreground">Wykonanie zbrojenia ścian i dna basenu</p>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    {/* Pool */}
+                    <div className="p-3 rounded-lg bg-muted/30">
+                      <p className="text-xs text-muted-foreground mb-1">Basen</p>
+                      <p className="text-sm font-medium">
+                        {poolDims.length} × {poolDims.width} × {poolDims.depth}
+                        {poolDims.depthDeep && ` - ${poolDims.depthDeep}`} m
+                      </p>
                     </div>
+                    {/* Stairs */}
+                    {stairsDims.enabled && (
+                      <div className="p-3 rounded-lg bg-muted/30">
+                        <p className="text-xs text-muted-foreground mb-1">Schody</p>
+                        <p className="text-sm font-medium">
+                          {stairsDims.width === 'full' ? 'Pełna szer.' : `${stairsDims.width} m`} × {stairsDims.stepCount} stopni
+                        </p>
+                      </div>
+                    )}
+                    {/* Wading Pool */}
+                    {wadingPoolDims.enabled && (
+                      <div className="p-3 rounded-lg bg-muted/30">
+                        <p className="text-xs text-muted-foreground mb-1">Brodzik</p>
+                        <p className="text-sm font-medium">
+                          {wadingPoolDims.width} × {wadingPoolDims.length} × {wadingPoolDims.depth} m
+                        </p>
+                      </div>
+                    )}
                   </div>
-                  
-                  <div className="p-3 rounded-lg bg-muted/30 flex items-start gap-3">
-                    <div className="w-2 h-2 rounded-full bg-primary mt-2" />
-                    <div>
-                      <p className="font-medium">Betonowanie</p>
-                      <p className="text-sm text-muted-foreground">Zalewanie betonem klasy min. C25/30</p>
+                </div>
+
+                {/* Technology selection */}
+                <div className="mb-6">
+                  <Label className="mb-2 block">Technologia budowy</Label>
+                  <RadioGroup
+                    value={constructionTechnology}
+                    onValueChange={(v) => setConstructionTechnology(v as ConstructionTechnology)}
+                    className="flex flex-row gap-4"
+                  >
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="masonry" id="tech-masonry" />
+                      <Label htmlFor="tech-masonry" className="cursor-pointer">Bloczek betonowy (murowany)</Label>
                     </div>
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="poured" id="tech-poured" />
+                      <Label htmlFor="tech-poured" className="cursor-pointer">Technologia lana</Label>
+                    </div>
+                  </RadioGroup>
+                </div>
+
+                {/* Material heights configuration */}
+                <div className="grid grid-cols-2 gap-4 mb-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="sand-height">Wysokość podsypki (m)</Label>
+                    <Input
+                      id="sand-height"
+                      type="number"
+                      min="0.05"
+                      max="0.3"
+                      step="0.01"
+                      value={sandBeddingHeight}
+                      onChange={(e) => setSandBeddingHeight(parseFloat(e.target.value) || 0.1)}
+                      className="input-field"
+                    />
                   </div>
-                  
-                  <div className="p-3 rounded-lg bg-muted/30 flex items-start gap-3">
-                    <div className="w-2 h-2 rounded-full bg-primary mt-2" />
+                  <div className="space-y-2">
+                    <Label htmlFor="concrete-height">Wysokość chudziaka (m)</Label>
+                    <Input
+                      id="concrete-height"
+                      type="number"
+                      min="0.05"
+                      max="0.3"
+                      step="0.01"
+                      value={leanConcreteHeight}
+                      onChange={(e) => setLeanConcreteHeight(parseFloat(e.target.value) || 0.1)}
+                      className="input-field"
+                    />
+                  </div>
+                </div>
+
+                <div className="p-4 rounded-lg bg-primary/10 border border-primary/20 mb-4">
+                  <div className="flex justify-between items-center">
                     <div>
-                      <p className="font-medium">Izolacje</p>
-                      <p className="text-sm text-muted-foreground">Izolacja przeciwwodna i termiczna</p>
+                      <p className="text-xs text-muted-foreground">Powierzchnia wykopu</p>
+                      <p className="text-2xl font-bold text-primary">
+                        {excavationArea.toFixed(1)} m²
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-xs text-muted-foreground">Technologia</p>
+                      <p className="text-lg font-medium">
+                        {constructionTechnology === 'masonry' ? 'Murowany' : 'Lany'}
+                      </p>
                     </div>
                   </div>
                 </div>
               </div>
 
-              {/* Right: Pricing */}
+              {/* Materials cost table */}
               <div className="glass-card p-6">
-                <h3 className="text-base font-medium mb-4">Wycena prac budowlanych</h3>
+                <h3 className="text-base font-medium mb-4">Koszt materiałów budowlanych</h3>
+                
+                <div className="rounded-lg border border-border overflow-hidden">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="bg-muted/30">
+                        <TableHead className="w-[200px]">Nazwa materiału</TableHead>
+                        <TableHead className="text-right w-[100px]">Ilość</TableHead>
+                        <TableHead className="w-[80px]">Jednostka</TableHead>
+                        <TableHead className="text-right w-[120px]">Stawka (zł)</TableHead>
+                        <TableHead className="text-right w-[140px]">Wartość netto</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {constructionMaterials.map((item) => (
+                        <TableRow key={item.id}>
+                          <TableCell className="font-medium">{item.name}</TableCell>
+                          <TableCell className="text-right">
+                            <Input
+                              type="number"
+                              min="0"
+                              step="0.1"
+                              value={item.quantity.toFixed(2)}
+                              onChange={(e) => updateConstructionMaterial(item.id, 'quantity', parseFloat(e.target.value) || 0)}
+                              className="input-field w-20 text-right"
+                            />
+                          </TableCell>
+                          <TableCell className="text-muted-foreground">{item.unit}</TableCell>
+                          <TableCell className="text-right">
+                            <Input
+                              type="number"
+                              min="0"
+                              step="10"
+                              value={item.rate}
+                              onChange={(e) => updateConstructionMaterial(item.id, 'rate', parseFloat(e.target.value) || 0)}
+                              className="input-field w-24 text-right"
+                            />
+                          </TableCell>
+                          <TableCell className="text-right font-semibold">
+                            {formatPrice(item.netValue)}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                    <TableFooter>
+                      <TableRow>
+                        <TableCell colSpan={4} className="text-right font-medium">
+                          Razem netto
+                        </TableCell>
+                        <TableCell className="text-right font-bold text-lg text-primary">
+                          {formatPrice(constructionTotalNet)}
+                        </TableCell>
+                      </TableRow>
+                      <TableRow>
+                        <TableCell colSpan={3} className="text-right text-muted-foreground">
+                          VAT
+                        </TableCell>
+                        <TableCell>
+                          <Select
+                            value={constructionVatRate.toString()}
+                            onValueChange={(v) => setConstructionVatRate(parseInt(v) as VatRate)}
+                          >
+                            <SelectTrigger className="w-[80px]">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="0">0%</SelectItem>
+                              <SelectItem value="8">8%</SelectItem>
+                              <SelectItem value="23">23%</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </TableCell>
+                        <TableCell className="text-right text-muted-foreground">
+                          {formatPrice(constructionVatAmount)}
+                        </TableCell>
+                      </TableRow>
+                      <TableRow className="bg-primary/5">
+                        <TableCell colSpan={4} className="text-right font-medium">
+                          Razem brutto
+                        </TableCell>
+                        <TableCell className="text-right font-bold text-xl">
+                          {formatPrice(constructionTotalGross)}
+                        </TableCell>
+                      </TableRow>
+                    </TableFooter>
+                  </Table>
+                </div>
 
-                <div className="space-y-4">
-                  <div>
-                    <Label htmlFor="construction-cost">Szacowany koszt (PLN netto)</Label>
-                    <Input
-                      id="construction-cost"
-                      type="number"
-                      min="0"
-                      step="1000"
-                      value={constructionCost}
-                      onChange={(e) => setConstructionCost(parseFloat(e.target.value) || 0)}
-                      className="input-field mt-2"
-                    />
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Wpisz szacowany koszt lub zostaw 0 jeśli wycena będzie indywidualna
-                    </p>
-                  </div>
-
-                  {constructionCost > 0 && (
-                    <div className="border-t border-border pt-4">
-                      <div className="flex justify-between items-center">
-                        <p className="font-medium">Razem prace budowlane (netto)</p>
-                        <p className="text-2xl font-bold text-primary">
-                          {formatPrice(constructionCost)}
-                        </p>
-                      </div>
-                      <div className="flex justify-between items-center mt-1 text-sm text-muted-foreground">
-                        <p>+ VAT 8%</p>
-                        <p>{formatPrice(constructionCost * 0.08)}</p>
-                      </div>
-                      <div className="flex justify-between items-center mt-1">
-                        <p className="font-medium">Brutto</p>
-                        <p className="font-bold">{formatPrice(constructionCost * 1.08)}</p>
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="mt-4">
-                    <Label htmlFor="construction-notes">Uwagi</Label>
-                    <Textarea
-                      id="construction-notes"
-                      value={constructionNotes}
-                      onChange={(e) => setConstructionNotes(e.target.value)}
-                      placeholder="Dodatkowe uwagi dotyczące prac budowlanych..."
-                      className="mt-2"
-                      rows={3}
-                    />
-                  </div>
+                {/* Notes */}
+                <div className="mt-4">
+                  <Label htmlFor="construction-notes">Uwagi</Label>
+                  <Textarea
+                    id="construction-notes"
+                    value={constructionNotes}
+                    onChange={(e) => setConstructionNotes(e.target.value)}
+                    placeholder="Dodatkowe uwagi dotyczące prac budowlanych..."
+                    className="mt-2"
+                    rows={3}
+                  />
                 </div>
               </div>
             </div>
