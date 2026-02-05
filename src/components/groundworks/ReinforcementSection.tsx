@@ -249,6 +249,7 @@ export function useReinforcement(
         isExpanded: true,
       });
       
+      // Always add 6mm stirrups for traditional
       newItems.push({
         id: 'rebar_6mm',
         name: 'Zbrojenie 6mm (strzemiona)',
@@ -261,6 +262,7 @@ export function useReinforcement(
         isExpanded: false,
       });
     } else {
+      // Composite reinforcement
       const positions8 = createPositions();
       const total8 = positions8.reduce((sum, p) => sum + (p.enabled ? p.quantity : 0), 0);
       
@@ -274,6 +276,19 @@ export function useReinforcement(
         totalQuantity: unit === 'mb' ? total8 : mbToKg(total8, 8),
         netValue: (unit === 'mb' ? total8 : mbToKg(total8, 8)) * 12.00,
         isExpanded: true,
+      });
+      
+      // Keep 6mm stirrups also for composite
+      newItems.push({
+        id: 'rebar_6mm',
+        name: 'Zbrojenie 6mm (strzemiona)',
+        diameter: 6,
+        unit,
+        rate: 5.00,
+        positions: [],
+        totalQuantity: 0,
+        netValue: 0,
+        isExpanded: false,
       });
     }
     
