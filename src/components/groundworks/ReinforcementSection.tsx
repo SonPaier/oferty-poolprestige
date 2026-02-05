@@ -32,6 +32,7 @@ interface ReinforcementItem {
   totalQuantity: number;
   netValue: number;
   isExpanded: boolean;
+  supportsKg: boolean; // Whether this item can be switched to kg
 }
 
 interface ReinforcementSectionProps {
@@ -49,12 +50,16 @@ export interface ReinforcementData {
   totalNet: number;
 }
 
-// Weight per meter (kg/mb)
+// Weight per meter (kg/mb) - only for traditional steel reinforcement
 const KG_PER_MB: Record<number, number> = {
   6: 0.222,
-  8: 0.395,
   12: 0.888,
 };
+
+// Check if item supports kg unit (only traditional steel, not composite)
+function supportsKgUnit(itemId: string): boolean {
+  return itemId !== 'composite_8mm';
+}
 
 // Mesh size in meters
 const MESH_SIZE_M: Record<MeshSize, number> = {
@@ -247,9 +252,10 @@ export function useReinforcement(
         totalQuantity: unit === 'mb' ? total12 : mbToKg(total12, 12),
         netValue: (unit === 'mb' ? total12 : mbToKg(total12, 12)) * mainRate,
         isExpanded: true,
+        supportsKg: true,
       });
     } else {
-      // Composite reinforcement
+      // Composite reinforcement - always in mb, no kg conversion
       const positions8 = createPositions();
       const total8 = positions8.reduce((sum, p) => sum + (p.enabled ? p.quantity : 0), 0);
       
@@ -257,16 +263,17 @@ export function useReinforcement(
         id: 'composite_8mm',
         name: 'Zbrojenie kompozytowe 8mm',
         diameter: 8,
-        unit,
+        unit: 'mb', // Always mb for composite
         rate: 12.00,
         positions: positions8,
-        totalQuantity: unit === 'mb' ? total8 : mbToKg(total8, 8),
-        netValue: (unit === 'mb' ? total8 : mbToKg(total8, 8)) * 12.00,
+        totalQuantity: total8, // No kg conversion for composite
+        netValue: total8 * 12.00,
         isExpanded: true,
+        supportsKg: false,
       });
     }
     
-    // Always add 6mm rebar (visible in both variants)
+    // Always add 6mm rebar (visible in both variants) - supports kg
     newItems.push({
       id: 'rebar_6mm',
       name: 'Zbrojenie 6mm',
@@ -277,9 +284,10 @@ export function useReinforcement(
       totalQuantity: 0,
       netValue: 0,
       isExpanded: false,
+      supportsKg: true,
     });
     
-    // Always add stirrups as separate item (visible in both variants)
+    // Always add stirrups as separate item (visible in both variants) - supports kg
     newItems.push({
       id: 'strzemiona',
       name: 'Strzemiona',
@@ -290,6 +298,7 @@ export function useReinforcement(
       totalQuantity: 0,
       netValue: 0,
       isExpanded: false,
+      supportsKg: true,
     });
     
     setItems(newItems);
@@ -372,6 +381,26 @@ export function useReinforcement(
     }));
   };
 
+  const updateItemUnit = (itemId: string, newUnit: ReinforcementUnit) => {
+    setItems(prev => prev.map(item => {
+      if (item.id !== itemId || !item.supportsKg) return item;
+      
+      // Recalculate quantity based on new unit
+      let newQuantity = item.totalQuantity;
+      if (item.positions.length > 0) {
+        const totalMb = item.positions.reduce((sum, p) => sum + (p.enabled ? p.quantity : 0), 0);
+        newQuantity = newUnit === 'mb' ? totalMb : mbToKg(totalMb, item.diameter);
+      }
+      
+      return { 
+        ...item, 
+        unit: newUnit, 
+        totalQuantity: newQuantity,
+        netValue: newQuantity * item.rate 
+      };
+    }));
+  };
+
   const toggleExpand = (itemId: string) => {
     setItems(prev => prev.map(item => {
       if (item.id !== itemId) return item;
@@ -393,16 +422,13 @@ export function useReinforcement(
     updatePositionQuantity,
     updateItemRate,
     updateItemQuantity,
+    updateItemUnit,
     toggleExpand,
   };
 }
-
-// Render controls for reinforcement config
 interface ReinforcementControlsProps {
   reinforcementType: ReinforcementType;
   setReinforcementType: (v: ReinforcementType) => void;
-  unit: ReinforcementUnit;
-  setUnit: (v: ReinforcementUnit) => void;
   meshSize: MeshSize;
   setMeshSize: (v: MeshSize) => void;
 }
@@ -410,8 +436,6 @@ interface ReinforcementControlsProps {
 export function ReinforcementControls({
   reinforcementType,
   setReinforcementType,
-  unit,
-  setUnit,
   meshSize,
   setMeshSize,
 }: ReinforcementControlsProps) {
@@ -436,24 +460,6 @@ export function ReinforcementControls({
       </div>
       
       <div className="space-y-2">
-        <Label className="text-xs text-muted-foreground">Jednostka</Label>
-        <RadioGroup
-          value={unit}
-          onValueChange={(v) => setUnit(v as ReinforcementUnit)}
-          className="flex flex-row gap-4"
-        >
-          <div className="flex items-center space-x-2">
-            <RadioGroupItem value="mb" id="unit-mb" />
-            <Label htmlFor="unit-mb" className="cursor-pointer text-sm">mb</Label>
-          </div>
-          <div className="flex items-center space-x-2">
-            <RadioGroupItem value="kg" id="unit-kg" />
-            <Label htmlFor="unit-kg" className="cursor-pointer text-sm">kg</Label>
-          </div>
-        </RadioGroup>
-      </div>
-      
-      <div className="space-y-2">
         <Label className="text-xs text-muted-foreground">Oczko siatki</Label>
         <Select value={meshSize} onValueChange={(v) => setMeshSize(v as MeshSize)}>
           <SelectTrigger className="w-[100px] h-9">
@@ -473,20 +479,20 @@ export function ReinforcementControls({
 // Render table rows for reinforcement items
 interface ReinforcementTableRowsProps {
   items: ReinforcementItem[];
-  unit: ReinforcementUnit;
   onToggleExpand: (itemId: string) => void;
   onUpdatePositionQuantity: (itemId: string, positionId: string, qty: number) => void;
   onUpdateItemRate: (itemId: string, rate: number) => void;
   onUpdateItemQuantity: (itemId: string, qty: number) => void;
+  onUpdateItemUnit: (itemId: string, unit: ReinforcementUnit) => void;
 }
 
 export function ReinforcementTableRows({
   items,
-  unit,
   onToggleExpand,
   onUpdatePositionQuantity,
   onUpdateItemRate,
   onUpdateItemQuantity,
+  onUpdateItemUnit,
 }: ReinforcementTableRowsProps) {
   const rows: JSX.Element[] = [];
   
@@ -526,7 +532,24 @@ export function ReinforcementTableRows({
             <span className="font-medium">{item.totalQuantity.toFixed(1)}</span>
           )}
         </TableCell>
-        <TableCell className="text-muted-foreground">{item.unit}</TableCell>
+        <TableCell>
+          {item.supportsKg ? (
+            <Select 
+              value={item.unit} 
+              onValueChange={(v) => onUpdateItemUnit(item.id, v as ReinforcementUnit)}
+            >
+              <SelectTrigger className="w-[70px] h-8 text-sm">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className="bg-popover">
+                <SelectItem value="mb">mb</SelectItem>
+                <SelectItem value="kg">kg</SelectItem>
+              </SelectContent>
+            </Select>
+          ) : (
+            <span className="text-muted-foreground">{item.unit}</span>
+          )}
+        </TableCell>
         <TableCell className="text-right">
           <Input
             type="number"
@@ -564,7 +587,7 @@ export function ReinforcementTableRows({
                 className="input-field w-20 text-right"
               />
             </TableCell>
-            <TableCell className="text-muted-foreground">{unit}</TableCell>
+            <TableCell className="text-muted-foreground">{item.unit}</TableCell>
             <TableCell className="text-right text-muted-foreground">
               {item.rate.toFixed(2)}
             </TableCell>

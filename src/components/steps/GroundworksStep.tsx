@@ -893,8 +893,6 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
                 <ReinforcementControls
                   reinforcementType={reinforcement.reinforcementType}
                   setReinforcementType={reinforcement.setReinforcementType}
-                  unit={reinforcement.unit}
-                  setUnit={reinforcement.setUnit}
                   meshSize={reinforcement.meshSize}
                   setMeshSize={reinforcement.setMeshSize}
                 />
@@ -962,11 +960,11 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
                       {/* Reinforcement rows integrated directly */}
                       <ReinforcementTableRows
                         items={reinforcement.items}
-                        unit={reinforcement.unit}
                         onToggleExpand={reinforcement.toggleExpand}
                         onUpdatePositionQuantity={reinforcement.updatePositionQuantity}
                         onUpdateItemRate={reinforcement.updateItemRate}
                         onUpdateItemQuantity={reinforcement.updateItemQuantity}
+                        onUpdateItemUnit={reinforcement.updateItemUnit}
                       />
                     </TableBody>
                     <TableFooter>
