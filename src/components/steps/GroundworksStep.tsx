@@ -35,6 +35,30 @@ import {
 } from '@/components/groundworks/ReinforcementSection';
 import Pool2DPreview from '@/components/Pool2DPreview';
 
+// Helper function to round quantities based on material type
+function roundQuantity(id: string, quantity: number): number {
+  // Podsypka i betony - zaokrąglaj do 0.5
+  if (['podsypka', 'chudziak', 'plyta_denna', 'beton_wieniec'].includes(id)) {
+    return Math.ceil(quantity * 2) / 2;
+  }
+  // Bloczki, pompogruszka, zbrojenie, strzemiona - zaokrąglaj do jedności
+  if (['bloczek', 'pompogruszka'].includes(id)) {
+    return Math.ceil(quantity);
+  }
+  return quantity;
+}
+
+// Format quantity for display - hide decimals for integers
+function formatQuantity(id: string, quantity: number): string {
+  const rounded = roundQuantity(id, quantity);
+  // If it's a whole number, show without decimals
+  if (Number.isInteger(rounded)) {
+    return rounded.toString();
+  }
+  // Otherwise show with appropriate decimals (max 2)
+  return rounded.toFixed(rounded % 1 === 0.5 ? 1 : 2).replace(/\.?0+$/, '');
+}
+
 interface GroundworksStepProps {
   onNext: () => void;
   onBack: () => void;
@@ -304,8 +328,11 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
     }));
   };
   
-  // Calculate construction totals (materials + reinforcement)
-  const materialsTotalNet = constructionMaterials.reduce((sum, item) => sum + item.netValue, 0);
+  // Calculate construction totals (materials + reinforcement) using rounded quantities
+  const materialsTotalNet = constructionMaterials.reduce((sum, item) => {
+    const roundedQty = roundQuantity(item.id, item.quantity);
+    return sum + (roundedQty * item.rate);
+  }, 0);
   const constructionTotalNet = materialsTotalNet + reinforcement.totalNet;
   const constructionVatAmount = constructionTotalNet * (constructionVatRate / 100);
   const constructionTotalGross = constructionTotalNet + constructionVatAmount;
@@ -1122,14 +1149,14 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
                 <h3 className="text-base font-medium mb-4">Koszty materiałów budowlanych</h3>
                 
                 <div className="rounded-lg border border-border overflow-hidden">
-                  <Table>
+                  <Table className="table-fixed">
                     <TableHeader>
                       <TableRow className="bg-muted/30">
-                        <TableHead className="w-[200px]">Pozycja</TableHead>
-                        <TableHead className="text-right w-[100px]">Ilość</TableHead>
+                        <TableHead className="w-[280px]">Pozycja</TableHead>
+                        <TableHead className="w-[100px] text-right pr-2">Ilość</TableHead>
                         <TableHead className="w-[80px]">Jednostka</TableHead>
-                        <TableHead className="text-right w-[120px]">Stawka (zł)</TableHead>
-                        <TableHead className="text-right w-[140px]">Wartość netto</TableHead>
+                        <TableHead className="w-[100px] text-right pr-2">Stawka (zł)</TableHead>
+                        <TableHead className="w-[140px] text-right">Wartość netto</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -1137,29 +1164,29 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
                       {constructionMaterials.map((item) => (
                         <TableRow key={item.id}>
                           <TableCell className="font-medium">{item.name}</TableCell>
-                          <TableCell className="text-right">
+                          <TableCell>
                             <Input
                               type="number"
                               min="0"
-                              step="0.1"
-                              value={item.quantity.toFixed(2)}
+                              step={['bloczek', 'pompogruszka'].includes(item.id) ? '1' : '0.5'}
+                              value={formatQuantity(item.id, item.quantity)}
                               onChange={(e) => updateConstructionMaterial(item.id, 'quantity', parseFloat(e.target.value) || 0)}
-                              className="input-field w-20 text-right"
+                              className="input-field w-[80px] text-right ml-auto"
                             />
                           </TableCell>
                           <TableCell className="text-muted-foreground">{item.unit}</TableCell>
-                          <TableCell className="text-right">
+                          <TableCell>
                             <Input
                               type="number"
                               min="0"
                               step="10"
                               value={item.rate}
                               onChange={(e) => updateConstructionMaterial(item.id, 'rate', parseFloat(e.target.value) || 0)}
-                              className="input-field w-24 text-right"
+                              className="input-field w-[80px] text-right ml-auto"
                             />
                           </TableCell>
                           <TableCell className="text-right font-semibold">
-                            {formatPrice(item.netValue)}
+                            {formatPrice(roundQuantity(item.id, item.quantity) * item.rate)}
                           </TableCell>
                         </TableRow>
                       ))}
