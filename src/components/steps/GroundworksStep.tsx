@@ -113,9 +113,13 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
   // Material heights (editable)
   const [sandBeddingHeight, setSandBeddingHeight] = useState(0.1); // 10cm default
   const [leanConcreteHeight, setLeanConcreteHeight] = useState(0.1); // 10cm default
+  const [floorSlabThickness, setFloorSlabThickness] = useState(0.2); // 20cm default
   
   // Calculate excavation area (for material calculations)
   const excavationArea = excLength * excWidth;
+  
+  // Calculate floor slab area: pool dimensions + 24cm on each side
+  const floorSlabArea = (dimensions.length + 0.48) * (dimensions.width + 0.48);
   
   // Construction VAT
   const [constructionVatRate, setConstructionVatRate] = useState<VatRate>(23);
@@ -147,6 +151,14 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
       rate: 350,
       netValue: excavationArea * leanConcreteHeight * 350,
     },
+    {
+      id: 'plyta_denna',
+      name: 'Beton B25 płyta denna',
+      quantity: floorSlabArea * floorSlabThickness,
+      unit: 'm³',
+      rate: 450,
+      netValue: floorSlabArea * floorSlabThickness * 450,
+    },
   ]);
   
   // Update construction materials when dimensions or heights change
@@ -160,9 +172,13 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
         const qty = excavationArea * leanConcreteHeight;
         return { ...item, quantity: qty, netValue: qty * item.rate };
       }
+      if (item.id === 'plyta_denna') {
+        const qty = floorSlabArea * floorSlabThickness;
+        return { ...item, quantity: qty, netValue: qty * item.rate };
+      }
       return item;
     }));
-  }, [excavationArea, sandBeddingHeight, leanConcreteHeight]);
+  }, [excavationArea, sandBeddingHeight, leanConcreteHeight, floorSlabArea, floorSlabThickness]);
   
   // Update construction material
   const updateConstructionMaterial = (id: string, field: keyof ConstructionMaterialItem, value: any) => {
@@ -343,6 +359,7 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
             vatRate: constructionVatRate,
             sandBeddingHeight,
             leanConcreteHeight,
+            floorSlabThickness,
             totalNet: constructionTotalNet,
             totalGross: constructionTotalGross,
           } : null,
@@ -351,7 +368,7 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
         },
       },
     });
-  }, [constructionScope, constructionNotes, constructionTechnology, constructionMaterials, constructionVatRate, sandBeddingHeight, leanConcreteHeight, constructionTotalNet, constructionTotalGross]);
+  }, [constructionScope, constructionNotes, constructionTechnology, constructionMaterials, constructionVatRate, sandBeddingHeight, leanConcreteHeight, floorSlabThickness, constructionTotalNet, constructionTotalGross]);
 
   return (
     <div className="animate-slide-up">
