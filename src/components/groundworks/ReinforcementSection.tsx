@@ -4,16 +4,14 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableFooter } from '@/components/ui/table';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { TableCell, TableRow } from '@/components/ui/table';
 import { formatPrice } from '@/lib/calculations';
 import { PoolDimensions } from '@/types/configurator';
-import { cn } from '@/lib/utils';
 
 // Types
-type ReinforcementType = 'traditional' | 'composite';
-type MeshSize = '15x15' | '20x20' | '25x25';
-type ReinforcementUnit = 'mb' | 'kg';
+export type ReinforcementType = 'traditional' | 'composite';
+export type MeshSize = '15x15' | '20x20' | '25x25';
+export type ReinforcementUnit = 'mb' | 'kg';
 type ConstructionTechnology = 'masonry' | 'poured';
 
 interface ReinforcementPosition {
@@ -150,12 +148,11 @@ function mbToKg(mb: number, diameter: number): number {
   return mb * (KG_PER_MB[diameter] || 0);
 }
 
-export function ReinforcementSection({
-  dimensions,
-  floorSlabThickness,
-  constructionTechnology,
-  onChange,
-}: ReinforcementSectionProps) {
+export function useReinforcement(
+  dimensions: PoolDimensions,
+  floorSlabThickness: number,
+  constructionTechnology: ConstructionTechnology
+) {
   const [reinforcementType, setReinforcementType] = useState<ReinforcementType>('traditional');
   const [unit, setUnit] = useState<ReinforcementUnit>('mb');
   const [meshSize, setMeshSize] = useState<MeshSize>('20x20');
@@ -181,9 +178,9 @@ export function ReinforcementSection({
   // Initialize/update items when type changes
   useEffect(() => {
     const mainDiameter = reinforcementType === 'traditional' ? 12 : 8;
-    const mainRate = reinforcementType === 'traditional' ? 8.50 : 12.00; // Composite is more expensive
+    const mainRate = reinforcementType === 'traditional' ? 8.50 : 12.00;
     
-    const createPositions = (diameter: number): ReinforcementPosition[] => {
+    const createPositions = (): ReinforcementPosition[] => {
       const positions: ReinforcementPosition[] = [
         {
           id: 'floor',
@@ -194,7 +191,6 @@ export function ReinforcementSection({
         },
       ];
       
-      // Columns only for masonry
       if (constructionTechnology === 'masonry') {
         positions.push({
           id: 'columns',
@@ -212,7 +208,6 @@ export function ReinforcementSection({
         });
       }
       
-      // Wading pool if enabled
       if (dimensions.wadingPool?.enabled) {
         positions.push({
           id: 'wadingPool',
@@ -223,7 +218,6 @@ export function ReinforcementSection({
         });
       }
       
-      // Stairs if enabled
       if (dimensions.stairs?.enabled) {
         positions.push({
           id: 'stairs',
@@ -240,8 +234,7 @@ export function ReinforcementSection({
     const newItems: ReinforcementItem[] = [];
     
     if (reinforcementType === 'traditional') {
-      // Rebar 12mm
-      const positions12 = createPositions(12);
+      const positions12 = createPositions();
       const total12 = positions12.reduce((sum, p) => sum + (p.enabled ? p.quantity : 0), 0);
       
       newItems.push({
@@ -256,7 +249,6 @@ export function ReinforcementSection({
         isExpanded: true,
       });
       
-      // Rebar 6mm (stirrups - manual entry, starts at 0)
       newItems.push({
         id: 'rebar_6mm',
         name: 'Zbrojenie 6mm (strzemiona)',
@@ -269,8 +261,7 @@ export function ReinforcementSection({
         isExpanded: false,
       });
     } else {
-      // Composite 8mm
-      const positions8 = createPositions(8);
+      const positions8 = createPositions();
       const total8 = positions8.reduce((sum, p) => sum + (p.enabled ? p.quantity : 0), 0);
       
       newItems.push({
@@ -292,7 +283,7 @@ export function ReinforcementSection({
   // Recalculate when mesh size or unit changes
   useEffect(() => {
     setItems(prev => prev.map(item => {
-      if (item.positions.length === 0) return item; // Skip 6mm
+      if (item.positions.length === 0) return item;
       
       const updatedPositions = item.positions.map(pos => {
         if (pos.customOverride) return pos;
@@ -331,19 +322,6 @@ export function ReinforcementSection({
     }));
   }, [meshSize, unit, calculatedPositions]);
 
-  // Notify parent of changes
-  useEffect(() => {
-    const totalNet = items.reduce((sum, item) => sum + item.netValue, 0);
-    onChange?.({
-      type: reinforcementType,
-      unit,
-      meshSize,
-      items,
-      totalNet,
-    });
-  }, [items, reinforcementType, unit, meshSize, onChange]);
-
-  // Update position quantity
   const updatePositionQuantity = (itemId: string, positionId: string, newQuantity: number) => {
     setItems(prev => prev.map(item => {
       if (item.id !== itemId) return item;
@@ -365,7 +343,6 @@ export function ReinforcementSection({
     }));
   };
 
-  // Update item rate
   const updateItemRate = (itemId: string, newRate: number) => {
     setItems(prev => prev.map(item => {
       if (item.id !== itemId) return item;
@@ -373,7 +350,6 @@ export function ReinforcementSection({
     }));
   };
 
-  // Update item total quantity (for 6mm without positions)
   const updateItemQuantity = (itemId: string, newQuantity: number) => {
     setItems(prev => prev.map(item => {
       if (item.id !== itemId) return item;
@@ -381,7 +357,6 @@ export function ReinforcementSection({
     }));
   };
 
-  // Toggle item expansion
   const toggleExpand = (itemId: string) => {
     setItems(prev => prev.map(item => {
       if (item.id !== itemId) return item;
@@ -391,231 +366,219 @@ export function ReinforcementSection({
 
   const totalNet = items.reduce((sum, item) => sum + item.netValue, 0);
 
-  return (
-    <div className="space-y-4">
-      {/* Configuration row */}
-      <div className="flex flex-wrap gap-6 items-end">
-        {/* Type selection */}
-        <div className="space-y-2">
-          <Label>Typ zbrojenia</Label>
-          <RadioGroup
-            value={reinforcementType}
-            onValueChange={(v) => setReinforcementType(v as ReinforcementType)}
-            className="flex flex-row gap-4"
-          >
-            <div className="flex items-center space-x-2">
-              <RadioGroupItem value="traditional" id="reinf-traditional" />
-              <Label htmlFor="reinf-traditional" className="cursor-pointer">Tradycyjne</Label>
-            </div>
-            <div className="flex items-center space-x-2">
-              <RadioGroupItem value="composite" id="reinf-composite" />
-              <Label htmlFor="reinf-composite" className="cursor-pointer">Kompozytowe</Label>
-            </div>
-          </RadioGroup>
-        </div>
-        
-        {/* Unit selection */}
-        <div className="space-y-2">
-          <Label>Jednostka</Label>
-          <RadioGroup
-            value={unit}
-            onValueChange={(v) => setUnit(v as ReinforcementUnit)}
-            className="flex flex-row gap-4"
-          >
-            <div className="flex items-center space-x-2">
-              <RadioGroupItem value="mb" id="unit-mb" />
-              <Label htmlFor="unit-mb" className="cursor-pointer">Metry bieżące (mb)</Label>
-            </div>
-            <div className="flex items-center space-x-2">
-              <RadioGroupItem value="kg" id="unit-kg" />
-              <Label htmlFor="unit-kg" className="cursor-pointer">Kilogramy (kg)</Label>
-            </div>
-          </RadioGroup>
-        </div>
-        
-        {/* Mesh size */}
-        <div className="space-y-2">
-          <Label>Oczko siatki</Label>
-          <Select value={meshSize} onValueChange={(v) => setMeshSize(v as MeshSize)}>
-            <SelectTrigger className="w-[120px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="15x15">15×15 cm</SelectItem>
-              <SelectItem value="20x20">20×20 cm</SelectItem>
-              <SelectItem value="25x25">25×25 cm</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
+  return {
+    reinforcementType,
+    setReinforcementType,
+    unit,
+    setUnit,
+    meshSize,
+    setMeshSize,
+    items,
+    totalNet,
+    updatePositionQuantity,
+    updateItemRate,
+    updateItemQuantity,
+    toggleExpand,
+  };
+}
 
-      {/* Reinforcement table */}
-      <div className="rounded-lg border border-border overflow-hidden">
-        <Table>
-          <TableHeader>
-            <TableRow className="bg-muted/30">
-              <TableHead className="w-[250px]">Pozycja</TableHead>
-              <TableHead className="text-right w-[100px]">Ilość</TableHead>
-              <TableHead className="w-[60px]">Jdn.</TableHead>
-              <TableHead className="text-right w-[100px]">Stawka (zł)</TableHead>
-              <TableHead className="text-right w-[120px]">Wartość netto</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {items.map((item) => (
-              <Collapsible key={item.id} open={item.isExpanded} asChild>
-                <>
-                  {/* Main item row */}
-                  <TableRow className="bg-muted/10">
-                    <TableCell>
-                      {item.positions.length > 0 ? (
-                        <CollapsibleTrigger asChild>
-                          <button
-                            className="flex items-center gap-2 font-medium hover:text-primary transition-colors"
-                            onClick={() => toggleExpand(item.id)}
-                          >
-                            {item.isExpanded ? (
-                              <ChevronDown className="w-4 h-4" />
-                            ) : (
-                              <ChevronRight className="w-4 h-4" />
-                            )}
-                            {item.name}
-                          </button>
-                        </CollapsibleTrigger>
-                      ) : (
-                        <span className="font-medium">{item.name}</span>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {item.positions.length === 0 ? (
-                        <Input
-                          type="number"
-                          min="0"
-                          step="0.1"
-                          value={item.totalQuantity.toFixed(1)}
-                          onChange={(e) => updateItemQuantity(item.id, parseFloat(e.target.value) || 0)}
-                          className="input-field w-20 text-right"
-                        />
-                      ) : (
-                        <span className="font-medium">{item.totalQuantity.toFixed(1)}</span>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">{item.unit}</TableCell>
-                    <TableCell className="text-right">
-                      <Input
-                        type="number"
-                        min="0"
-                        step="0.5"
-                        value={item.rate}
-                        onChange={(e) => updateItemRate(item.id, parseFloat(e.target.value) || 0)}
-                        className="input-field w-20 text-right"
-                      />
-                    </TableCell>
-                    <TableCell className="text-right font-semibold">
-                      {formatPrice(item.netValue)}
-                    </TableCell>
-                  </TableRow>
-                  
-                  {/* Position sub-rows */}
-                  <CollapsibleContent asChild>
-                    <>
-                      {item.positions.map((pos) => (
-                        <TableRow key={pos.id} className="bg-background">
-                          <TableCell className="pl-10 text-muted-foreground">
-                            └ {pos.name}
-                            {pos.customOverride && (
-                              <span className="ml-2 text-xs text-accent">(zmieniono)</span>
-                            )}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <Input
-                              type="number"
-                              min="0"
-                              step="0.1"
-                              value={pos.quantity.toFixed(1)}
-                              onChange={(e) => updatePositionQuantity(item.id, pos.id, parseFloat(e.target.value) || 0)}
-                              className="input-field w-20 text-right"
-                            />
-                          </TableCell>
-                          <TableCell className="text-muted-foreground">{unit}</TableCell>
-                          <TableCell className="text-right text-muted-foreground">
-                            {item.rate.toFixed(2)}
-                          </TableCell>
-                          <TableCell className="text-right text-muted-foreground">
-                            {formatPrice(pos.quantity * item.rate)}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                      {/* Subtotal row */}
-                      {item.positions.length > 0 && (
-                        <TableRow className="bg-muted/5 border-t">
-                          <TableCell className="pl-10 font-medium text-sm">
-                            Razem {item.name.split(' ')[1]}
-                          </TableCell>
-                          <TableCell className="text-right font-medium">
-                            {item.totalQuantity.toFixed(1)}
-                          </TableCell>
-                          <TableCell className="text-muted-foreground">{item.unit}</TableCell>
-                          <TableCell />
-                          <TableCell className="text-right font-semibold">
-                            {formatPrice(item.netValue)}
-                          </TableCell>
-                        </TableRow>
-                      )}
-                    </>
-                  </CollapsibleContent>
-                </>
-              </Collapsible>
-            ))}
-          </TableBody>
-          <TableFooter>
-            <TableRow>
-              <TableCell colSpan={4} className="text-right font-medium">
-                Razem zbrojenie netto
-              </TableCell>
-              <TableCell className="text-right font-bold text-lg text-primary">
-                {formatPrice(totalNet)}
-              </TableCell>
-            </TableRow>
-          </TableFooter>
-        </Table>
+// Render controls for reinforcement config
+interface ReinforcementControlsProps {
+  reinforcementType: ReinforcementType;
+  setReinforcementType: (v: ReinforcementType) => void;
+  unit: ReinforcementUnit;
+  setUnit: (v: ReinforcementUnit) => void;
+  meshSize: MeshSize;
+  setMeshSize: (v: MeshSize) => void;
+}
+
+export function ReinforcementControls({
+  reinforcementType,
+  setReinforcementType,
+  unit,
+  setUnit,
+  meshSize,
+  setMeshSize,
+}: ReinforcementControlsProps) {
+  return (
+    <div className="flex flex-wrap gap-6 items-end mb-4 p-4 rounded-lg bg-muted/30">
+      <div className="space-y-2">
+        <Label className="text-xs text-muted-foreground">Typ zbrojenia</Label>
+        <RadioGroup
+          value={reinforcementType}
+          onValueChange={(v) => setReinforcementType(v as ReinforcementType)}
+          className="flex flex-row gap-4"
+        >
+          <div className="flex items-center space-x-2">
+            <RadioGroupItem value="traditional" id="reinf-traditional" />
+            <Label htmlFor="reinf-traditional" className="cursor-pointer text-sm">Tradycyjne</Label>
+          </div>
+          <div className="flex items-center space-x-2">
+            <RadioGroupItem value="composite" id="reinf-composite" />
+            <Label htmlFor="reinf-composite" className="cursor-pointer text-sm">Kompozytowe</Label>
+          </div>
+        </RadioGroup>
+      </div>
+      
+      <div className="space-y-2">
+        <Label className="text-xs text-muted-foreground">Jednostka</Label>
+        <RadioGroup
+          value={unit}
+          onValueChange={(v) => setUnit(v as ReinforcementUnit)}
+          className="flex flex-row gap-4"
+        >
+          <div className="flex items-center space-x-2">
+            <RadioGroupItem value="mb" id="unit-mb" />
+            <Label htmlFor="unit-mb" className="cursor-pointer text-sm">mb</Label>
+          </div>
+          <div className="flex items-center space-x-2">
+            <RadioGroupItem value="kg" id="unit-kg" />
+            <Label htmlFor="unit-kg" className="cursor-pointer text-sm">kg</Label>
+          </div>
+        </RadioGroup>
+      </div>
+      
+      <div className="space-y-2">
+        <Label className="text-xs text-muted-foreground">Oczko siatki</Label>
+        <Select value={meshSize} onValueChange={(v) => setMeshSize(v as MeshSize)}>
+          <SelectTrigger className="w-[100px] h-9">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent className="bg-popover">
+            <SelectItem value="15x15">15×15</SelectItem>
+            <SelectItem value="20x20">20×20</SelectItem>
+            <SelectItem value="25x25">25×25</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
     </div>
   );
 }
 
-// Export column positions calculation for 2D visualization
+// Render table rows for reinforcement items
+interface ReinforcementTableRowsProps {
+  items: ReinforcementItem[];
+  unit: ReinforcementUnit;
+  onToggleExpand: (itemId: string) => void;
+  onUpdatePositionQuantity: (itemId: string, positionId: string, qty: number) => void;
+  onUpdateItemRate: (itemId: string, rate: number) => void;
+  onUpdateItemQuantity: (itemId: string, qty: number) => void;
+}
+
+export function ReinforcementTableRows({
+  items,
+  unit,
+  onToggleExpand,
+  onUpdatePositionQuantity,
+  onUpdateItemRate,
+  onUpdateItemQuantity,
+}: ReinforcementTableRowsProps) {
+  const rows: JSX.Element[] = [];
+  
+  items.forEach((item) => {
+    // Main item row
+    rows.push(
+      <TableRow key={item.id} className="bg-accent/5">
+        <TableCell>
+          {item.positions.length > 0 ? (
+            <button
+              type="button"
+              className="flex items-center gap-2 font-medium hover:text-primary transition-colors"
+              onClick={() => onToggleExpand(item.id)}
+            >
+              {item.isExpanded ? (
+                <ChevronDown className="w-4 h-4" />
+              ) : (
+                <ChevronRight className="w-4 h-4" />
+              )}
+              {item.name}
+            </button>
+          ) : (
+            <span className="font-medium">{item.name}</span>
+          )}
+        </TableCell>
+        <TableCell className="text-right">
+          {item.positions.length === 0 ? (
+            <Input
+              type="number"
+              min="0"
+              step="0.1"
+              value={item.totalQuantity.toFixed(1)}
+              onChange={(e) => onUpdateItemQuantity(item.id, parseFloat(e.target.value) || 0)}
+              className="input-field w-20 text-right"
+            />
+          ) : (
+            <span className="font-medium">{item.totalQuantity.toFixed(1)}</span>
+          )}
+        </TableCell>
+        <TableCell className="text-muted-foreground">{item.unit}</TableCell>
+        <TableCell className="text-right">
+          <Input
+            type="number"
+            min="0"
+            step="0.5"
+            value={item.rate}
+            onChange={(e) => onUpdateItemRate(item.id, parseFloat(e.target.value) || 0)}
+            className="input-field w-20 text-right"
+          />
+        </TableCell>
+        <TableCell className="text-right font-semibold">
+          {formatPrice(item.netValue)}
+        </TableCell>
+      </TableRow>
+    );
+    
+    // Position sub-rows (only when expanded)
+    if (item.isExpanded && item.positions.length > 0) {
+      item.positions.forEach((pos) => {
+        rows.push(
+          <TableRow key={`${item.id}-${pos.id}`} className="bg-background">
+            <TableCell className="pl-10 text-muted-foreground">
+              └ {pos.name}
+              {pos.customOverride && (
+                <span className="ml-2 text-xs text-accent">(zmieniono)</span>
+              )}
+            </TableCell>
+            <TableCell className="text-right">
+              <Input
+                type="number"
+                min="0"
+                step="0.1"
+                value={pos.quantity.toFixed(1)}
+                onChange={(e) => onUpdatePositionQuantity(item.id, pos.id, parseFloat(e.target.value) || 0)}
+                className="input-field w-20 text-right"
+              />
+            </TableCell>
+            <TableCell className="text-muted-foreground">{unit}</TableCell>
+            <TableCell className="text-right text-muted-foreground">
+              {item.rate.toFixed(2)}
+            </TableCell>
+            <TableCell className="text-right text-muted-foreground">
+              {formatPrice(pos.quantity * item.rate)}
+            </TableCell>
+          </TableRow>
+        );
+      });
+    }
+  });
+  
+  return <>{rows}</>;
+}
+
+// Calculate column positions for 2D visualization
 export function calculateColumnPositions(length: number, width: number): { x: number; y: number; label: string }[] {
   const positions: { x: number; y: number; label: string }[] = [];
   const spacing = 2; // 2m
   let labelIndex = 1;
   
-  // Columns along length (top and bottom walls)
   for (let x = spacing; x < length; x += spacing) {
-    positions.push({ 
-      x: x - length / 2, 
-      y: -width / 2, 
-      label: `S${labelIndex++}` 
-    }); // top
-    positions.push({ 
-      x: x - length / 2, 
-      y: width / 2, 
-      label: `S${labelIndex++}` 
-    }); // bottom
+    positions.push({ x: x - length / 2, y: -width / 2, label: `S${labelIndex++}` });
+    positions.push({ x: x - length / 2, y: width / 2, label: `S${labelIndex++}` });
   }
   
-  // Columns along width (left and right walls)
   for (let y = spacing; y < width; y += spacing) {
-    positions.push({ 
-      x: -length / 2, 
-      y: y - width / 2, 
-      label: `S${labelIndex++}` 
-    }); // left
-    positions.push({ 
-      x: length / 2, 
-      y: y - width / 2, 
-      label: `S${labelIndex++}` 
-    }); // right
+    positions.push({ x: -length / 2, y: y - width / 2, label: `S${labelIndex++}` });
+    positions.push({ x: length / 2, y: y - width / 2, label: `S${labelIndex++}` });
   }
   
   return positions;
