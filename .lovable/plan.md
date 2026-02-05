@@ -1,82 +1,59 @@
 
-# Plan: Uproszczenie kalkulacji folii na murek brodzika
+# Plan: Dodanie edycji ilości m³ wykopu
 
 ## Opis zmiany
 
-Zamiast trzech oddzielnych powierzchni (pool side, paddling side, top), murek będzie liczony jako **jeden pas folii** pokrywający wewnętrzny obwód brodzika.
+Aktualnie pole "Ilość" dla pozycji "Wykop" jest wyświetlane tylko do odczytu gdy jednostka to m³ - wartość jest automatycznie wyliczana z wymiarów. Dodamy możliwość ręcznej edycji tej wartości.
 
-## Nowy wzór kalkulacji
+## Rozwiązanie
 
-```text
-Powierzchnia murka = obwód_brodzika × (wysokość_murka + zakład_góra + zakład_dół)
-```
+### Plik: `src/components/steps/GroundworksStep.tsx`
 
-Gdzie:
-- **obwód_brodzika** = 2 × szerokość + 2 × długość (np. 2×2 + 2×2 = 8m)
-- **wysokość_murka** = głębokość_brodzika − obniżenie_murka (np. 0.4m − 0.1m = 0.3m)
-- **zakład_góra** = 0.07m (OVERLAP_WALL_TOP)
-- **zakład_dół** = 0.07m (OVERLAP_WALL_BOTTOM)
+1. **Zmiana wyświetlania ilości w tabeli** (około linia 441-444):
+   - Zamiast `<span>` z wartością tylko do odczytu, użyć `<Input>` z możliwością edycji
+   - Pole będzie edytowalne niezależnie od wybranej jednostki (m³ lub ryczałt)
 
-### Przykład obliczenia (brodzik 2×2m, głębokość 0.4m, obniżenie 0.1m)
-
-```text
-obwód = 2 × 2m + 2 × 2m = 8m
-wysokość_murka = 0.4m - 0.1m = 0.3m
-zakład_góra = 0.07m
-zakład_dół = 0.07m
-
-szerokość_pasa = 0.3m + 0.07m + 0.07m = 0.44m
-powierzchnia = 8m × 0.44m = 3.52 m²
-zaokrąglone = 4 m²
-```
-
-## Zmiany techniczne
-
-### Plik: `src/lib/foil/paddlingPlanner.ts`
-
-1. **Usunąć** tworzenie trzech osobnych powierzchni dla murka:
-   - `dividing-wall-pool`
-   - `dividing-wall-paddling`
-   - `dividing-wall-top`
-
-2. **Zastąpić** jedną powierzchnią:
-   - Typ: `dividing-wall-inner` (lub użyć istniejącego `dividing-wall-paddling`)
-   - Długość pasa: obwód brodzika (2 × width + 2 × length)
-   - Szerokość pasa: wysokość_murka + OVERLAP_WALL_TOP + OVERLAP_WALL_BOTTOM
-
-3. **Zaktualizować** `DividingWallPlan`:
-   - Uprościć do: `innerPerimeter`, `wallHeight`, `totalOverlap`, `area`
-   - Usunąć: `poolSideArea`, `paddlingSideArea`, `topArea`, `poolSideHeight`, `paddlingSideHeight`
-
-### Plik: `src/lib/foil/types.ts`
-
-1. **Zaktualizować** `DividingWallPlan` interface:
-   ```typescript
-   interface DividingWallPlan {
-     innerPerimeter: number;  // 2×szerokość + 2×długość
-     wallHeight: number;      // głębokość_brodzika - obniżenie
-     stripWidth: number;      // wallHeight + overlaps
-     area: number;            // innerPerimeter × stripWidth
-   }
+2. **Aktualna logika** (do zmiany):
+   ```tsx
+   {item.unit === 'm3' ? (
+     <span>{item.quantity.toFixed(1)}</span>  // tylko odczyt
+   ) : (
+     <Input ... />  // edytowalny tylko dla ryczałtu
+   )}
    ```
 
-2. Opcjonalnie dodać nowy typ powierzchni `dividing-wall-inner` lub użyć istniejącego
+3. **Nowa logika**:
+   ```tsx
+   <Input
+     type="number"
+     min="0"
+     step="0.1"
+     value={item.quantity}
+     onChange={(e) => updateLineItem(item.id, 'quantity', parseFloat(e.target.value) || 0)}
+     className="input-field w-24 text-right"
+   />
+   ```
 
-### Plik: `src/lib/foil/mixPlanner.ts`
+4. **Modyfikacja efektu aktualizacji** (linie 109-122):
+   - Obecnie efekt automatycznie nadpisuje ilość wykopu wartością `excavationVolume` przy każdej zmianie wymiarów
+   - Dodać flagę `customQuantity` do śledzenia czy użytkownik ręcznie zmienił ilość
+   - Jeśli użytkownik zmienił ilość ręcznie, nie nadpisywać jej automatycznie
 
-1. **Zaktualizować** obsługę powierzchni murka w funkcji `calculateSurfaceDetails`:
-   - Wyświetlić jako jedną pozycję "Murek brodzika (wewn.)"
-   - Pokazać wymiary: obwód × (wysokość + zakłady)
+5. **Dodanie stanu `customQuantityOverride`**:
+   ```tsx
+   const [customQuantityOverride, setCustomQuantityOverride] = useState<boolean>(false);
+   ```
 
-## Wpływ na UI
+6. **Zmodyfikowana obsługa `updateLineItem`**:
+   - Gdy użytkownik zmienia ilość dla wykopu, ustawić flagę `customQuantityOverride = true`
+   - Efekt aktualizujący nie będzie nadpisywać ilości gdy flaga jest ustawiona
 
-- Tabela folii głównej pokaże jedną linię dla murka zamiast trzech
-- Etykieta: "Murek brodzika (8.0m × 0.44m)" lub podobna
-- Wartości: netto 3.52 m² → do zamówienia 4 m²
+7. **Opcjonalnie: przycisk resetu do wartości obliczonej**:
+   - Mały przycisk obok pola ilości do przywrócenia wartości obliczonej z wymiarów
+   - Po kliknięciu `customQuantityOverride = false` i ilość wraca do `excavationVolume`
 
-## Zgodność wsteczna
+## Efekt końcowy
 
-Ta zmiana wpływa tylko na sposób obliczania powierzchni murka. Nie zmienia:
-- Logiki pakowania w rolki
-- Numeracji rolek
-- Rozdziału folia główna / strukturalna
+- Użytkownik może ręcznie wpisać dowolną ilość m³ w polu "Ilość" dla pozycji "Wykop"
+- Zmiana wymiarów wykopu (długość/szerokość/głębokość) NIE nadpisuje ręcznie wprowadzonej wartości
+- Wartość netto przelicza się automatycznie: ilość × stawka
