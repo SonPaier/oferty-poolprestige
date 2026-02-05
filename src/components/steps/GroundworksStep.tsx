@@ -24,7 +24,8 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { toast } from 'sonner';
-import { ReinforcementSection, ReinforcementData } from '@/components/groundworks/ReinforcementSection';
+import { useReinforcement, ReinforcementControls, ReinforcementTableRows, ReinforcementData } from '@/components/groundworks/ReinforcementSection';
+import Pool2DPreview from '@/components/Pool2DPreview';
 
 interface GroundworksStepProps {
   onNext: () => void;
@@ -176,8 +177,8 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
     },
   ]);
   
-  // Reinforcement data
-  const [reinforcementData, setReinforcementData] = useState<ReinforcementData | null>(null);
+  // Reinforcement hook
+  const reinforcement = useReinforcement(dimensions, floorSlabThickness, constructionTechnology);
   
   // Update construction materials when dimensions or heights change
   useEffect(() => {
@@ -217,8 +218,9 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
     }));
   };
   
-  // Calculate construction totals
-  const constructionTotalNet = constructionMaterials.reduce((sum, item) => sum + item.netValue, 0);
+  // Calculate construction totals (materials + reinforcement)
+  const materialsTotalNet = constructionMaterials.reduce((sum, item) => sum + item.netValue, 0);
+  const constructionTotalNet = materialsTotalNet + reinforcement.totalNet;
   const constructionVatAmount = constructionTotalNet * (constructionVatRate / 100);
   const constructionTotalGross = constructionTotalNet + constructionVatAmount;
   
@@ -381,6 +383,13 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
           excavation: constructionScope === 'our' ? {
             technology: constructionTechnology,
             lineItems: constructionMaterials,
+            reinforcement: {
+              type: reinforcement.reinforcementType,
+              unit: reinforcement.unit,
+              meshSize: reinforcement.meshSize,
+              items: reinforcement.items,
+              totalNet: reinforcement.totalNet,
+            },
             vatRate: constructionVatRate,
             sandBeddingHeight,
             leanConcreteHeight,
@@ -393,7 +402,7 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
         },
       },
     });
-  }, [constructionScope, constructionNotes, constructionTechnology, constructionMaterials, constructionVatRate, sandBeddingHeight, leanConcreteHeight, floorSlabThickness, constructionTotalNet, constructionTotalGross]);
+  }, [constructionScope, constructionNotes, constructionTechnology, constructionMaterials, constructionVatRate, sandBeddingHeight, leanConcreteHeight, floorSlabThickness, constructionTotalNet, constructionTotalGross, reinforcement.reinforcementType, reinforcement.unit, reinforcement.meshSize, reinforcement.items, reinforcement.totalNet]);
 
   return (
     <div className="animate-slide-up">
@@ -881,26 +890,37 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
                 </div>
               </div>
 
-              {/* Reinforcement section */}
-              <div className="glass-card p-6">
-                <h3 className="text-base font-medium mb-4">Zbrojenie</h3>
-                <ReinforcementSection
-                  dimensions={dimensions}
-                  floorSlabThickness={floorSlabThickness}
-                  constructionTechnology={constructionTechnology}
-                  onChange={setReinforcementData}
-                />
-              </div>
+              {/* 2D Preview with column positions (only for masonry) */}
+              {constructionTechnology === 'masonry' && dimensions.shape === 'prostokatny' && (
+                <div className="glass-card p-6">
+                  <h3 className="text-base font-medium mb-4">Rozmieszczenie słupów (widok 2D)</h3>
+                  <Pool2DPreview 
+                    dimensions={dimensions} 
+                    height={250}
+                    showColumns={true}
+                  />
+                </div>
+              )}
 
-              {/* Materials cost table */}
+              {/* Materials + Reinforcement combined cost table */}
               <div className="glass-card p-6">
-                <h3 className="text-base font-medium mb-4">Koszt materiałów budowlanych</h3>
+                <h3 className="text-base font-medium mb-4">Koszt materiałów budowlanych i zbrojenia</h3>
+                
+                {/* Reinforcement controls */}
+                <ReinforcementControls
+                  reinforcementType={reinforcement.reinforcementType}
+                  setReinforcementType={reinforcement.setReinforcementType}
+                  unit={reinforcement.unit}
+                  setUnit={reinforcement.setUnit}
+                  meshSize={reinforcement.meshSize}
+                  setMeshSize={reinforcement.setMeshSize}
+                />
                 
                 <div className="rounded-lg border border-border overflow-hidden">
                   <Table>
                     <TableHeader>
                       <TableRow className="bg-muted/30">
-                        <TableHead className="w-[200px]">Nazwa materiału</TableHead>
+                        <TableHead className="w-[200px]">Pozycja</TableHead>
                         <TableHead className="text-right w-[100px]">Ilość</TableHead>
                         <TableHead className="w-[80px]">Jednostka</TableHead>
                         <TableHead className="text-right w-[120px]">Stawka (zł)</TableHead>
@@ -908,6 +928,7 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
                       </TableRow>
                     </TableHeader>
                     <TableBody>
+                      {/* Construction materials */}
                       {constructionMaterials.map((item) => (
                         <TableRow key={item.id}>
                           <TableCell className="font-medium">{item.name}</TableCell>
@@ -937,6 +958,36 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
                           </TableCell>
                         </TableRow>
                       ))}
+                      
+                      {/* Separator row */}
+                      <TableRow className="bg-muted/20">
+                        <TableCell colSpan={4} className="text-right text-sm font-medium">
+                          Materiały razem
+                        </TableCell>
+                        <TableCell className="text-right font-semibold">
+                          {formatPrice(materialsTotalNet)}
+                        </TableCell>
+                      </TableRow>
+                      
+                      {/* Reinforcement rows */}
+                      <ReinforcementTableRows
+                        items={reinforcement.items}
+                        unit={reinforcement.unit}
+                        onToggleExpand={reinforcement.toggleExpand}
+                        onUpdatePositionQuantity={reinforcement.updatePositionQuantity}
+                        onUpdateItemRate={reinforcement.updateItemRate}
+                        onUpdateItemQuantity={reinforcement.updateItemQuantity}
+                      />
+                      
+                      {/* Reinforcement subtotal */}
+                      <TableRow className="bg-muted/20">
+                        <TableCell colSpan={4} className="text-right text-sm font-medium">
+                          Zbrojenie razem
+                        </TableCell>
+                        <TableCell className="text-right font-semibold">
+                          {formatPrice(reinforcement.totalNet)}
+                        </TableCell>
+                      </TableRow>
                     </TableBody>
                     <TableFooter>
                       <TableRow>
@@ -959,7 +1010,7 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
                             <SelectTrigger className="w-[80px]">
                               <SelectValue />
                             </SelectTrigger>
-                            <SelectContent>
+                            <SelectContent className="bg-popover">
                               <SelectItem value="0">0%</SelectItem>
                               <SelectItem value="8">8%</SelectItem>
                               <SelectItem value="23">23%</SelectItem>
