@@ -134,6 +134,12 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
     netValue: number;
   }
   
+  // Calculate pompogruszki quantity: 3 base + 1 for stairs + 1 for wading pool
+  const pompogruszkaBaseQty = 3;
+  const pompogruszkaStairsBonus = dimensions.stairs?.enabled ? 1 : 0;
+  const pompogruszkaWadingBonus = dimensions.wadingPool?.enabled ? 1 : 0;
+  const pompogruszkaQty = pompogruszkaBaseQty + pompogruszkaStairsBonus + pompogruszkaWadingBonus;
+  
   const [constructionMaterials, setConstructionMaterials] = useState<ConstructionMaterialItem[]>(() => [
     {
       id: 'podsypka',
@@ -159,10 +165,22 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
       rate: 450,
       netValue: Math.ceil(floorSlabArea * floorSlabThickness) * 450,
     },
+    {
+      id: 'pompogruszka',
+      name: 'Pompogruszka',
+      quantity: pompogruszkaQty,
+      unit: 'szt.',
+      rate: 150,
+      netValue: pompogruszkaQty * 150,
+    },
   ]);
   
   // Update construction materials when dimensions or heights change
   useEffect(() => {
+    const currentPompogruszkaQty = pompogruszkaBaseQty + 
+      (dimensions.stairs?.enabled ? 1 : 0) + 
+      (dimensions.wadingPool?.enabled ? 1 : 0);
+    
     setConstructionMaterials(prev => prev.map(item => {
       if (item.id === 'podsypka') {
         const qty = excavationArea * sandBeddingHeight;
@@ -176,9 +194,12 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
         const qty = Math.ceil(floorSlabArea * floorSlabThickness);
         return { ...item, quantity: qty, netValue: qty * item.rate };
       }
+      if (item.id === 'pompogruszka') {
+        return { ...item, quantity: currentPompogruszkaQty, netValue: currentPompogruszkaQty * item.rate };
+      }
       return item;
     }));
-  }, [excavationArea, sandBeddingHeight, leanConcreteHeight, floorSlabArea, floorSlabThickness]);
+  }, [excavationArea, sandBeddingHeight, leanConcreteHeight, floorSlabArea, floorSlabThickness, dimensions.stairs?.enabled, dimensions.wadingPool?.enabled]);
   
   // Update construction material
   const updateConstructionMaterial = (id: string, field: keyof ConstructionMaterialItem, value: any) => {
