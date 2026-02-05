@@ -6,6 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
 import { Shovel, HardHat, Info, AlertCircle, Wrench, Building, Save, Check } from 'lucide-react';
+import { RotateCcw } from 'lucide-react';
 import { ExcavationSettings, ExcavationData, calculateExcavation } from '@/types/offers';
 import { formatPrice } from '@/lib/calculations';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
@@ -69,6 +70,9 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
   const [showRateDialog, setShowRateDialog] = useState(false);
   const [rateChanged, setRateChanged] = useState(false);
   
+  // Track if user manually overrode the quantity for wykop
+  const [customQuantityOverride, setCustomQuantityOverride] = useState(false);
+  
   // VAT selection
   const [vatRate, setVatRate] = useState<VatRate>(23);
   
@@ -109,17 +113,20 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
   useEffect(() => {
     setLineItems(prev => prev.map(item => {
       if (item.id === 'wykop') {
-        const newQuantity = item.unit === 'm3' ? excavationVolume : item.quantity;
+        // Only auto-update quantity if user hasn't manually overridden it
+        const newQuantity = (item.unit === 'm3' && !customQuantityOverride) 
+          ? excavationVolume 
+          : item.quantity;
         return {
           ...item,
           quantity: newQuantity,
           rate: excavationRate,
-          netValue: item.unit === 'm3' ? excavationVolume * excavationRate : item.rate,
+          netValue: item.unit === 'm3' ? newQuantity * excavationRate : item.rate,
         };
       }
       return item;
     }));
-  }, [excavationVolume, excavationRate]);
+  }, [excavationVolume, excavationRate, customQuantityOverride]);
 
   // Track if rate changed from settings
   useEffect(() => {
@@ -164,18 +171,40 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
       // Recalculate net value
       if (field === 'unit') {
         if (value === 'm3') {
-          updated.quantity = excavationVolume;
-          updated.netValue = excavationVolume * updated.rate;
+          // When switching to m3, only reset to calculated volume if not manually overridden
+          if (!customQuantityOverride) {
+            updated.quantity = excavationVolume;
+          }
+          updated.netValue = updated.quantity * updated.rate;
         } else {
           updated.netValue = updated.rate;
         }
       } else if (field === 'quantity' || field === 'rate') {
+        // Mark as manually overridden when user changes quantity for wykop
+        if (id === 'wykop' && field === 'quantity') {
+          setCustomQuantityOverride(true);
+        }
         updated.netValue = updated.unit === 'm3' 
           ? updated.quantity * updated.rate 
           : updated.rate;
       }
       
       return updated;
+    }));
+  };
+
+  // Reset quantity to calculated volume
+  const resetQuantityToCalculated = () => {
+    setCustomQuantityOverride(false);
+    setLineItems(prev => prev.map(item => {
+      if (item.id === 'wykop' && item.unit === 'm3') {
+        return {
+          ...item,
+          quantity: excavationVolume,
+          netValue: excavationVolume * item.rate,
+        };
+      }
+      return item;
     }));
   };
 
@@ -439,17 +468,28 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
                         <TableRow key={item.id}>
                           <TableCell className="font-medium">{item.name}</TableCell>
                           <TableCell className="text-right">
-                            {item.unit === 'm3' ? (
-                              <span>{item.quantity.toFixed(1)}</span>
-                            ) : (
+                            <div className="flex items-center justify-end gap-1">
                               <Input
                                 type="number"
-                                min="1"
+                                min="0"
+                                step="0.1"
                                 value={item.quantity}
-                                onChange={(e) => updateLineItem(item.id, 'quantity', parseFloat(e.target.value) || 1)}
+                                onChange={(e) => updateLineItem(item.id, 'quantity', parseFloat(e.target.value) || 0)}
                                 className="input-field w-20 text-right"
                               />
-                            )}
+                              {item.id === 'wykop' && item.unit === 'm3' && customQuantityOverride && (
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8"
+                                  onClick={resetQuantityToCalculated}
+                                  title={`Przywróć obliczoną wartość: ${excavationVolume.toFixed(1)} m³`}
+                                >
+                                  <RotateCcw className="h-4 w-4" />
+                                </Button>
+                              )}
+                            </div>
                           </TableCell>
                           <TableCell>
                             <Select
