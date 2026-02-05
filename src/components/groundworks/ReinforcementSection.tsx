@@ -558,7 +558,11 @@ export function useReinforcement(
     }));
   };
 
-  const totalNet = items.reduce((sum, item) => sum + item.netValue, 0);
+  // Calculate total using rounded quantities
+  const totalNet = items.reduce((sum, item) => {
+    const roundedQty = Math.ceil(item.totalQuantity);
+    return sum + (roundedQty * item.rate);
+  }, 0);
 
   return {
     reinforcementType,
@@ -636,6 +640,12 @@ interface ReinforcementTableRowsProps {
   onUpdateItemUnit: (itemId: string, unit: ReinforcementUnit) => void;
 }
 
+// Format quantity for reinforcement - always round to integers, no decimals
+function formatReinforcementQuantity(qty: number): string {
+  const rounded = Math.ceil(qty);
+  return rounded.toString();
+}
+
 export function ReinforcementTableRows({
   items,
   onToggleExpand,
@@ -647,6 +657,8 @@ export function ReinforcementTableRows({
   const rows: JSX.Element[] = [];
   
   items.forEach((item) => {
+    const roundedTotal = Math.ceil(item.totalQuantity);
+    
     // Main item row
     rows.push(
       <TableRow key={item.id} className="bg-accent/5">
@@ -668,18 +680,18 @@ export function ReinforcementTableRows({
             <span className="font-medium">{item.name}</span>
           )}
         </TableCell>
-        <TableCell className="text-right">
+        <TableCell>
           {item.positions.length === 0 ? (
             <Input
               type="number"
               min="0"
-              step="0.1"
-              value={item.totalQuantity.toFixed(1)}
+              step="1"
+              value={formatReinforcementQuantity(item.totalQuantity)}
               onChange={(e) => onUpdateItemQuantity(item.id, parseFloat(e.target.value) || 0)}
-              className="input-field w-20 text-right"
+              className="input-field w-[80px] text-right ml-auto"
             />
           ) : (
-            <span className="font-medium">{item.totalQuantity.toFixed(1)}</span>
+            <span className="font-medium block text-right pr-2">{formatReinforcementQuantity(item.totalQuantity)}</span>
           )}
         </TableCell>
         <TableCell>
@@ -700,18 +712,18 @@ export function ReinforcementTableRows({
             <span className="text-muted-foreground">{item.unit}</span>
           )}
         </TableCell>
-        <TableCell className="text-right">
+        <TableCell>
           <Input
             type="number"
             min="0"
             step="0.5"
             value={item.rate}
             onChange={(e) => onUpdateItemRate(item.id, parseFloat(e.target.value) || 0)}
-            className="input-field w-20 text-right"
+            className="input-field w-[80px] text-right ml-auto"
           />
         </TableCell>
         <TableCell className="text-right font-semibold">
-          {formatPrice(item.netValue)}
+          {formatPrice(roundedTotal * item.rate)}
         </TableCell>
       </TableRow>
     );
@@ -719,6 +731,7 @@ export function ReinforcementTableRows({
     // Position sub-rows (only when expanded)
     if (item.isExpanded && item.positions.length > 0) {
       item.positions.forEach((pos) => {
+        const roundedPosQty = Math.ceil(pos.quantity);
         rows.push(
           <TableRow key={`${item.id}-${pos.id}`} className="bg-background">
             <TableCell className="pl-10 text-muted-foreground">
@@ -727,22 +740,22 @@ export function ReinforcementTableRows({
                 <span className="ml-2 text-xs text-accent">(zmieniono)</span>
               )}
             </TableCell>
-            <TableCell className="text-right">
+            <TableCell>
               <Input
                 type="number"
                 min="0"
-                step="0.1"
-                value={pos.quantity.toFixed(1)}
+                step="1"
+                value={formatReinforcementQuantity(pos.quantity)}
                 onChange={(e) => onUpdatePositionQuantity(item.id, pos.id, parseFloat(e.target.value) || 0)}
-                className="input-field w-20 text-right"
+                className="input-field w-[80px] text-right ml-auto"
               />
             </TableCell>
             <TableCell className="text-muted-foreground">{item.unit}</TableCell>
-            <TableCell className="text-right text-muted-foreground">
+            <TableCell className="text-right text-muted-foreground pr-2">
               {item.rate.toFixed(2)}
             </TableCell>
             <TableCell className="text-right text-muted-foreground">
-              {formatPrice(pos.quantity * item.rate)}
+              {formatPrice(roundedPosQty * item.rate)}
             </TableCell>
           </TableRow>
         );
