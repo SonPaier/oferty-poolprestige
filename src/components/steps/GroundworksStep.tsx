@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useConfigurator } from '@/context/ConfiguratorContext';
 import { useSettings } from '@/context/SettingsContext';
 import { Input } from '@/components/ui/input';
@@ -24,7 +24,14 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { toast } from 'sonner';
-import { useReinforcement, ReinforcementControls, ReinforcementTableRows, ReinforcementData } from '@/components/groundworks/ReinforcementSection';
+import { 
+  useReinforcement, 
+  ReinforcementControls, 
+  ReinforcementTableRows, 
+  ReinforcementData,
+  calculateTotalBlocks,
+  BLOCK_DIMENSIONS,
+} from '@/components/groundworks/ReinforcementSection';
 import Pool2DPreview from '@/components/Pool2DPreview';
 
 interface GroundworksStepProps {
@@ -117,6 +124,28 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
   const [leanConcreteHeight, setLeanConcreteHeight] = useState(0.1); // 10cm default
   const [floorSlabThickness, setFloorSlabThickness] = useState(0.2); // 20cm default
   
+  // Block layer calculation (only for masonry technology)
+  const [customBlockLayers, setCustomBlockLayers] = useState<number | undefined>(undefined);
+  const [customCrownHeight, setCustomCrownHeight] = useState<number | undefined>(undefined);
+  
+  // Calculate block data based on pool dimensions
+  const blockCalculation = useMemo(() => {
+    if (constructionTechnology !== 'masonry') return null;
+    return calculateTotalBlocks(
+      dimensions.length,
+      dimensions.width,
+      dimensions.depth,
+      customBlockLayers,
+      customCrownHeight
+    );
+  }, [dimensions.length, dimensions.width, dimensions.depth, constructionTechnology, customBlockLayers, customCrownHeight]);
+  
+  // Reset custom values when pool depth changes
+  useEffect(() => {
+    setCustomBlockLayers(undefined);
+    setCustomCrownHeight(undefined);
+  }, [dimensions.depth]);
+  
   // Calculate excavation area (for material calculations)
   const excavationArea = excLength * excWidth;
   
@@ -142,69 +171,109 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
   const pompogruszkaWadingBonus = dimensions.wadingPool?.enabled ? 1 : 0;
   const pompogruszkaQty = pompogruszkaBaseQty + pompogruszkaStairsBonus + pompogruszkaWadingBonus;
   
-  const [constructionMaterials, setConstructionMaterials] = useState<ConstructionMaterialItem[]>(() => [
-    {
-      id: 'podsypka',
-      name: 'Podsypka piaskowa',
-      quantity: excavationArea * sandBeddingHeight,
-      unit: 'm³',
-      rate: 120,
-      netValue: excavationArea * sandBeddingHeight * 120,
-    },
-    {
-      id: 'chudziak',
-      name: 'Beton na chudziak B15',
-      quantity: excavationArea * leanConcreteHeight,
-      unit: 'm³',
-      rate: 350,
-      netValue: excavationArea * leanConcreteHeight * 350,
-    },
-    {
-      id: 'plyta_denna',
-      name: 'Beton płyta denna B25',
-      quantity: Math.ceil(floorSlabArea * floorSlabThickness),
-      unit: 'm³',
-      rate: 450,
-      netValue: Math.ceil(floorSlabArea * floorSlabThickness) * 450,
-    },
-    {
-      id: 'pompogruszka',
-      name: 'Pompogruszka',
-      quantity: pompogruszkaQty,
-      unit: 'szt.',
-      rate: 150,
-      netValue: pompogruszkaQty * 150,
-    },
-  ]);
+  const [constructionMaterials, setConstructionMaterials] = useState<ConstructionMaterialItem[]>(() => {
+    const baseItems: ConstructionMaterialItem[] = [
+      {
+        id: 'podsypka',
+        name: 'Podsypka piaskowa',
+        quantity: excavationArea * sandBeddingHeight,
+        unit: 'm³',
+        rate: 120,
+        netValue: excavationArea * sandBeddingHeight * 120,
+      },
+      {
+        id: 'chudziak',
+        name: 'Beton na chudziak B15',
+        quantity: excavationArea * leanConcreteHeight,
+        unit: 'm³',
+        rate: 350,
+        netValue: excavationArea * leanConcreteHeight * 350,
+      },
+      {
+        id: 'plyta_denna',
+        name: 'Beton płyta denna B25',
+        quantity: Math.ceil(floorSlabArea * floorSlabThickness),
+        unit: 'm³',
+        rate: 450,
+        netValue: Math.ceil(floorSlabArea * floorSlabThickness) * 450,
+      },
+      {
+        id: 'pompogruszka',
+        name: 'Pompogruszka',
+        quantity: pompogruszkaQty,
+        unit: 'szt.',
+        rate: 150,
+        netValue: pompogruszkaQty * 150,
+      },
+    ];
+    return baseItems;
+  });
   
   // Reinforcement hook
   const reinforcement = useReinforcement(dimensions, floorSlabThickness, constructionTechnology);
   
-  // Update construction materials when dimensions or heights change
+  // Update construction materials when dimensions, heights, or block calculation changes
   useEffect(() => {
     const currentPompogruszkaQty = pompogruszkaBaseQty + 
       (dimensions.stairs?.enabled ? 1 : 0) + 
       (dimensions.wadingPool?.enabled ? 1 : 0);
     
-    setConstructionMaterials(prev => prev.map(item => {
-      if (item.id === 'podsypka') {
-        const qty = excavationArea * sandBeddingHeight;
-        return { ...item, quantity: qty, netValue: qty * item.rate };
+    setConstructionMaterials(prev => {
+      // Update existing items
+      let updated = prev.map(item => {
+        if (item.id === 'podsypka') {
+          const qty = excavationArea * sandBeddingHeight;
+          return { ...item, quantity: qty, netValue: qty * item.rate };
+        }
+        if (item.id === 'chudziak') {
+          const qty = excavationArea * leanConcreteHeight;
+          return { ...item, quantity: qty, netValue: qty * item.rate };
+        }
+        if (item.id === 'plyta_denna') {
+          const qty = Math.ceil(floorSlabArea * floorSlabThickness);
+          return { ...item, quantity: qty, netValue: qty * item.rate };
+        }
+        if (item.id === 'pompogruszka') {
+          return { ...item, quantity: currentPompogruszkaQty, netValue: currentPompogruszkaQty * item.rate };
+        }
+        if (item.id === 'bloczek') {
+          const qty = blockCalculation?.totalBlocks || 0;
+          return { ...item, quantity: qty, netValue: qty * item.rate };
+        }
+        return item;
+      });
+      
+      // Add or remove bloczek based on technology
+      const hasBloczek = updated.some(item => item.id === 'bloczek');
+      
+      if (constructionTechnology === 'masonry' && !hasBloczek && blockCalculation) {
+        // Add bloczek item for masonry
+        const bloczekQty = blockCalculation.totalBlocks;
+        updated.push({
+          id: 'bloczek',
+          name: 'Bloczek betonowy 38×24×12',
+          quantity: bloczekQty,
+          unit: 'szt.',
+          rate: 8.50,
+          netValue: bloczekQty * 8.50,
+        });
+      } else if (constructionTechnology !== 'masonry' && hasBloczek) {
+        // Remove bloczek for non-masonry
+        updated = updated.filter(item => item.id !== 'bloczek');
+      } else if (constructionTechnology === 'masonry' && hasBloczek && blockCalculation) {
+        // Update bloczek quantity
+        updated = updated.map(item => {
+          if (item.id === 'bloczek') {
+            const qty = blockCalculation.totalBlocks;
+            return { ...item, quantity: qty, netValue: qty * item.rate };
+          }
+          return item;
+        });
       }
-      if (item.id === 'chudziak') {
-        const qty = excavationArea * leanConcreteHeight;
-        return { ...item, quantity: qty, netValue: qty * item.rate };
-      }
-      if (item.id === 'plyta_denna') {
-        const qty = Math.ceil(floorSlabArea * floorSlabThickness);
-        return { ...item, quantity: qty, netValue: qty * item.rate };
-      }
-      if (item.id === 'pompogruszka') {
-        return { ...item, quantity: currentPompogruszkaQty, netValue: currentPompogruszkaQty * item.rate };
-      }
-      return item;
-    }));
-  }, [excavationArea, sandBeddingHeight, leanConcreteHeight, floorSlabArea, floorSlabThickness, dimensions.stairs?.enabled, dimensions.wadingPool?.enabled]);
+      
+      return updated;
+    });
+  }, [excavationArea, sandBeddingHeight, leanConcreteHeight, floorSlabArea, floorSlabThickness, dimensions.stairs?.enabled, dimensions.wadingPool?.enabled, constructionTechnology, blockCalculation]);
   
   // Update construction material
   const updateConstructionMaterial = (id: string, field: keyof ConstructionMaterialItem, value: any) => {
@@ -884,6 +953,114 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
                     />
                   </div>
                 </div>
+
+                {/* Masonry construction section - only for masonry technology */}
+                {constructionTechnology === 'masonry' && blockCalculation && (
+                  <div className="p-4 rounded-lg bg-muted/30 border border-border mb-4">
+                    <h4 className="text-sm font-medium mb-3 flex items-center gap-2">
+                      <Building className="w-4 h-4" />
+                      Konstrukcja murowana
+                    </h4>
+                    
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="block-layers" className="text-xs text-muted-foreground">
+                          Warstwy bloczków
+                        </Label>
+                        <div className="flex items-center gap-2">
+                          <Input
+                            id="block-layers"
+                            type="number"
+                            min="1"
+                            max="20"
+                            step="1"
+                            value={customBlockLayers ?? blockCalculation.layers}
+                            onChange={(e) => {
+                              const val = parseInt(e.target.value) || 0;
+                              setCustomBlockLayers(val > 0 ? val : undefined);
+                              setCustomCrownHeight(undefined); // Reset crown when layers change
+                            }}
+                            className="input-field w-20"
+                          />
+                          <span className="text-xs text-muted-foreground">
+                            (wyl: {calculateTotalBlocks(dimensions.length, dimensions.width, dimensions.depth).layers})
+                          </span>
+                        </div>
+                      </div>
+                      
+                      <div className="space-y-2">
+                        <Label className="text-xs text-muted-foreground">
+                          Wysokość ściany
+                        </Label>
+                        <p className="text-lg font-semibold">
+                          {Math.round(blockCalculation.wallHeight * 100)} cm
+                        </p>
+                      </div>
+                      
+                      <div className="space-y-2">
+                        <Label htmlFor="crown-height" className="text-xs text-muted-foreground">
+                          Wysokość wieńca (cm)
+                        </Label>
+                        <div className="flex items-center gap-2">
+                          <Input
+                            id="crown-height"
+                            type="number"
+                            min="18"
+                            max="36"
+                            step="1"
+                            value={Math.round(blockCalculation.crownHeight * 100)}
+                            onChange={(e) => {
+                              const val = (parseFloat(e.target.value) || 18) / 100;
+                              if (val >= 0.18) {
+                                setCustomCrownHeight(val);
+                                setCustomBlockLayers(undefined); // Reset layers when crown changes
+                              }
+                            }}
+                            className="input-field w-20"
+                          />
+                          {blockCalculation.isOptimal && (
+                            <span className="text-xs text-green-600 font-medium">✓ opt.</span>
+                          )}
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          min. 18cm, opt. 24cm
+                        </p>
+                      </div>
+                      
+                      <div className="space-y-2">
+                        <Label className="text-xs text-muted-foreground">
+                          Bloczki w warstwie
+                        </Label>
+                        <p className="text-lg font-semibold">
+                          {blockCalculation.blocksPerLayer} szt.
+                        </p>
+                      </div>
+                    </div>
+                    
+                    <div className="flex items-center justify-between p-3 rounded-lg bg-primary/10 border border-primary/20">
+                      <div className="flex items-center gap-4">
+                        <div>
+                          <p className="text-xs text-muted-foreground">Razem bloczków</p>
+                          <p className="text-2xl font-bold text-primary">
+                            {blockCalculation.totalBlocks} szt.
+                          </p>
+                        </div>
+                        <div className="text-muted-foreground text-sm">
+                          ({blockCalculation.layers} warstw × {blockCalculation.blocksPerLayer} szt.)
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-xs text-muted-foreground">Słupy</p>
+                        <p className="text-lg font-medium">{blockCalculation.columnCount} szt.</p>
+                      </div>
+                    </div>
+                    
+                    <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1">
+                      <Info className="w-3 h-3" />
+                      Bloczek {BLOCK_DIMENSIONS.length * 100}×{BLOCK_DIMENSIONS.width * 100}×{BLOCK_DIMENSIONS.height * 100} cm, słupy co 2m
+                    </p>
+                  </div>
+                )}
 
                 <div className="p-4 rounded-lg bg-primary/10 border border-primary/20 mb-4">
                   <div className="flex justify-between items-center">

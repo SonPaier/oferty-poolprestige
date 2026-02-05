@@ -50,6 +50,144 @@ export interface ReinforcementData {
   totalNet: number;
 }
 
+// =====================================================
+// BLOCK AND CROWN HEIGHT CALCULATION
+// =====================================================
+
+// Concrete block dimensions (cm converted to m)
+export const BLOCK_DIMENSIONS = {
+  length: 0.38, // 38 cm - length of block
+  width: 0.24,  // 24 cm - wall thickness
+  height: 0.12, // 12 cm - laid flat (na leżąco)
+};
+
+// Crown height constraints (wieniec)
+const MIN_CROWN_HEIGHT = 0.18; // 18 cm minimum
+const MAX_CROWN_HEIGHT = 0.30; // 30 cm maximum (to avoid needing to cut blocks)
+const OPTIMAL_CROWN_HEIGHT = 0.24; // 24 cm optimal
+
+export interface BlockLayerCalculation {
+  layers: number;          // Number of block layers
+  wallHeight: number;      // Height of masonry wall (m)
+  crownHeight: number;     // Height of crown/wieniec (m)
+  isOptimal: boolean;      // Whether crown height is at optimal 24cm
+}
+
+// Calculate optimal number of block layers and crown height
+export function calculateBlockLayers(poolDepth: number): BlockLayerCalculation {
+  const blockHeight = BLOCK_DIMENSIONS.height; // 0.12m
+  
+  // Maximum number of layers (if no crown)
+  const maxLayers = Math.floor(poolDepth / blockHeight);
+  
+  // Search for optimal number of layers (prioritize values close to 24cm)
+  for (let layers = maxLayers; layers >= 1; layers--) {
+    const wallHeight = layers * blockHeight;
+    const crownHeight = poolDepth - wallHeight;
+    
+    // Crown must be between 18cm and 30cm
+    if (crownHeight >= MIN_CROWN_HEIGHT && crownHeight <= MAX_CROWN_HEIGHT) {
+      return { 
+        layers, 
+        wallHeight, 
+        crownHeight, 
+        isOptimal: Math.abs(crownHeight - OPTIMAL_CROWN_HEIGHT) < 0.01 
+      };
+    }
+  }
+  
+  // Fallback - use minimum crown height
+  const fallbackLayers = Math.floor((poolDepth - MIN_CROWN_HEIGHT) / blockHeight);
+  const fallbackWallHeight = fallbackLayers * blockHeight;
+  return {
+    layers: fallbackLayers,
+    wallHeight: fallbackWallHeight,
+    crownHeight: poolDepth - fallbackWallHeight,
+    isOptimal: false,
+  };
+}
+
+// Calculate number of blocks per layer
+export function calculateBlocksPerLayer(
+  poolLength: number,
+  poolWidth: number,
+  columnCount: number
+): number {
+  const perimeter = 2 * (poolLength + poolWidth); // m
+  const columnWidth = BLOCK_DIMENSIONS.width; // 0.24m
+  const blockLength = BLOCK_DIMENSIONS.length; // 0.38m
+  
+  // Subtract space occupied by columns
+  const effectiveLength = perimeter - (columnCount * columnWidth);
+  
+  return Math.ceil(effectiveLength / blockLength);
+}
+
+// Calculate total number of blocks
+export function calculateTotalBlocks(
+  poolLength: number,
+  poolWidth: number,
+  poolDepth: number,
+  customLayers?: number,
+  customCrownHeight?: number
+): { 
+  layers: number; 
+  blocksPerLayer: number; 
+  totalBlocks: number; 
+  crownHeight: number;
+  wallHeight: number;
+  columnCount: number;
+  isOptimal: boolean;
+} {
+  // Calculate columns based on pool dimensions
+  const columnsOnLength = Math.max(0, Math.floor(poolLength / 2) - 1);
+  const columnsOnWidth = Math.max(0, Math.floor(poolWidth / 2) - 1);
+  const columnCount = (columnsOnLength * 2) + (columnsOnWidth * 2);
+  
+  // Calculate layers and crown height
+  let layerCalc = calculateBlockLayers(poolDepth);
+  
+  // Apply custom values if provided
+  if (customLayers !== undefined && customLayers > 0) {
+    const wallHeight = customLayers * BLOCK_DIMENSIONS.height;
+    const crownHeight = poolDepth - wallHeight;
+    layerCalc = {
+      layers: customLayers,
+      wallHeight,
+      crownHeight,
+      isOptimal: Math.abs(crownHeight - OPTIMAL_CROWN_HEIGHT) < 0.01,
+    };
+  }
+  
+  if (customCrownHeight !== undefined && customCrownHeight >= MIN_CROWN_HEIGHT) {
+    const wallHeight = poolDepth - customCrownHeight;
+    const layers = Math.round(wallHeight / BLOCK_DIMENSIONS.height);
+    layerCalc = {
+      layers,
+      wallHeight: layers * BLOCK_DIMENSIONS.height,
+      crownHeight: poolDepth - (layers * BLOCK_DIMENSIONS.height),
+      isOptimal: Math.abs(customCrownHeight - OPTIMAL_CROWN_HEIGHT) < 0.01,
+    };
+  }
+  
+  const blocksPerLayer = calculateBlocksPerLayer(poolLength, poolWidth, columnCount);
+  const totalBlocks = layerCalc.layers * blocksPerLayer;
+  
+  return {
+    layers: layerCalc.layers,
+    blocksPerLayer,
+    totalBlocks,
+    crownHeight: layerCalc.crownHeight,
+    wallHeight: layerCalc.wallHeight,
+    columnCount,
+    isOptimal: layerCalc.isOptimal,
+  };
+}
+
+// =====================================================
+// REINFORCEMENT CALCULATION
+// =====================================================
+
 // Weight per meter (kg/mb) - only for traditional steel reinforcement
 const KG_PER_MB: Record<number, number> = {
   6: 0.222,
