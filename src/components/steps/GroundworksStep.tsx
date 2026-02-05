@@ -904,7 +904,7 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
 
               {/* Materials + Reinforcement combined cost table */}
               <div className="glass-card p-6">
-                <h3 className="text-base font-medium mb-4">Koszt materiałów budowlanych i zbrojenia</h3>
+                <h3 className="text-base font-medium mb-4">Materiały budowlane</h3>
                 
                 {/* Reinforcement controls */}
                 <ReinforcementControls
@@ -959,17 +959,7 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
                         </TableRow>
                       ))}
                       
-                      {/* Separator row */}
-                      <TableRow className="bg-muted/20">
-                        <TableCell colSpan={4} className="text-right text-sm font-medium">
-                          Materiały razem
-                        </TableCell>
-                        <TableCell className="text-right font-semibold">
-                          {formatPrice(materialsTotalNet)}
-                        </TableCell>
-                      </TableRow>
-                      
-                      {/* Reinforcement rows */}
+                      {/* Reinforcement rows integrated directly */}
                       <ReinforcementTableRows
                         items={reinforcement.items}
                         unit={reinforcement.unit}
@@ -978,16 +968,6 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
                         onUpdateItemRate={reinforcement.updateItemRate}
                         onUpdateItemQuantity={reinforcement.updateItemQuantity}
                       />
-                      
-                      {/* Reinforcement subtotal */}
-                      <TableRow className="bg-muted/20">
-                        <TableCell colSpan={4} className="text-right text-sm font-medium">
-                          Zbrojenie razem
-                        </TableCell>
-                        <TableCell className="text-right font-semibold">
-                          {formatPrice(reinforcement.totalNet)}
-                        </TableCell>
-                      </TableRow>
                     </TableBody>
                     <TableFooter>
                       <TableRow>
