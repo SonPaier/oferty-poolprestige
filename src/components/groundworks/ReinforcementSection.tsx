@@ -11,7 +11,7 @@ import { PoolDimensions } from '@/types/configurator';
 // Types
 export type ReinforcementType = 'traditional' | 'composite';
 export type MeshSize = '15x15' | '20x20' | '25x25';
-export type ReinforcementUnit = 'mb' | 'kg';
+export type ReinforcementUnit = 'mb' | 'kg' | 'szt.';
 type ConstructionTechnology = 'masonry' | 'poured';
 
 interface ReinforcementPosition {
@@ -422,10 +422,10 @@ export function useReinforcement(
         name: 'Zbrojenie 12mm',
         diameter: 12,
         unit,
-        rate: mainRate,
+        rate: 7.00,
         positions: positions12,
         totalQuantity: unit === 'mb' ? total12 : mbToKg(total12, 12),
-        netValue: (unit === 'mb' ? total12 : mbToKg(total12, 12)) * mainRate,
+        netValue: (unit === 'mb' ? total12 : mbToKg(total12, 12)) * 7.00,
         isExpanded: true,
         supportsKg: true,
       });
@@ -439,10 +439,10 @@ export function useReinforcement(
         name: 'Zbrojenie kompozytowe 8mm',
         diameter: 8,
         unit: 'mb', // Always mb for composite
-        rate: 12.00,
+        rate: 3.00,
         positions: positions8,
         totalQuantity: total8, // No kg conversion for composite
-        netValue: total8 * 12.00,
+        netValue: total8 * 3.00,
         isExpanded: true,
         supportsKg: false,
       });
@@ -454,7 +454,7 @@ export function useReinforcement(
       name: 'Zbrojenie 6mm',
       diameter: 6,
       unit,
-      rate: 5.00,
+      rate: 6.00,
       positions: [],
       totalQuantity: 0,
       netValue: 0,
@@ -465,15 +465,15 @@ export function useReinforcement(
     // Always add stirrups as separate item (visible in both variants) - supports kg
     newItems.push({
       id: 'strzemiona',
-      name: 'Strzemiona',
+      name: 'Strzemiona 18×18',
       diameter: 6,
-      unit,
-      rate: 6.00,
+      unit: 'szt.',
+      rate: 2.10,
       positions: [],
       totalQuantity: 0,
       netValue: 0,
       isExpanded: false,
-      supportsKg: true,
+      supportsKg: false,
     });
     
     setItems(newItems);

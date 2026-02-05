@@ -221,8 +221,8 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
         name: 'Podsypka piaskowa',
         quantity: excavationArea * sandBeddingHeight,
         unit: 'm³',
-        rate: 120,
-        netValue: excavationArea * sandBeddingHeight * 120,
+        rate: 150,
+        netValue: excavationArea * sandBeddingHeight * 150,
         customOverride: false,
       },
       {
@@ -239,8 +239,8 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
         name: 'Pompogruszka',
         quantity: pompogruszkaQty,
         unit: 'szt.',
-        rate: 150,
-        netValue: pompogruszkaQty * 150,
+        rate: 350,
+        netValue: pompogruszkaQty * 350,
         customOverride: false,
       },
     ];
@@ -303,8 +303,8 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
             name: 'Bloczek betonowy 38×24×12',
             quantity: bloczekQty,
             unit: 'szt.',
-            rate: 8.50,
-            netValue: bloczekQty * 8.50,
+            rate: 6.80,
+            netValue: bloczekQty * 6.80,
             customOverride: false,
           });
         }
