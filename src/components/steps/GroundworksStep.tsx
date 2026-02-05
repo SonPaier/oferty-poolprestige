@@ -31,9 +31,11 @@ import {
   ReinforcementData,
   calculateTotalBlocks,
   calculateCrownConcreteVolume,
+  calculateColumnsConcreteVolume,
   BLOCK_DIMENSIONS,
 } from '@/components/groundworks/ReinforcementSection';
 import Pool2DPreview from '@/components/Pool2DPreview';
+import { ChevronDown, ChevronRight } from 'lucide-react';
 
 // Helper function to round quantities based on material type
 function roundQuantity(id: string, quantity: number): number {
@@ -188,6 +190,22 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
     unit: string;
     rate: number;
     netValue: number;
+    customOverride?: boolean; // Mark if user manually changed quantity
+  }
+  
+  // Grouped material items (like B25 concrete)
+  interface GroupedMaterialItem {
+    id: string;
+    groupName: string;
+    unit: string;
+    rate: number;
+    isExpanded: boolean;
+    subItems: {
+      id: string;
+      name: string;
+      quantity: number;
+      customOverride?: boolean;
+    }[];
   }
   
   // Calculate pompogruszki quantity: 3 base + 1 for stairs + 1 for wading pool
@@ -205,6 +223,7 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
         unit: 'm³',
         rate: 120,
         netValue: excavationArea * sandBeddingHeight * 120,
+        customOverride: false,
       },
       {
         id: 'chudziak',
@@ -213,14 +232,7 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
         unit: 'm³',
         rate: 350,
         netValue: excavationArea * leanConcreteHeight * 350,
-      },
-      {
-        id: 'plyta_denna',
-        name: 'Beton płyta denna B25',
-        quantity: Math.ceil(floorSlabArea * floorSlabThickness),
-        unit: 'm³',
-        rate: 450,
-        netValue: Math.ceil(floorSlabArea * floorSlabThickness) * 450,
+        customOverride: false,
       },
       {
         id: 'pompogruszka',
@@ -229,9 +241,22 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
         unit: 'szt.',
         rate: 150,
         netValue: pompogruszkaQty * 150,
+        customOverride: false,
       },
     ];
     return baseItems;
+  });
+  
+  // Grouped B25 concrete (plyta denna + wieniec + slupy for masonry)
+  const [b25ConcreteGroup, setB25ConcreteGroup] = useState<GroupedMaterialItem>({
+    id: 'beton_b25_group',
+    groupName: 'Beton B25',
+    unit: 'm³',
+    rate: 450,
+    isExpanded: true,
+    subItems: [
+      { id: 'plyta_denna', name: 'Płyta denna', quantity: Math.ceil(floorSlabArea * floorSlabThickness), customOverride: false },
+    ],
   });
   
   // Reinforcement hook
@@ -243,24 +268,17 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
       (dimensions.stairs?.enabled ? 1 : 0) + 
       (dimensions.wadingPool?.enabled ? 1 : 0);
     
-    // Calculate crown concrete volume (only for masonry technology)
-    const crownConcreteVolume = blockCalculation 
-      ? calculateCrownConcreteVolume(dimensions.length, dimensions.width, blockCalculation.crownHeight)
-      : 0;
-    
     setConstructionMaterials(prev => {
-      // Update existing items
+      // Update existing items - skip ones with customOverride
       let updated = prev.map(item => {
+        if (item.customOverride) return item;
+        
         if (item.id === 'podsypka') {
           const qty = excavationArea * sandBeddingHeight;
           return { ...item, quantity: qty, netValue: qty * item.rate };
         }
         if (item.id === 'chudziak') {
           const qty = excavationArea * leanConcreteHeight;
-          return { ...item, quantity: qty, netValue: qty * item.rate };
-        }
-        if (item.id === 'plyta_denna') {
-          const qty = Math.ceil(floorSlabArea * floorSlabThickness);
           return { ...item, quantity: qty, netValue: qty * item.rate };
         }
         if (item.id === 'pompogruszka') {
@@ -270,16 +288,11 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
           const qty = blockCalculation?.totalBlocks || 0;
           return { ...item, quantity: qty, netValue: qty * item.rate };
         }
-        if (item.id === 'beton_wieniec') {
-          const qty = Math.ceil(crownConcreteVolume);
-          return { ...item, quantity: qty, netValue: qty * item.rate };
-        }
         return item;
       });
       
       // Add or remove bloczek based on technology
       const hasBloczek = updated.some(item => item.id === 'bloczek');
-      const hasBetonWieniec = updated.some(item => item.id === 'beton_wieniec');
       
       if (constructionTechnology === 'masonry' && blockCalculation) {
         // Add bloczek item for masonry if not present
@@ -292,48 +305,117 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
             unit: 'szt.',
             rate: 8.50,
             netValue: bloczekQty * 8.50,
-          });
-        }
-        
-        // Add beton na wieniec for masonry if not present
-        if (!hasBetonWieniec) {
-          const betonQty = Math.ceil(crownConcreteVolume);
-          updated.push({
-            id: 'beton_wieniec',
-            name: 'Beton na wieniec B25',
-            quantity: betonQty,
-            unit: 'm³',
-            rate: 450,
-            netValue: betonQty * 450,
+            customOverride: false,
           });
         }
       } else if (constructionTechnology !== 'masonry') {
         // Remove masonry-specific items for non-masonry
-        updated = updated.filter(item => item.id !== 'bloczek' && item.id !== 'beton_wieniec');
+        updated = updated.filter(item => item.id !== 'bloczek');
       }
       
       return updated;
     });
-  }, [excavationArea, sandBeddingHeight, leanConcreteHeight, floorSlabArea, floorSlabThickness, dimensions.stairs?.enabled, dimensions.wadingPool?.enabled, constructionTechnology, blockCalculation, dimensions.length, dimensions.width]);
+  }, [excavationArea, sandBeddingHeight, leanConcreteHeight, dimensions.stairs?.enabled, dimensions.wadingPool?.enabled, constructionTechnology, blockCalculation]);
+
+  // Update B25 concrete group when dimensions change
+  useEffect(() => {
+    // Calculate floor slab volume
+    const floorSlabVolume = floorSlabArea * floorSlabThickness;
+    
+    // Calculate crown concrete volume (only for masonry technology)
+    const crownConcreteVolume = blockCalculation 
+      ? calculateCrownConcreteVolume(dimensions.length, dimensions.width, blockCalculation.crownHeight)
+      : 0;
+    
+    // Calculate columns concrete volume (only for masonry technology)
+    const columnsConcreteData = blockCalculation 
+      ? calculateColumnsConcreteVolume(dimensions.length, dimensions.width, dimensions.depth, blockCalculation.crownHeight)
+      : { volume: 0, columnCount: 0 };
+    
+    setB25ConcreteGroup(prev => {
+      const newSubItems: GroupedMaterialItem['subItems'] = [];
+      
+      // Floor slab always present
+      const existingFloor = prev.subItems.find(s => s.id === 'plyta_denna');
+      newSubItems.push({
+        id: 'plyta_denna',
+        name: 'Płyta denna',
+        quantity: existingFloor?.customOverride ? existingFloor.quantity : floorSlabVolume,
+        customOverride: existingFloor?.customOverride || false,
+      });
+      
+      // Crown and columns only for masonry
+      if (constructionTechnology === 'masonry' && blockCalculation) {
+        const existingCrown = prev.subItems.find(s => s.id === 'beton_wieniec');
+        newSubItems.push({
+          id: 'beton_wieniec',
+          name: 'Wieniec',
+          quantity: existingCrown?.customOverride ? existingCrown.quantity : crownConcreteVolume,
+          customOverride: existingCrown?.customOverride || false,
+        });
+        
+        const existingColumns = prev.subItems.find(s => s.id === 'beton_slupy');
+        newSubItems.push({
+          id: 'beton_slupy',
+          name: `Słupy (${columnsConcreteData.columnCount} szt.)`,
+          quantity: existingColumns?.customOverride ? existingColumns.quantity : columnsConcreteData.volume,
+          customOverride: existingColumns?.customOverride || false,
+        });
+      }
+      
+      return { ...prev, subItems: newSubItems };
+    });
+  }, [floorSlabArea, floorSlabThickness, constructionTechnology, blockCalculation, dimensions.length, dimensions.width, dimensions.depth]);
   
   // Update construction material
   const updateConstructionMaterial = (id: string, field: keyof ConstructionMaterialItem, value: any) => {
     setConstructionMaterials(prev => prev.map(item => {
       if (item.id !== id) return item;
       const updated = { ...item, [field]: value };
-      if (field === 'quantity' || field === 'rate') {
+      if (field === 'quantity') {
+        updated.customOverride = true; // Mark as manually changed
+        updated.netValue = updated.quantity * updated.rate;
+      }
+      if (field === 'rate') {
         updated.netValue = updated.quantity * updated.rate;
       }
       return updated;
     }));
   };
   
-  // Calculate construction totals (materials + reinforcement) using rounded quantities
+  // Update B25 group sub-item quantity
+  const updateB25SubItemQuantity = (subItemId: string, newQuantity: number) => {
+    setB25ConcreteGroup(prev => ({
+      ...prev,
+      subItems: prev.subItems.map(item => 
+        item.id === subItemId 
+          ? { ...item, quantity: newQuantity, customOverride: true }
+          : item
+      ),
+    }));
+  };
+  
+  // Update B25 group rate
+  const updateB25Rate = (newRate: number) => {
+    setB25ConcreteGroup(prev => ({ ...prev, rate: newRate }));
+  };
+  
+  // Toggle B25 group expand
+  const toggleB25Expand = () => {
+    setB25ConcreteGroup(prev => ({ ...prev, isExpanded: !prev.isExpanded }));
+  };
+  
+  // Calculate B25 total quantity (sum of sub-items, rounded to 0.5)
+  const b25TotalQuantity = b25ConcreteGroup.subItems.reduce((sum, item) => sum + item.quantity, 0);
+  const b25TotalRounded = Math.ceil(b25TotalQuantity * 2) / 2;
+  const b25TotalNet = b25TotalRounded * b25ConcreteGroup.rate;
+  
+  // Calculate construction totals (materials + B25 group + reinforcement) using rounded quantities
   const materialsTotalNet = constructionMaterials.reduce((sum, item) => {
     const roundedQty = roundQuantity(item.id, item.quantity);
     return sum + (roundedQty * item.rate);
   }, 0);
-  const constructionTotalNet = materialsTotalNet + reinforcement.totalNet;
+  const constructionTotalNet = materialsTotalNet + b25TotalNet + reinforcement.totalNet;
   const constructionVatAmount = constructionTotalNet * (constructionVatRate / 100);
   const constructionTotalGross = constructionTotalNet + constructionVatAmount;
   
@@ -1163,7 +1245,12 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
                       {/* Construction materials */}
                       {constructionMaterials.map((item) => (
                         <TableRow key={item.id}>
-                          <TableCell className="font-medium">{item.name}</TableCell>
+                          <TableCell className="font-medium">
+                            {item.name}
+                            {item.customOverride && (
+                              <span className="ml-2 text-xs text-amber-600">(zmieniono)</span>
+                            )}
+                          </TableCell>
                           <TableCell>
                             <Input
                               type="number"
@@ -1187,6 +1274,72 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
                           </TableCell>
                           <TableCell className="text-right font-semibold">
                             {formatPrice(roundQuantity(item.id, item.quantity) * item.rate)}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                      
+                      {/* B25 Concrete Group (expandable like reinforcement) */}
+                      <TableRow className="bg-accent/5">
+                        <TableCell>
+                          <button
+                            type="button"
+                            className="flex items-center gap-2 font-medium hover:text-primary transition-colors"
+                            onClick={toggleB25Expand}
+                          >
+                            {b25ConcreteGroup.isExpanded ? (
+                              <ChevronDown className="w-4 h-4" />
+                            ) : (
+                              <ChevronRight className="w-4 h-4" />
+                            )}
+                            {b25ConcreteGroup.groupName}
+                          </button>
+                        </TableCell>
+                        <TableCell>
+                          <span className="font-medium block text-right pr-2">
+                            {formatQuantity('beton_wieniec', b25TotalQuantity)}
+                          </span>
+                        </TableCell>
+                        <TableCell className="text-muted-foreground">{b25ConcreteGroup.unit}</TableCell>
+                        <TableCell>
+                          <Input
+                            type="number"
+                            min="0"
+                            step="10"
+                            value={b25ConcreteGroup.rate}
+                            onChange={(e) => updateB25Rate(parseFloat(e.target.value) || 0)}
+                            className="input-field w-[80px] text-right ml-auto"
+                          />
+                        </TableCell>
+                        <TableCell className="text-right font-semibold">
+                          {formatPrice(b25TotalNet)}
+                        </TableCell>
+                      </TableRow>
+                      
+                      {/* B25 sub-items (when expanded) */}
+                      {b25ConcreteGroup.isExpanded && b25ConcreteGroup.subItems.map((subItem) => (
+                        <TableRow key={subItem.id} className="bg-background">
+                          <TableCell className="pl-10 text-muted-foreground">
+                            └ {subItem.name}
+                            {subItem.customOverride && (
+                              <span className="ml-2 text-xs text-amber-600">(zmieniono)</span>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            <Input
+                              type="number"
+                              min="0"
+                              step="0.1"
+                              value={subItem.quantity.toFixed(2)}
+                              onChange={(e) => updateB25SubItemQuantity(subItem.id, parseFloat(e.target.value) || 0)}
+                              className="input-field w-[80px] text-right ml-auto"
+                            />
+                          </TableCell>
+                          <TableCell className="text-muted-foreground">{b25ConcreteGroup.unit}</TableCell>
+                          <TableCell className="text-right text-muted-foreground pr-2">
+                            {b25ConcreteGroup.rate.toFixed(2)}
+                          </TableCell>
+                          <TableCell className="text-right text-muted-foreground">
+                            {formatPrice(Math.ceil(subItem.quantity * 2) / 2 * b25ConcreteGroup.rate)}
                           </TableCell>
                         </TableRow>
                       ))}
