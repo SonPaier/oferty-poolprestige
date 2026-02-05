@@ -13,6 +13,7 @@ interface Pool2DPreviewProps {
   dimensions: PoolDimensions;
   height?: number;
   dimensionDisplay?: DimensionDisplay;
+  showColumns?: boolean; // Show masonry column positions
 }
 
 // Generate pool outline points for 2D view
@@ -286,7 +287,7 @@ function transformCustomVertices(
   }));
 }
 
-export default function Pool2DPreview({ dimensions, height = 300, dimensionDisplay = 'pool' }: Pool2DPreviewProps) {
+export default function Pool2DPreview({ dimensions, height = 300, dimensionDisplay = 'pool', showColumns = false }: Pool2DPreviewProps) {
   const poolPoints = useMemo(() => getPoolPoints(dimensions), [dimensions]);
   const outerShellPoints = useMemo(() => getOuterShellPoints(dimensions), [dimensions]);
   // Zoom state
@@ -583,6 +584,46 @@ export default function Pool2DPreview({ dimensions, height = 300, dimensionDispl
   const showStairsDims = dimensionDisplay === 'all' || dimensionDisplay === 'stairs';
   const showWadingDims = dimensionDisplay === 'all' || dimensionDisplay === 'wading';
   
+  // Calculate column positions for masonry pools (2m spacing)
+  const columnPositions = useMemo(() => {
+    if (!showColumns || dimensions.shape !== 'prostokatny') return [];
+    
+    const { length, width } = dimensions;
+    const spacing = 2; // 2m
+    const positions: { x: number; y: number; label: string }[] = [];
+    let labelIndex = 1;
+    
+    // Columns along length (top and bottom walls)
+    for (let x = spacing; x < length; x += spacing) {
+      positions.push({ 
+        x: x - length / 2, 
+        y: -width / 2, 
+        label: `S${labelIndex++}` 
+      }); // top
+      positions.push({ 
+        x: x - length / 2, 
+        y: width / 2, 
+        label: `S${labelIndex++}` 
+      }); // bottom
+    }
+    
+    // Columns along width (left and right walls)
+    for (let y = spacing; y < width; y += spacing) {
+      positions.push({ 
+        x: -length / 2, 
+        y: y - width / 2, 
+        label: `S${labelIndex++}` 
+      }); // left
+      positions.push({ 
+        x: length / 2, 
+        y: y - width / 2, 
+        label: `S${labelIndex++}` 
+      }); // right
+    }
+    
+    return positions;
+  }, [showColumns, dimensions.shape, dimensions.length, dimensions.width]);
+  
   // Calculate scaled viewBox for zoom
   const scaledViewBox = useMemo(() => {
     const padding = Math.max(bounds.maxX - bounds.minX, bounds.maxY - bounds.minY) * 0.15;
@@ -722,6 +763,34 @@ export default function Pool2DPreview({ dimensions, height = 300, dimensionDispl
             strokeDasharray="0.1 0.05"
           />
         )}
+        
+        {/* Column positions for masonry pools */}
+        {columnPositions.map((col, index) => (
+          <g key={`col-${index}`}>
+            {/* Column square (24x24cm) */}
+            <rect
+              x={col.x - 0.12}
+              y={-col.y - 0.12}
+              width={0.24}
+              height={0.24}
+              fill="#f97316"
+              stroke="#ea580c"
+              strokeWidth="0.02"
+              opacity={0.9}
+            />
+            {/* Column label */}
+            <text
+              x={col.x}
+              y={-col.y + 0.04}
+              textAnchor="middle"
+              fontSize="0.12"
+              fill="white"
+              fontWeight="bold"
+            >
+              {col.label}
+            </text>
+          </g>
+        ))}
         
         {/* Pool Dimension lines - only when pool dims enabled (internal dimensions) */}
         {showPoolDims && (

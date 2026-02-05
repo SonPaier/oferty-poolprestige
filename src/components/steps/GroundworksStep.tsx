@@ -24,6 +24,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { toast } from 'sonner';
+import { ReinforcementSection, ReinforcementData } from '@/components/groundworks/ReinforcementSection';
 
 interface GroundworksStepProps {
   onNext: () => void;
@@ -174,6 +175,9 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
       netValue: pompogruszkaQty * 150,
     },
   ]);
+  
+  // Reinforcement data
+  const [reinforcementData, setReinforcementData] = useState<ReinforcementData | null>(null);
   
   // Update construction materials when dimensions or heights change
   useEffect(() => {
@@ -875,6 +879,17 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
                     </div>
                   </div>
                 </div>
+              </div>
+
+              {/* Reinforcement section */}
+              <div className="glass-card p-6">
+                <h3 className="text-base font-medium mb-4">Zbrojenie</h3>
+                <ReinforcementSection
+                  dimensions={dimensions}
+                  floorSlabThickness={floorSlabThickness}
+                  constructionTechnology={constructionTechnology}
+                  onChange={setReinforcementData}
+                />
               </div>
 
               {/* Materials cost table */}
