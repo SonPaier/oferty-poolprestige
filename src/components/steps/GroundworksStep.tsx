@@ -154,10 +154,10 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
     {
       id: 'plyta_denna',
       name: 'Beton B25 płyta denna',
-      quantity: floorSlabArea * floorSlabThickness,
+      quantity: Math.ceil(floorSlabArea * floorSlabThickness),
       unit: 'm³',
       rate: 450,
-      netValue: floorSlabArea * floorSlabThickness * 450,
+      netValue: Math.ceil(floorSlabArea * floorSlabThickness) * 450,
     },
   ]);
   
@@ -173,7 +173,7 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
         return { ...item, quantity: qty, netValue: qty * item.rate };
       }
       if (item.id === 'plyta_denna') {
-        const qty = floorSlabArea * floorSlabThickness;
+        const qty = Math.ceil(floorSlabArea * floorSlabThickness);
         return { ...item, quantity: qty, netValue: qty * item.rate };
       }
       return item;
