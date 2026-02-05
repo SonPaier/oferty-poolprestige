@@ -785,7 +785,7 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
             <div className="space-y-6">
               {/* Pool dimensions reference */}
               <div className="glass-card p-6">
-                <h3 className="text-base font-medium mb-4">Zapotrzebowanie materiałowe</h3>
+                <h3 className="text-base font-medium mb-4">Parametry budowy</h3>
                 
                 {/* Pool, Stairs, Wading Pool dimensions */}
                 <div className="p-4 rounded-lg bg-accent/10 border border-accent/20 mb-4">
@@ -843,30 +843,43 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
                 </div>
 
                 {/* Material heights configuration */}
-                <div className="grid grid-cols-2 gap-4 mb-4">
+                <div className="grid grid-cols-3 gap-4 mb-4">
                   <div className="space-y-2">
-                    <Label htmlFor="sand-height">Wysokość podsypki (m)</Label>
+                    <Label htmlFor="sand-height">Wysokość podsypki (cm)</Label>
                     <Input
                       id="sand-height"
                       type="number"
-                      min="0.05"
-                      max="0.3"
-                      step="0.01"
-                      value={sandBeddingHeight}
-                      onChange={(e) => setSandBeddingHeight(parseFloat(e.target.value) || 0.1)}
+                      min="5"
+                      max="30"
+                      step="1"
+                      value={Math.round(sandBeddingHeight * 100)}
+                      onChange={(e) => setSandBeddingHeight((parseFloat(e.target.value) || 10) / 100)}
                       className="input-field"
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="concrete-height">Wysokość chudziaka (m)</Label>
+                    <Label htmlFor="concrete-height">Wysokość chudziaka (cm)</Label>
                     <Input
                       id="concrete-height"
                       type="number"
-                      min="0.05"
-                      max="0.3"
-                      step="0.01"
-                      value={leanConcreteHeight}
-                      onChange={(e) => setLeanConcreteHeight(parseFloat(e.target.value) || 0.1)}
+                      min="5"
+                      max="30"
+                      step="1"
+                      value={Math.round(leanConcreteHeight * 100)}
+                      onChange={(e) => setLeanConcreteHeight((parseFloat(e.target.value) || 10) / 100)}
+                      className="input-field"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="floor-slab-height">Wysokość płyty dennej (cm)</Label>
+                    <Input
+                      id="floor-slab-height"
+                      type="number"
+                      min="10"
+                      max="40"
+                      step="1"
+                      value={Math.round(floorSlabThickness * 100)}
+                      onChange={(e) => setFloorSlabThickness((parseFloat(e.target.value) || 20) / 100)}
                       className="input-field"
                     />
                   </div>
