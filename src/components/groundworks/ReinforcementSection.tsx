@@ -85,6 +85,31 @@ export function calculateCrownConcreteVolume(
   return perimeter * wallWidth * crownHeight;
 }
 
+// Calculate columns concrete volume
+// Formula: column_width × column_depth × (pool_depth - crown_height) × column_count
+export function calculateColumnsConcreteVolume(
+  poolLength: number,
+  poolWidth: number,
+  poolDepth: number,
+  crownHeight: number
+): { volume: number; columnCount: number } {
+  // Calculate column count
+  const columnsOnLength = Math.max(0, Math.floor(poolLength / 2) - 1);
+  const columnsOnWidth = Math.max(0, Math.floor(poolWidth / 2) - 1);
+  const columnCount = (columnsOnLength * 2) + (columnsOnWidth * 2);
+  
+  if (columnCount === 0) return { volume: 0, columnCount: 0 };
+  
+  const columnWidth = BLOCK_DIMENSIONS.width; // 0.24m
+  const columnDepth = BLOCK_DIMENSIONS.width; // 0.24m (square columns)
+  const columnHeight = poolDepth - crownHeight; // Wall height
+  
+  // Volume = width × depth × height × count
+  const volume = columnWidth * columnDepth * columnHeight * columnCount;
+  
+  return { volume, columnCount };
+}
+
 // Calculate optimal number of block layers and crown height
 export function calculateBlockLayers(poolDepth: number): BlockLayerCalculation {
   const blockHeight = BLOCK_DIMENSIONS.height; // 0.12m
