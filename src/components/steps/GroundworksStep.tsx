@@ -888,6 +888,16 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
                     </div>
                   </div>
                 </div>
+                
+                {/* Reinforcement controls in material requirements section */}
+                <ReinforcementControls
+                  reinforcementType={reinforcement.reinforcementType}
+                  setReinforcementType={reinforcement.setReinforcementType}
+                  unit={reinforcement.unit}
+                  setUnit={reinforcement.setUnit}
+                  meshSize={reinforcement.meshSize}
+                  setMeshSize={reinforcement.setMeshSize}
+                />
               </div>
 
               {/* 2D Preview with column positions (only for masonry) */}
@@ -904,17 +914,7 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
 
               {/* Materials + Reinforcement combined cost table */}
               <div className="glass-card p-6">
-                <h3 className="text-base font-medium mb-4">Materiały budowlane</h3>
-                
-                {/* Reinforcement controls */}
-                <ReinforcementControls
-                  reinforcementType={reinforcement.reinforcementType}
-                  setReinforcementType={reinforcement.setReinforcementType}
-                  unit={reinforcement.unit}
-                  setUnit={reinforcement.setUnit}
-                  meshSize={reinforcement.meshSize}
-                  setMeshSize={reinforcement.setMeshSize}
-                />
+                <h3 className="text-base font-medium mb-4">Koszty materiałów budowlanych</h3>
                 
                 <div className="rounded-lg border border-border overflow-hidden">
                   <Table>

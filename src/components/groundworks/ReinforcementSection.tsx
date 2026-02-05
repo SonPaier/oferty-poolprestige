@@ -248,19 +248,6 @@ export function useReinforcement(
         netValue: (unit === 'mb' ? total12 : mbToKg(total12, 12)) * mainRate,
         isExpanded: true,
       });
-      
-      // Always add 6mm stirrups for traditional
-      newItems.push({
-        id: 'rebar_6mm',
-        name: 'Zbrojenie 6mm (strzemiona)',
-        diameter: 6,
-        unit,
-        rate: 5.00,
-        positions: [],
-        totalQuantity: 0,
-        netValue: 0,
-        isExpanded: false,
-      });
     } else {
       // Composite reinforcement
       const positions8 = createPositions();
@@ -277,20 +264,33 @@ export function useReinforcement(
         netValue: (unit === 'mb' ? total8 : mbToKg(total8, 8)) * 12.00,
         isExpanded: true,
       });
-      
-      // Keep 6mm stirrups also for composite
-      newItems.push({
-        id: 'rebar_6mm',
-        name: 'Zbrojenie 6mm (strzemiona)',
-        diameter: 6,
-        unit,
-        rate: 5.00,
-        positions: [],
-        totalQuantity: 0,
-        netValue: 0,
-        isExpanded: false,
-      });
     }
+    
+    // Always add 6mm rebar (visible in both variants)
+    newItems.push({
+      id: 'rebar_6mm',
+      name: 'Zbrojenie 6mm',
+      diameter: 6,
+      unit,
+      rate: 5.00,
+      positions: [],
+      totalQuantity: 0,
+      netValue: 0,
+      isExpanded: false,
+    });
+    
+    // Always add stirrups as separate item (visible in both variants)
+    newItems.push({
+      id: 'strzemiona',
+      name: 'Strzemiona',
+      diameter: 6,
+      unit,
+      rate: 6.00,
+      positions: [],
+      totalQuantity: 0,
+      netValue: 0,
+      isExpanded: false,
+    });
     
     setItems(newItems);
   }, [reinforcementType, constructionTechnology, dimensions.wadingPool?.enabled, dimensions.stairs?.enabled, calculatedPositions, unit]);
