@@ -161,7 +161,7 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
     },
     {
       id: 'plyta_denna',
-      name: 'Beton B25 płyta denna',
+      name: 'Beton płyta denna B25',
       quantity: Math.ceil(floorSlabArea * floorSlabThickness),
       unit: 'm³',
       rate: 450,
