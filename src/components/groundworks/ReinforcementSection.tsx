@@ -73,6 +73,18 @@ export interface BlockLayerCalculation {
   isOptimal: boolean;      // Whether crown height is at optimal 24cm
 }
 
+// Calculate crown concrete volume
+export function calculateCrownConcreteVolume(
+  poolLength: number,
+  poolWidth: number,
+  crownHeight: number
+): number {
+  const perimeter = 2 * (poolLength + poolWidth);
+  const wallWidth = BLOCK_DIMENSIONS.width; // 0.24m
+  // Volume = perimeter × wall_width × crown_height
+  return perimeter * wallWidth * crownHeight;
+}
+
 // Calculate optimal number of block layers and crown height
 export function calculateBlockLayers(poolDepth: number): BlockLayerCalculation {
   const blockHeight = BLOCK_DIMENSIONS.height; // 0.12m

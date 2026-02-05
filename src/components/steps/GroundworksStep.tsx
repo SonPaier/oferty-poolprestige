@@ -30,6 +30,7 @@ import {
   ReinforcementTableRows, 
   ReinforcementData,
   calculateTotalBlocks,
+  calculateCrownConcreteVolume,
   BLOCK_DIMENSIONS,
 } from '@/components/groundworks/ReinforcementSection';
 import Pool2DPreview from '@/components/Pool2DPreview';
@@ -218,6 +219,11 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
       (dimensions.stairs?.enabled ? 1 : 0) + 
       (dimensions.wadingPool?.enabled ? 1 : 0);
     
+    // Calculate crown concrete volume (only for masonry technology)
+    const crownConcreteVolume = blockCalculation 
+      ? calculateCrownConcreteVolume(dimensions.length, dimensions.width, blockCalculation.crownHeight)
+      : 0;
+    
     setConstructionMaterials(prev => {
       // Update existing items
       let updated = prev.map(item => {
@@ -240,40 +246,51 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
           const qty = blockCalculation?.totalBlocks || 0;
           return { ...item, quantity: qty, netValue: qty * item.rate };
         }
+        if (item.id === 'beton_wieniec') {
+          const qty = Math.ceil(crownConcreteVolume);
+          return { ...item, quantity: qty, netValue: qty * item.rate };
+        }
         return item;
       });
       
       // Add or remove bloczek based on technology
       const hasBloczek = updated.some(item => item.id === 'bloczek');
+      const hasBetonWieniec = updated.some(item => item.id === 'beton_wieniec');
       
-      if (constructionTechnology === 'masonry' && !hasBloczek && blockCalculation) {
-        // Add bloczek item for masonry
-        const bloczekQty = blockCalculation.totalBlocks;
-        updated.push({
-          id: 'bloczek',
-          name: 'Bloczek betonowy 38×24×12',
-          quantity: bloczekQty,
-          unit: 'szt.',
-          rate: 8.50,
-          netValue: bloczekQty * 8.50,
-        });
-      } else if (constructionTechnology !== 'masonry' && hasBloczek) {
-        // Remove bloczek for non-masonry
-        updated = updated.filter(item => item.id !== 'bloczek');
-      } else if (constructionTechnology === 'masonry' && hasBloczek && blockCalculation) {
-        // Update bloczek quantity
-        updated = updated.map(item => {
-          if (item.id === 'bloczek') {
-            const qty = blockCalculation.totalBlocks;
-            return { ...item, quantity: qty, netValue: qty * item.rate };
-          }
-          return item;
-        });
+      if (constructionTechnology === 'masonry' && blockCalculation) {
+        // Add bloczek item for masonry if not present
+        if (!hasBloczek) {
+          const bloczekQty = blockCalculation.totalBlocks;
+          updated.push({
+            id: 'bloczek',
+            name: 'Bloczek betonowy 38×24×12',
+            quantity: bloczekQty,
+            unit: 'szt.',
+            rate: 8.50,
+            netValue: bloczekQty * 8.50,
+          });
+        }
+        
+        // Add beton na wieniec for masonry if not present
+        if (!hasBetonWieniec) {
+          const betonQty = Math.ceil(crownConcreteVolume);
+          updated.push({
+            id: 'beton_wieniec',
+            name: 'Beton na wieniec B25',
+            quantity: betonQty,
+            unit: 'm³',
+            rate: 450,
+            netValue: betonQty * 450,
+          });
+        }
+      } else if (constructionTechnology !== 'masonry') {
+        // Remove masonry-specific items for non-masonry
+        updated = updated.filter(item => item.id !== 'bloczek' && item.id !== 'beton_wieniec');
       }
       
       return updated;
     });
-  }, [excavationArea, sandBeddingHeight, leanConcreteHeight, floorSlabArea, floorSlabThickness, dimensions.stairs?.enabled, dimensions.wadingPool?.enabled, constructionTechnology, blockCalculation]);
+  }, [excavationArea, sandBeddingHeight, leanConcreteHeight, floorSlabArea, floorSlabThickness, dimensions.stairs?.enabled, dimensions.wadingPool?.enabled, constructionTechnology, blockCalculation, dimensions.length, dimensions.width]);
   
   // Update construction material
   const updateConstructionMaterial = (id: string, field: keyof ConstructionMaterialItem, value: any) => {
