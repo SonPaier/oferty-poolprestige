@@ -367,6 +367,47 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
     });
   }, [floorSlabArea, floorSlabThickness, constructionTechnology, blockCalculation, dimensions.length, dimensions.width, dimensions.depth]);
   
+  // Calculate expected values for reset functionality
+  const getExpectedMaterialQuantity = useCallback((id: string): number => {
+    const currentPompogruszkaQty = pompogruszkaBaseQty + 
+      (dimensions.stairs?.enabled ? 1 : 0) + 
+      (dimensions.wadingPool?.enabled ? 1 : 0);
+    
+    switch (id) {
+      case 'podsypka':
+        return excavationArea * sandBeddingHeight;
+      case 'chudziak':
+        return excavationArea * leanConcreteHeight;
+      case 'pompogruszka':
+        return currentPompogruszkaQty;
+      case 'bloczek':
+        return blockCalculation?.totalBlocks || 0;
+      default:
+        return 0;
+    }
+  }, [excavationArea, sandBeddingHeight, leanConcreteHeight, dimensions.stairs?.enabled, dimensions.wadingPool?.enabled, blockCalculation]);
+
+  const getExpectedB25SubItemQuantity = useCallback((subItemId: string): number => {
+    const crownConcreteVolume = blockCalculation 
+      ? calculateCrownConcreteVolume(dimensions.length, dimensions.width, blockCalculation.crownHeight)
+      : 0;
+    
+    const columnsConcreteData = blockCalculation 
+      ? calculateColumnsConcreteVolume(dimensions.length, dimensions.width, dimensions.depth, blockCalculation.crownHeight)
+      : { volume: 0, columnCount: 0 };
+    
+    switch (subItemId) {
+      case 'plyta_denna':
+        return floorSlabArea * floorSlabThickness;
+      case 'beton_wieniec':
+        return crownConcreteVolume;
+      case 'beton_slupy':
+        return columnsConcreteData.volume;
+      default:
+        return 0;
+    }
+  }, [floorSlabArea, floorSlabThickness, blockCalculation, dimensions.length, dimensions.width, dimensions.depth]);
+
   // Update construction material
   const updateConstructionMaterial = (id: string, field: keyof ConstructionMaterialItem, value: any) => {
     setConstructionMaterials(prev => prev.map(item => {
@@ -382,6 +423,20 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
       return updated;
     }));
   };
+
+  // Reset construction material to calculated value
+  const resetConstructionMaterialQuantity = (id: string) => {
+    const expectedQty = getExpectedMaterialQuantity(id);
+    setConstructionMaterials(prev => prev.map(item => {
+      if (item.id !== id) return item;
+      return { 
+        ...item, 
+        quantity: expectedQty, 
+        customOverride: false,
+        netValue: expectedQty * item.rate 
+      };
+    }));
+  };
   
   // Update B25 group sub-item quantity
   const updateB25SubItemQuantity = (subItemId: string, newQuantity: number) => {
@@ -390,6 +445,19 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
       subItems: prev.subItems.map(item => 
         item.id === subItemId 
           ? { ...item, quantity: newQuantity, customOverride: true }
+          : item
+      ),
+    }));
+  };
+
+  // Reset B25 sub-item to calculated value
+  const resetB25SubItemQuantity = (subItemId: string) => {
+    const expectedQty = getExpectedB25SubItemQuantity(subItemId);
+    setB25ConcreteGroup(prev => ({
+      ...prev,
+      subItems: prev.subItems.map(item => 
+        item.id === subItemId 
+          ? { ...item, quantity: expectedQty, customOverride: false }
           : item
       ),
     }));
@@ -1252,14 +1320,28 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
                             )}
                           </TableCell>
                           <TableCell>
-                            <Input
-                              type="number"
-                              min="0"
-                              step={['bloczek', 'pompogruszka'].includes(item.id) ? '1' : '0.5'}
-                              value={formatQuantity(item.id, item.quantity)}
-                              onChange={(e) => updateConstructionMaterial(item.id, 'quantity', parseFloat(e.target.value) || 0)}
-                              className="input-field w-[80px] text-right ml-auto"
-                            />
+                            <div className="flex items-center justify-end gap-1">
+                              <Input
+                                type="number"
+                                min="0"
+                                step={['bloczek', 'pompogruszka'].includes(item.id) ? '1' : '0.5'}
+                                value={formatQuantity(item.id, item.quantity)}
+                                onChange={(e) => updateConstructionMaterial(item.id, 'quantity', parseFloat(e.target.value) || 0)}
+                                className="input-field w-[70px] text-right"
+                              />
+                              {item.customOverride && (
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8"
+                                  onClick={() => resetConstructionMaterialQuantity(item.id)}
+                                  title={`Przywróć: ${formatQuantity(item.id, getExpectedMaterialQuantity(item.id))}`}
+                                >
+                                  <RotateCcw className="h-4 w-4" />
+                                </Button>
+                              )}
+                            </div>
                           </TableCell>
                           <TableCell className="text-muted-foreground">{item.unit}</TableCell>
                           <TableCell>
@@ -1325,14 +1407,28 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
                             )}
                           </TableCell>
                           <TableCell>
-                            <Input
-                              type="number"
-                              min="0"
-                              step="0.1"
-                              value={subItem.quantity.toFixed(2)}
-                              onChange={(e) => updateB25SubItemQuantity(subItem.id, parseFloat(e.target.value) || 0)}
-                              className="input-field w-[80px] text-right ml-auto"
-                            />
+                            <div className="flex items-center justify-end gap-1">
+                              <Input
+                                type="number"
+                                min="0"
+                                step="0.1"
+                                value={subItem.quantity.toFixed(2)}
+                                onChange={(e) => updateB25SubItemQuantity(subItem.id, parseFloat(e.target.value) || 0)}
+                                className="input-field w-[70px] text-right"
+                              />
+                              {subItem.customOverride && (
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8"
+                                  onClick={() => resetB25SubItemQuantity(subItem.id)}
+                                  title={`Przywróć: ${getExpectedB25SubItemQuantity(subItem.id).toFixed(2)}`}
+                                >
+                                  <RotateCcw className="h-4 w-4" />
+                                </Button>
+                              )}
+                            </div>
                           </TableCell>
                           <TableCell className="text-muted-foreground">{b25ConcreteGroup.unit}</TableCell>
                           <TableCell className="text-right text-muted-foreground pr-2">
