@@ -376,7 +376,7 @@ export function useReinforcement(
   constructionTechnology: ConstructionTechnology,
   materialRates: ConstructionMaterialRates = defaultConstructionMaterialRates
 ) {
-  const [reinforcementType, setReinforcementType] = useState<ReinforcementType>('traditional');
+  const [reinforcementType, setReinforcementType] = useState<ReinforcementType>('composite');
   const [unit, setUnit] = useState<ReinforcementUnit>('mb');
   const [meshSize, setMeshSize] = useState<MeshSize>('20x20');
   const [items, setItems] = useState<ReinforcementItem[]>([]);
