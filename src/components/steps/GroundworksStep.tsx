@@ -92,6 +92,7 @@ interface ExcavationLineItem {
   netValue: number;
   hidden?: boolean; // For items that should be hidden when disabled
   groupId?: string; // For grouped items (e.g., 'piasek')
+  customOverride?: boolean; // For manual quantity override
 }
 
 export function GroundworksStep({ onNext, onBack, excavationSettings }: GroundworksStepProps) {
@@ -437,10 +438,10 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
     
     setLineItems(prev => {
       const updated = prev.map(item => {
-        if (item.id === 'podsypka') {
+        if (item.id === 'podsypka' && !item.customOverride) {
           return { ...item, quantity: podsypkaQty, netValue: podsypkaQty * item.rate };
         }
-        if (item.id === 'piasek_zasypka') {
+        if (item.id === 'piasek_zasypka' && !item.customOverride) {
           return { ...item, quantity: sandForBackfill, netValue: sandForBackfill * item.rate };
         }
         if (item.id === 'drenaz') {
@@ -1419,11 +1420,46 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
                         <TableRow key={subItem.id} className="bg-background">
                           <TableCell className="pl-10 text-muted-foreground">
                             └ {subItem.name}
+                            {subItem.customOverride && (
+                              <span className="text-xs text-warning ml-1">(zmieniono)</span>
+                            )}
                           </TableCell>
                           <TableCell>
-                            <span className="block text-right pr-2 text-muted-foreground">
-                              {subItem.quantity.toFixed(1)}
-                            </span>
+                            <div className="flex items-center justify-end gap-1">
+                              <Input
+                                type="number"
+                                min="0"
+                                step="0.1"
+                                value={subItem.quantity.toFixed(1)}
+                                onChange={(e) => {
+                                  const newQty = parseFloat(e.target.value) || 0;
+                                  setLineItems(prev => prev.map(item => 
+                                    item.id === subItem.id 
+                                      ? { ...item, quantity: newQty, netValue: newQty * item.rate, customOverride: true }
+                                      : item
+                                  ));
+                                }}
+                                className="input-field w-20 text-right"
+                              />
+                              {subItem.customOverride && (
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                                  onClick={() => {
+                                    setLineItems(prev => prev.map(item => 
+                                      item.id === subItem.id 
+                                        ? { ...item, customOverride: false }
+                                        : item
+                                    ));
+                                  }}
+                                  title="Przywróć obliczoną wartość"
+                                >
+                                  <RotateCcw className="h-3 w-3" />
+                                </Button>
+                              )}
+                            </div>
                           </TableCell>
                           <TableCell className="text-muted-foreground">m³</TableCell>
                           <TableCell className="text-right text-muted-foreground pr-2">
