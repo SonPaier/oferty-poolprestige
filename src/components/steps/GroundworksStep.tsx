@@ -5,9 +5,19 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
-import { Shovel, HardHat, Info, AlertCircle, Wrench, Building, Save, Check, Droplets } from 'lucide-react';
+import { Shovel, HardHat, Info, AlertCircle, Wrench, Building, Save, Check, Droplets, Thermometer } from 'lucide-react';
 import { RotateCcw } from 'lucide-react';
-import { ExcavationSettings, ExcavationData, calculateExcavation } from '@/types/offers';
+import { 
+  ExcavationSettings, 
+  ExcavationData, 
+  calculateExcavation,
+  FloorInsulationType,
+  WallInsulationType,
+  floorInsulationLabels,
+  wallInsulationLabels,
+  floorInsulationThickness,
+  wallInsulationThickness,
+} from '@/types/offers';
 import { formatPrice } from '@/lib/calculations';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -103,9 +113,30 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
   const [excWidth, setExcWidth] = useState(() => 
     dimensions.width + (excavationSettings.marginWidth * 2)
   );
+  
+  // Material heights (editable) - moved up for excavation depth calculation
+  const [sandBeddingHeight, setSandBeddingHeight] = useState(0.1); // 10cm default
+  const [leanConcreteHeight, setLeanConcreteHeight] = useState(0.1); // 10cm default
+  const [floorSlabThickness, setFloorSlabThickness] = useState(0.2); // 20cm default
+  
+  // Insulation state
+  const [floorInsulation, setFloorInsulation] = useState<FloorInsulationType>('none');
+  const [wallInsulation, setWallInsulation] = useState<WallInsulationType>('none');
+  
+  // Calculate excavation depth using correct formula:
+  // excDepth = pool depth + floor slab + floor insulation + lean concrete + sand bedding
+  const floorInsThickness = floorInsulationThickness[floorInsulation];
+  const wallInsThickness = wallInsulationThickness[wallInsulation];
+  
   const [excDepth, setExcDepth] = useState(() => 
-    dimensions.depth + excavationSettings.marginDepth
+    dimensions.depth + floorSlabThickness + floorInsThickness + leanConcreteHeight + sandBeddingHeight
   );
+  
+  // Update excavation depth when components change
+  useEffect(() => {
+    const newDepth = dimensions.depth + floorSlabThickness + floorInsulationThickness[floorInsulation] + leanConcreteHeight + sandBeddingHeight;
+    setExcDepth(newDepth);
+  }, [dimensions.depth, floorSlabThickness, floorInsulation, leanConcreteHeight, sandBeddingHeight]);
   
   // Drainage toggle
   const [drainageEnabled, setDrainageEnabled] = useState(false);
@@ -196,10 +227,7 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
   type ConstructionTechnology = 'masonry' | 'poured';
   const [constructionTechnology, setConstructionTechnology] = useState<ConstructionTechnology>('masonry');
   
-  // Material heights (editable)
-  const [sandBeddingHeight, setSandBeddingHeight] = useState(0.1); // 10cm default
-  const [leanConcreteHeight, setLeanConcreteHeight] = useState(0.1); // 10cm default
-  const [floorSlabThickness, setFloorSlabThickness] = useState(0.2); // 20cm default
+  // (Material heights moved up to line 117-120 for excavation depth calculation)
   
   // Block layer calculation (only for masonry technology)
   const [customBlockLayers, setCustomBlockLayers] = useState<number | undefined>(undefined);
@@ -240,9 +268,27 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
   
   // Calculate excavation area (for material calculations)
   const excavationArea = excLength * excWidth;
+  const excavationVolume = excLength * excWidth * excDepth;
   
   // Calculate floor slab area: pool dimensions + 24cm on each side
   const floorSlabArea = (dimensions.length + 0.48) * (dimensions.width + 0.48);
+  
+  // Calculate backfill (zasypka) volume:
+  // Zasypka = Excavation Volume - Sand Bedding - Construction Volume (external with insulation)
+  const backfillVolume = useMemo(() => {
+    const wallThickness = BLOCK_DIMENSIONS.width; // 0.24m
+    
+    // External dimensions of construction (pool + walls + insulation)
+    const extLength = dimensions.length + (wallThickness * 2) + (wallInsThickness * 2);
+    const extWidth = dimensions.width + (wallThickness * 2) + (wallInsThickness * 2);
+    // Height: pool depth + floor slab + lean concrete + floor insulation
+    const extHeight = dimensions.depth + floorSlabThickness + leanConcreteHeight + floorInsThickness;
+    
+    const constructionVolume = extLength * extWidth * extHeight;
+    const podsypkaVolume = excavationArea * sandBeddingHeight;
+    
+    return Math.max(0, excavationVolume - podsypkaVolume - constructionVolume);
+  }, [dimensions.length, dimensions.width, dimensions.depth, wallInsThickness, floorInsThickness, floorSlabThickness, leanConcreteHeight, excavationVolume, excavationArea, sandBeddingHeight]);
   
   // Construction VAT
   const [constructionVatRate, setConstructionVatRate] = useState<VatRate>(23);
@@ -369,21 +415,45 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
     });
   }, [excavationArea, leanConcreteHeight, dimensions.stairs?.enabled, dimensions.wadingPool?.enabled, constructionTechnology, blockCalculation]);
   
-  // Update podsypka and drenaz in lineItems when excavation dimensions change
+  // Update podsypka, drenaz, and zasypka in lineItems when excavation dimensions change
   useEffect(() => {
     const podsypkaQty = excavationArea * sandBeddingHeight;
     const drainageQty = 2 * (excLength + excWidth);
     
-    setLineItems(prev => prev.map(item => {
-      if (item.id === 'podsypka') {
-        return { ...item, quantity: podsypkaQty, netValue: podsypkaQty * item.rate };
+    setLineItems(prev => {
+      const updated = prev.map(item => {
+        if (item.id === 'podsypka') {
+          return { ...item, quantity: podsypkaQty, netValue: podsypkaQty * item.rate };
+        }
+        if (item.id === 'drenaz') {
+          return { ...item, quantity: drainageQty, netValue: drainageQty * item.rate, hidden: !drainageEnabled };
+        }
+        if (item.id === 'zasypka') {
+          // Zasypka rate is same as wywoz (earth transport)
+          const wywozItem = prev.find(i => i.id === 'wywoz');
+          const zasypkaRate = wywozItem?.rate || excavationSettings.removalFixedPrice;
+          return { ...item, quantity: backfillVolume, netValue: backfillVolume * zasypkaRate, rate: zasypkaRate };
+        }
+        return item;
+      });
+      
+      // Add zasypka if not present
+      if (!updated.find(item => item.id === 'zasypka')) {
+        const wywozItem = updated.find(i => i.id === 'wywoz');
+        const zasypkaRate = wywozItem?.rate || excavationSettings.removalFixedPrice;
+        updated.push({
+          id: 'zasypka',
+          name: 'Zasypka',
+          quantity: backfillVolume,
+          unit: 'm3' as UnitType,
+          rate: zasypkaRate,
+          netValue: backfillVolume * zasypkaRate,
+        });
       }
-      if (item.id === 'drenaz') {
-        return { ...item, quantity: drainageQty, netValue: drainageQty * item.rate, hidden: !drainageEnabled };
-      }
-      return item;
-    }));
-  }, [excavationArea, sandBeddingHeight, excLength, excWidth, drainageEnabled]);
+      
+      return updated;
+    });
+  }, [excavationArea, sandBeddingHeight, excLength, excWidth, drainageEnabled, backfillVolume, excavationSettings.removalFixedPrice]);
 
   // Update B25 concrete group when dimensions change
   useEffect(() => {
@@ -706,9 +776,7 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
   const stairsDims = dimensions.stairs;
   const wadingPoolDims = dimensions.wadingPool;
 
-  // Recalculate volume when dimensions change
-  const excavationVolume = excLength * excWidth * excDepth;
-  
+  // excavationVolume is already defined at line 271
   // Update line items when dimensions change (auto-update quantity only if not manually overridden)
   useEffect(() => {
     setLineItems(prev => prev.map(item => {
@@ -1431,7 +1499,84 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
                   </div>
                 </div>
 
-                {/* Masonry construction section - only for masonry technology */}
+                {/* Insulation options */}
+                <div className="p-4 rounded-lg bg-muted/30 border border-border mb-4">
+                  <h4 className="text-sm font-medium mb-3 flex items-center gap-2">
+                    <Thermometer className="w-4 h-4" />
+                    Ocieplenie basenu
+                  </h4>
+                  
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="floor-insulation">Ocieplenie dna</Label>
+                      <Select
+                        value={floorInsulation}
+                        onValueChange={(v) => setFloorInsulation(v as FloorInsulationType)}
+                      >
+                        <SelectTrigger id="floor-insulation">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent className="bg-popover">
+                          {(Object.keys(floorInsulationLabels) as FloorInsulationType[]).map((type) => (
+                            <SelectItem key={type} value={type}>
+                              {floorInsulationLabels[type]}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {floorInsulation !== 'none' && (
+                        <p className="text-xs text-muted-foreground">
+                          Grubość: {Math.round(floorInsulationThickness[floorInsulation] * 100)} cm
+                        </p>
+                      )}
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <Label htmlFor="wall-insulation">Ocieplenie ścian</Label>
+                      <Select
+                        value={wallInsulation}
+                        onValueChange={(v) => setWallInsulation(v as WallInsulationType)}
+                      >
+                        <SelectTrigger id="wall-insulation">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent className="bg-popover">
+                          {(Object.keys(wallInsulationLabels) as WallInsulationType[]).map((type) => (
+                            <SelectItem key={type} value={type}>
+                              {wallInsulationLabels[type]}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {wallInsulation !== 'none' && (
+                        <p className="text-xs text-muted-foreground">
+                          Grubość: {Math.round(wallInsulationThickness[wallInsulation] * 100)} cm
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                  
+                  {(floorInsulation !== 'none' || wallInsulation !== 'none') && (
+                    <div className="mt-3 p-3 rounded-lg bg-primary/10 border border-primary/20">
+                      <div className="flex items-start gap-2">
+                        <Info className="w-4 h-4 text-primary mt-0.5" />
+                        <div className="text-sm">
+                          <p className="font-medium">Wpływ na obliczenia</p>
+                          <p className="text-muted-foreground">
+                            Głębokość wykopu: <strong>{excDepth.toFixed(2)} m</strong> 
+                            {' '}(basen {dimensions.depth}m + płyta {Math.round(floorSlabThickness * 100)}cm 
+                            {floorInsulation !== 'none' && ` + ocieplenie dna ${Math.round(floorInsThickness * 100)}cm`}
+                            {' '}+ chudziak {Math.round(leanConcreteHeight * 100)}cm + podsypka {Math.round(sandBeddingHeight * 100)}cm)
+                          </p>
+                          <p className="text-muted-foreground mt-1">
+                            Zasypka: <strong>{backfillVolume.toFixed(1)} m³</strong>
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
                 {constructionTechnology === 'masonry' && blockCalculation && (
                   <div className="p-4 rounded-lg bg-muted/30 border border-border mb-4">
                     <h4 className="text-sm font-medium mb-3 flex items-center gap-2">

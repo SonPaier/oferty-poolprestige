@@ -306,10 +306,12 @@ export interface ConstructionMaterialRates {
   zbrojenie12mm: number;   // zł/kg
   zbrojenie6mm: number;    // zł/kg
   strzemiona: number;      // zł/szt.
-  styrodur5cm: number;     // zł/m²
-  styrodur10cm: number;    // zł/m²
+  styrodur5cm: number;     // zł/m² (XPS 5cm)
+  styrodur10cm: number;    // zł/m² (XPS 10cm)
   zbrojenieKompozytowe: number; // zł/mb
   pompogruszka: number;    // zł/szt.
+  hydropian10cm: number;   // zł/m² (wall insulation)
+  purFoam5cm: number;      // zł/m² (PUR foam wall insulation)
 }
 
 export const defaultConstructionMaterialRates: ConstructionMaterialRates = {
@@ -324,6 +326,8 @@ export const defaultConstructionMaterialRates: ConstructionMaterialRates = {
   styrodur10cm: 40,
   zbrojenieKompozytowe: 3.00,
   pompogruszka: 350,
+  hydropian10cm: 45,
+  purFoam5cm: 60,
 };
 
 export interface CompanySettings {

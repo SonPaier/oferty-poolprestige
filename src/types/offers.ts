@@ -2,6 +2,42 @@ import { OfferItem, CustomerData, PoolDimensions, PoolType, PoolCalculations } f
 
 export type OfferStatus = 'queue' | 'draft' | 'sent';
 
+// ============= Insulation Types =============
+
+// Floor insulation types
+export type FloorInsulationType = 'none' | 'xps-5cm' | 'xps-10cm';
+
+// Wall insulation types  
+export type WallInsulationType = 'none' | 'hydropian-10cm' | 'styrodur-10cm' | 'pur-5cm';
+
+// Insulation labels for UI
+export const floorInsulationLabels: Record<FloorInsulationType, string> = {
+  'none': 'Brak',
+  'xps-5cm': 'XPS fundamentowy 5cm',
+  'xps-10cm': 'XPS fundamentowy 10cm',
+};
+
+export const wallInsulationLabels: Record<WallInsulationType, string> = {
+  'none': 'Brak',
+  'hydropian-10cm': 'Hydropian 10cm',
+  'styrodur-10cm': 'Styrodur 10cm',
+  'pur-5cm': 'Piana PUR 5cm',
+};
+
+// Insulation thickness in meters
+export const floorInsulationThickness: Record<FloorInsulationType, number> = {
+  'none': 0,
+  'xps-5cm': 0.05,
+  'xps-10cm': 0.10,
+};
+
+export const wallInsulationThickness: Record<WallInsulationType, number> = {
+  'none': 0,
+  'hydropian-10cm': 0.10,
+  'styrodur-10cm': 0.10,
+  'pur-5cm': 0.05,
+};
+
 export interface SavedOffer {
   id: string;
   shareUid?: string;
