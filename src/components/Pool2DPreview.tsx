@@ -18,8 +18,8 @@ export interface CustomColumnCounts {
 // Calculate default column counts based on pool dimensions (2m spacing)
 export function calculateDefaultColumnCounts(length: number, width: number): CustomColumnCounts {
   return {
-    lengthWalls: Math.max(0, Math.floor(length / 2) - 1),
-    widthWalls: Math.max(0, Math.floor(width / 2) - 1),
+    lengthWalls: Math.max(1, Math.round(length / 2.5)),
+    widthWalls: Math.max(1, Math.round(width / 2.5)),
   };
 }
 
@@ -613,42 +613,169 @@ export default function Pool2DPreview({
   const showWadingDims = dimensionDisplay === 'all' || dimensionDisplay === 'wading';
   
   // Calculate column positions for masonry pools
-  // Uses custom counts if provided, otherwise defaults to 2m spacing
+  // Half-spacing at corners, junction columns at wading pool contact points
+  // Perimeter ordering: top wall (left→right), right wall (top→bottom), bottom wall (right→left), left wall (bottom→top)
   const columnPositions = useMemo(() => {
     if (!showColumns || dimensions.shape !== 'prostokatny') return [];
     
     const { length, width } = dimensions;
-    const positions: { x: number; y: number; label: string }[] = [];
-    let labelIndex = 1;
-    
-    // Use custom counts or calculate defaults
     const counts = customColumnCounts ?? calculateDefaultColumnCounts(length, width);
-    
-    // Wall thickness = 0.24m, column center should be at wall center (pool edge + 0.12m outward)
     const wallOffset = 0.12; // half of 0.24m wall thickness
+    const halfL = length / 2;
+    const halfW = width / 2;
     
-    // Distribute columns evenly along length walls (top and bottom)
-    if (counts.lengthWalls > 0) {
-      const spacing = length / (counts.lengthWalls + 1);
-      for (let i = 1; i <= counts.lengthWalls; i++) {
-        const x = spacing * i - length / 2;
-        positions.push({ x, y: -(width / 2 + wallOffset), label: `S${labelIndex++}` }); // top wall
-        positions.push({ x, y: width / 2 + wallOffset, label: `S${labelIndex++}` }); // bottom wall
+    // Find wading pool junction points on the pool walls
+    const junctions: { wall: 'top' | 'bottom' | 'left' | 'right'; pos: number }[] = [];
+    const wp = dimensions.wadingPool;
+    if (wp?.enabled && wp.position !== 'outside') {
+      const corner = wp.corner || 'back-left';
+      const direction = wp.direction || 'along-width';
+      const wpWidth = wp.width || 2;
+      const wpLength = wp.length || 1.5;
+      
+      // Determine which wall the wading pool is attached to and where junction points are
+      // Junction points are where the wading pool's inner walls meet the pool wall
+      const isAlongLength = direction === 'along-length';
+      
+      if (corner === 'back-left') {
+        if (isAlongLength) {
+          // Attached to back wall (top), junction at x = -halfL + wpWidth
+          junctions.push({ wall: 'top', pos: -halfL + wpWidth });
+          // Attached to left wall, junction at y = -halfW + wpLength
+          junctions.push({ wall: 'left', pos: -halfW + wpLength });
+        } else {
+          // along-width: attached to back wall, junction at x = -halfL + wpLength
+          junctions.push({ wall: 'top', pos: -halfL + wpLength });
+          // Attached to left wall, junction at y = -halfW + wpWidth
+          junctions.push({ wall: 'left', pos: -halfW + wpWidth });
+        }
+      } else if (corner === 'back-right') {
+        if (isAlongLength) {
+          junctions.push({ wall: 'top', pos: halfL - wpWidth });
+          junctions.push({ wall: 'right', pos: -halfW + wpLength });
+        } else {
+          junctions.push({ wall: 'top', pos: halfL - wpLength });
+          junctions.push({ wall: 'right', pos: -halfW + wpWidth });
+        }
+      } else if (corner === 'front-left') {
+        if (isAlongLength) {
+          junctions.push({ wall: 'bottom', pos: -halfL + wpWidth });
+          junctions.push({ wall: 'left', pos: halfW - wpLength });
+        } else {
+          junctions.push({ wall: 'bottom', pos: -halfL + wpLength });
+          junctions.push({ wall: 'left', pos: halfW - wpWidth });
+        }
+      } else if (corner === 'front-right') {
+        if (isAlongLength) {
+          junctions.push({ wall: 'bottom', pos: halfL - wpWidth });
+          junctions.push({ wall: 'right', pos: halfW - wpLength });
+        } else {
+          junctions.push({ wall: 'bottom', pos: halfL - wpLength });
+          junctions.push({ wall: 'right', pos: halfW - wpWidth });
+        }
       }
     }
     
-    // Distribute columns evenly along width walls (left and right)
-    if (counts.widthWalls > 0) {
-      const spacing = width / (counts.widthWalls + 1);
-      for (let i = 1; i <= counts.widthWalls; i++) {
-        const y = spacing * i - width / 2;
-        positions.push({ x: -(length / 2 + wallOffset), y, label: `S${labelIndex++}` }); // left wall
-        positions.push({ x: length / 2 + wallOffset, y, label: `S${labelIndex++}` }); // right wall
+    // Helper: distribute n columns on a segment [start, end] with half-spacing at edges
+    // Returns positions along the segment
+    function distributeOnSegment(start: number, end: number, n: number): number[] {
+      if (n <= 0) return [];
+      const segLen = Math.abs(end - start);
+      if (segLen < 0.3) return []; // too short
+      const dir = end > start ? 1 : -1;
+      const fullSpacing = segLen / n;
+      const halfSpacing = fullSpacing / 2;
+      const positions: number[] = [];
+      for (let i = 0; i < n; i++) {
+        positions.push(start + dir * (halfSpacing + i * fullSpacing));
+      }
+      return positions;
+    }
+    
+    // Helper: calculate column count for a sub-segment based on proportional share
+    function columnsForSegment(segLen: number, totalLen: number, totalCols: number): number {
+      if (totalLen <= 0) return 0;
+      return Math.max(0, Math.round((segLen / totalLen) * totalCols));
+    }
+    
+    // Build columns wall by wall in perimeter order
+    const allPositions: { x: number; y: number; label: string }[] = [];
+    
+    // Helper to add columns on a wall, splitting by junction points
+    function addWallColumns(
+      wall: 'top' | 'bottom' | 'left' | 'right',
+      wallStart: number, // coordinate along wall direction
+      wallEnd: number,
+      totalCols: number,
+      fixedCoord: number, // the perpendicular coordinate (with wallOffset)
+      isHorizontal: boolean
+    ) {
+      const wallJunctions = junctions.filter(j => j.wall === wall);
+      
+      if (wallJunctions.length === 0) {
+        // No junctions - distribute evenly with half-spacing
+        const positions = distributeOnSegment(wallStart, wallEnd, totalCols);
+        for (const pos of positions) {
+          if (isHorizontal) {
+            allPositions.push({ x: pos, y: fixedCoord, label: '' });
+          } else {
+            allPositions.push({ x: fixedCoord, y: pos, label: '' });
+          }
+        }
+      } else {
+        // Sort junction positions along wall direction
+        const juncPositions = wallJunctions.map(j => j.pos);
+        const dir = wallEnd > wallStart ? 1 : -1;
+        juncPositions.sort((a, b) => (a - b) * dir);
+        
+        // Build segments: wallStart -> junc1 -> junc2 -> ... -> wallEnd
+        const breakpoints = [wallStart, ...juncPositions, wallEnd];
+        const wallLen = Math.abs(wallEnd - wallStart);
+        
+        for (let s = 0; s < breakpoints.length - 1; s++) {
+          const segStart = breakpoints[s];
+          const segEnd = breakpoints[s + 1];
+          const segLen = Math.abs(segEnd - segStart);
+          
+          // Add junction column at segStart (except for the very first segment start = corner)
+          if (s > 0) {
+            if (isHorizontal) {
+              allPositions.push({ x: segStart, y: fixedCoord, label: '' });
+            } else {
+              allPositions.push({ x: fixedCoord, y: segStart, label: '' });
+            }
+          }
+          
+          // Distribute proportional columns on this segment
+          const segCols = columnsForSegment(segLen, wallLen, totalCols);
+          const positions = distributeOnSegment(segStart, segEnd, segCols);
+          for (const pos of positions) {
+            if (isHorizontal) {
+              allPositions.push({ x: pos, y: fixedCoord, label: '' });
+            } else {
+              allPositions.push({ x: fixedCoord, y: pos, label: '' });
+            }
+          }
+        }
       }
     }
     
-    return positions;
-  }, [showColumns, dimensions.shape, dimensions.length, dimensions.width, customColumnCounts]);
+    // Top wall (back): left to right, y = -(halfW + wallOffset)
+    addWallColumns('top', -halfL, halfL, counts.lengthWalls, -(halfW + wallOffset), true);
+    // Right wall: top to bottom, x = halfL + wallOffset
+    addWallColumns('right', -halfW, halfW, counts.widthWalls, halfL + wallOffset, false);
+    // Bottom wall (front): right to left, y = halfW + wallOffset
+    addWallColumns('bottom', halfL, -halfL, counts.lengthWalls, halfW + wallOffset, true);
+    // Left wall: bottom to top, x = -(halfL + wallOffset)
+    addWallColumns('left', halfW, -halfW, counts.widthWalls, -(halfL + wallOffset), false);
+    
+    // Assign sequential labels
+    allPositions.forEach((pos, i) => {
+      pos.label = `S${i + 1}`;
+    });
+    
+    return allPositions;
+  }, [showColumns, dimensions.shape, dimensions.length, dimensions.width, dimensions.wadingPool, customColumnCounts]);
   
   // Calculate scaled viewBox for zoom
   const scaledViewBox = useMemo(() => {
