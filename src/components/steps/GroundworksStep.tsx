@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
-import { Shovel, HardHat, Info, AlertCircle, Wrench, Building, Save, Check } from 'lucide-react';
+import { Shovel, HardHat, Info, AlertCircle, Wrench, Building, Save, Check, Droplets } from 'lucide-react';
 import { RotateCcw } from 'lucide-react';
 import { ExcavationSettings, ExcavationData, calculateExcavation } from '@/types/offers';
 import { formatPrice } from '@/lib/calculations';
@@ -13,6 +13,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableFooter } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -79,6 +80,7 @@ interface ExcavationLineItem {
   unit: UnitType;
   rate: number;
   netValue: number;
+  hidden?: boolean; // For items that should be hidden when disabled
 }
 
 export function GroundworksStep({ onNext, onBack, excavationSettings }: GroundworksStepProps) {
@@ -105,6 +107,9 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
     dimensions.depth + excavationSettings.marginDepth
   );
   
+  // Drainage toggle
+  const [drainageEnabled, setDrainageEnabled] = useState(false);
+  
   // Track rate changes that need confirmation (instead of immediate dialog)
   const [changedExcavationRates, setChangedExcavationRates] = useState<Record<string, number>>({});
   const [changedMaterialRates, setChangedMaterialRates] = useState<Record<string, number>>({});
@@ -116,7 +121,7 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
     itemName: string;
     oldRate: number;
     newRate: number;
-    rateKey: 'pricePerM3' | 'removalFixedPrice';
+    rateKey: 'pricePerM3' | 'removalFixedPrice' | 'podsypkaRate' | 'drainageRate';
   } | null>(null);
   
   // Material rate change dialog state
@@ -135,9 +140,14 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
   // VAT selection
   const [vatRate, setVatRate] = useState<VatRate>(23);
   
+  // Calculate drainage perimeter (external excavation perimeter)
+  const drainagePerimeter = 2 * (excLength + excWidth);
+  
   // Line items
   const [lineItems, setLineItems] = useState<ExcavationLineItem[]>(() => {
     const volume = excLength * excWidth * excDepth;
+    const excavationArea = excLength * excWidth;
+    const podsypkaQty = excavationArea * 0.1; // 10cm default
     return [
       {
         id: 'wykop',
@@ -154,6 +164,23 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
         unit: 'ryczalt' as UnitType,
         rate: excavationSettings.removalFixedPrice,
         netValue: excavationSettings.removalFixedPrice,
+      },
+      {
+        id: 'podsypka',
+        name: 'Podsypka piaskowa',
+        quantity: podsypkaQty,
+        unit: 'm3' as UnitType,
+        rate: excavationSettings.podsypkaRate || 150,
+        netValue: podsypkaQty * (excavationSettings.podsypkaRate || 150),
+      },
+      {
+        id: 'drenaz',
+        name: 'Drenaż opaskowy',
+        quantity: 2 * (excLength + excWidth),
+        unit: 'm3' as UnitType, // will be treated as mb
+        rate: excavationSettings.drainageRate || 220,
+        netValue: 2 * (excLength + excWidth) * (excavationSettings.drainageRate || 220),
+        hidden: true, // Initially hidden until enabled
       },
     ];
   });
@@ -240,15 +267,6 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
   const [constructionMaterials, setConstructionMaterials] = useState<ConstructionMaterialItem[]>(() => {
     const baseItems: ConstructionMaterialItem[] = [
       {
-        id: 'podsypka',
-        name: 'Podsypka piaskowa',
-        quantity: excavationArea * sandBeddingHeight,
-        unit: 'm³',
-        rate: materialRates.podsypka,
-        netValue: excavationArea * sandBeddingHeight * materialRates.podsypka,
-        customOverride: false,
-      },
-      {
         id: 'chudziak',
         name: 'Beton na chudziak B15',
         quantity: excavationArea * leanConcreteHeight,
@@ -296,10 +314,6 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
       let updated = prev.map(item => {
         if (item.customOverride) return item;
         
-        if (item.id === 'podsypka') {
-          const qty = excavationArea * sandBeddingHeight;
-          return { ...item, quantity: qty, netValue: qty * item.rate };
-        }
         if (item.id === 'chudziak') {
           const qty = excavationArea * leanConcreteHeight;
           return { ...item, quantity: qty, netValue: qty * item.rate };
@@ -338,7 +352,23 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
       
       return updated;
     });
-  }, [excavationArea, sandBeddingHeight, leanConcreteHeight, dimensions.stairs?.enabled, dimensions.wadingPool?.enabled, constructionTechnology, blockCalculation]);
+  }, [excavationArea, leanConcreteHeight, dimensions.stairs?.enabled, dimensions.wadingPool?.enabled, constructionTechnology, blockCalculation]);
+  
+  // Update podsypka and drenaz in lineItems when excavation dimensions change
+  useEffect(() => {
+    const podsypkaQty = excavationArea * sandBeddingHeight;
+    const drainageQty = 2 * (excLength + excWidth);
+    
+    setLineItems(prev => prev.map(item => {
+      if (item.id === 'podsypka') {
+        return { ...item, quantity: podsypkaQty, netValue: podsypkaQty * item.rate };
+      }
+      if (item.id === 'drenaz') {
+        return { ...item, quantity: drainageQty, netValue: drainageQty * item.rate, hidden: !drainageEnabled };
+      }
+      return item;
+    }));
+  }, [excavationArea, sandBeddingHeight, excLength, excWidth, drainageEnabled]);
 
   // Update B25 concrete group when dimensions change
   useEffect(() => {
@@ -431,10 +461,9 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
     }
   }, [floorSlabArea, floorSlabThickness, blockCalculation, dimensions.length, dimensions.width, dimensions.depth]);
 
-  // Helper to get rate key from material id
+  // Helper to get rate key from material id (construction materials only)
   const getMaterialRateKey = (id: string): keyof ConstructionMaterialRates | null => {
     switch (id) {
-      case 'podsypka': return 'podsypka';
       case 'chudziak': return 'betonB15';
       case 'pompogruszka': return 'pompogruszka';
       case 'bloczek': return 'bloczek';
@@ -711,10 +740,12 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
   };
 
   // Get excavation rate key from item id
-  const getExcavationRateKey = (id: string): 'pricePerM3' | 'removalFixedPrice' | null => {
+  const getExcavationRateKey = (id: string): 'pricePerM3' | 'removalFixedPrice' | 'podsypkaRate' | 'drainageRate' | null => {
     switch (id) {
       case 'wykop': return 'pricePerM3';
       case 'wywoz': return 'removalFixedPrice';
+      case 'podsypka': return 'podsypkaRate';
+      case 'drenaz': return 'drainageRate';
       default: return null;
     }
   };
@@ -742,9 +773,25 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
         if (id === 'wykop' && field === 'quantity') {
           setCustomQuantityOverride(true);
         }
-        updated.netValue = updated.unit === 'm3' 
-          ? updated.quantity * updated.rate 
-          : updated.rate;
+        // For wykop/wywoz, unit can be m3 or ryczalt
+        // For podsypka/drenaz, always multiply quantity * rate
+        if (id === 'wykop' || id === 'wywoz') {
+          updated.netValue = updated.unit === 'm3' 
+            ? updated.quantity * updated.rate 
+            : updated.rate;
+        } else {
+          updated.netValue = updated.quantity * updated.rate;
+        }
+        
+        // Round rate to integer for wykop and wywoz
+        if (field === 'rate' && (id === 'wykop' || id === 'wywoz')) {
+          updated.rate = Math.round(updated.rate);
+          if (id === 'wykop' || id === 'wywoz') {
+            updated.netValue = updated.unit === 'm3' 
+              ? updated.quantity * updated.rate 
+              : updated.rate;
+          }
+        }
         
         // Track rate change (don't open dialog immediately)
         if (field === 'rate') {
@@ -798,8 +845,8 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
     }));
   };
 
-  // Calculate totals
-  const totalNet = lineItems.reduce((sum, item) => sum + item.netValue, 0);
+  // Calculate totals (excluding hidden items like disabled drainage)
+  const totalNet = lineItems.filter(item => !item.hidden).reduce((sum, item) => sum + item.netValue, 0);
   const vatAmount = totalNet * (vatRate / 100);
   const totalGross = totalNet + vatAmount;
 
@@ -1018,13 +1065,46 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
                   </div>
                 </div>
 
-                <div className="p-4 rounded-lg bg-primary/10 border border-primary/20">
-                  <div>
+                <div className="flex flex-col md:flex-row gap-4 mb-4">
+                  <div className="flex-1 p-4 rounded-lg bg-primary/10 border border-primary/20">
                     <p className="text-xs text-muted-foreground">Objętość wykopu</p>
                     <p className="text-2xl font-bold text-primary">
                       {excavationVolume.toFixed(1)} m³
                     </p>
                   </div>
+                  
+                  <div className="flex items-center gap-3 p-4 rounded-lg border border-border">
+                    <Checkbox 
+                      id="drainage-enabled"
+                      checked={drainageEnabled}
+                      onCheckedChange={(checked) => setDrainageEnabled(!!checked)}
+                    />
+                    <div className="flex flex-col">
+                      <Label htmlFor="drainage-enabled" className="cursor-pointer flex items-center gap-2">
+                        <Droplets className="w-4 h-4" />
+                        Drenaż opaskowy
+                      </Label>
+                      <p className="text-xs text-muted-foreground">
+                        Obwód: {drainagePerimeter.toFixed(1)} mb
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Sand bedding height - affects podsypka quantity */}
+                <div className="flex items-center gap-4 p-3 rounded-lg bg-muted/30 border border-border">
+                  <Label htmlFor="sand-height-exc" className="whitespace-nowrap">Wysokość podsypki:</Label>
+                  <Input
+                    id="sand-height-exc"
+                    type="number"
+                    min="5"
+                    max="30"
+                    step="1"
+                    value={Math.round(sandBeddingHeight * 100)}
+                    onChange={(e) => setSandBeddingHeight((parseFloat(e.target.value) || 10) / 100)}
+                    className="input-field w-20"
+                  />
+                  <span className="text-sm text-muted-foreground">cm</span>
                 </div>
               </div>
 
@@ -1044,7 +1124,7 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {lineItems.map((item) => (
+                      {lineItems.filter(item => !item.hidden).map((item) => (
                         <TableRow key={item.id}>
                           <TableCell className="font-medium">{item.name}</TableCell>
                           <TableCell className="text-right">
@@ -1053,7 +1133,7 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
                                 type="number"
                                 min="0"
                                 step="0.1"
-                                value={item.quantity}
+                                value={item.quantity.toFixed(1)}
                                 onChange={(e) => updateLineItem(item.id, 'quantity', parseFloat(e.target.value) || 0)}
                                 className="input-field w-20 text-right"
                               />
@@ -1072,26 +1152,32 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
                             </div>
                           </TableCell>
                           <TableCell>
-                            <Select
-                              value={item.unit}
-                              onValueChange={(v) => updateLineItem(item.id, 'unit', v as UnitType)}
-                            >
-                              <SelectTrigger className="w-[100px]">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="m3">m³</SelectItem>
-                                <SelectItem value="ryczalt">ryczałt</SelectItem>
-                              </SelectContent>
-                            </Select>
+                            {item.id === 'wykop' || item.id === 'wywoz' ? (
+                              <Select
+                                value={item.unit}
+                                onValueChange={(v) => updateLineItem(item.id, 'unit', v as UnitType)}
+                              >
+                                <SelectTrigger className="w-[100px]">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="m3">m³</SelectItem>
+                                  <SelectItem value="ryczalt">ryczałt</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            ) : (
+                              <span className="text-muted-foreground">
+                                {item.id === 'drenaz' ? 'mb' : 'm³'}
+                              </span>
+                            )}
                           </TableCell>
                           <TableCell className="text-right">
                             <div className="flex items-center justify-end gap-1">
                               <Input
                                 type="number"
                                 min="0"
-                                step="10"
-                                value={item.rate}
+                                step={item.id === 'wykop' || item.id === 'wywoz' ? 1 : 10}
+                                value={Math.round(item.rate)}
                                 onChange={(e) => updateLineItem(item.id, 'rate', parseFloat(e.target.value) || 0)}
                                 className="input-field w-24 text-right"
                               />
@@ -1292,20 +1378,7 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
                 </div>
 
                 {/* Material heights configuration */}
-                <div className="grid grid-cols-3 gap-4 mb-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="sand-height">Wysokość podsypki (cm)</Label>
-                    <Input
-                      id="sand-height"
-                      type="number"
-                      min="5"
-                      max="30"
-                      step="1"
-                      value={Math.round(sandBeddingHeight * 100)}
-                      onChange={(e) => setSandBeddingHeight((parseFloat(e.target.value) || 10) / 100)}
-                      className="input-field"
-                    />
-                  </div>
+                <div className="grid grid-cols-2 gap-4 mb-4">
                   <div className="space-y-2">
                     <Label htmlFor="concrete-height">Wysokość chudziaka (cm)</Label>
                     <Input

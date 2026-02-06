@@ -31,6 +31,8 @@ export interface ExcavationSettings {
   marginDepth: number; // meters to add to depth
   pricePerM3: number; // PLN per m³
   removalFixedPrice: number; // PLN fixed price for removal
+  podsypkaRate: number; // PLN per m³ for sand bedding
+  drainageRate: number; // PLN per mb for perimeter drainage
 }
 
 export const defaultExcavationSettings: ExcavationSettings = {
@@ -38,6 +40,8 @@ export const defaultExcavationSettings: ExcavationSettings = {
   marginDepth: 1,
   pricePerM3: 200,
   removalFixedPrice: 2000,
+  podsypkaRate: 150,
+  drainageRate: 220,
 };
 
 export function calculateExcavation(
