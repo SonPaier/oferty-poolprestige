@@ -2264,6 +2264,20 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
                             }}
                             className="input-field w-20"
                           />
+                          {customBlockLayers !== undefined && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8"
+                              onClick={() => {
+                                setCustomBlockLayers(undefined);
+                                setCustomCrownHeight(undefined);
+                              }}
+                              title="Przywróć wartość obliczoną"
+                            >
+                              <RotateCcw className="w-4 h-4" />
+                            </Button>
+                          )}
                           <span className="text-xs text-muted-foreground">
                             (wyl: {calculateTotalBlocks(dimensions.length, dimensions.width, dimensions.depth).layers})
                           </span>
