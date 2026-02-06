@@ -4,6 +4,7 @@ import { useSettings } from '@/context/SettingsContext';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { ExtraLineItem, ExtraLineItemRows, AddItemRow } from '@/components/groundworks/ExtraLineItems';
 import { Button } from '@/components/ui/button';
 import { Shovel, HardHat, Info, AlertCircle, Wrench, Building, Save, Check, Droplets, Thermometer } from 'lucide-react';
 import { RotateCcw } from 'lucide-react';
@@ -235,6 +236,9 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
     (sections.prace_budowlane?.scope as ScopeType) || 'our'
   );
   const [constructionNotes, setConstructionNotes] = useState('');
+  const [excavationNotes, setExcavationNotes] = useState('');
+  const [extraExcavationItems, setExtraExcavationItems] = useState<ExtraLineItem[]>([]);
+  const [extraConstructionItems, setExtraConstructionItems] = useState<ExtraLineItem[]>([]);
   const [constructionCost, setConstructionCost] = useState(0);
   
   // Construction technology type
@@ -1140,7 +1144,8 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
     return sum + (roundedQty * item.rate);
   }, 0);
   const laborTotalNet = laborItems.filter(i => !i.hidden).reduce((sum, item) => sum + item.netValue, 0);
-  const constructionTotalNet = materialsTotalNet + b25TotalNet + (constructionTechnology === 'masonry' ? blockGroupTotalNet : 0) + reinforcement.totalNet + laborTotalNet;
+  const extraConstructionTotal = extraConstructionItems.reduce((sum, item) => sum + item.netValue, 0);
+  const constructionTotalNet = materialsTotalNet + b25TotalNet + (constructionTechnology === 'masonry' ? blockGroupTotalNet : 0) + reinforcement.totalNet + laborTotalNet + extraConstructionTotal;
   const constructionVatAmount = constructionTotalNet * (constructionVatRate / 100);
   const constructionTotalGross = constructionTotalNet + constructionVatAmount;
   
@@ -1368,8 +1373,9 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
     }
   };
 
-  // Calculate totals (excluding hidden items like disabled drainage)
-  const totalNet = lineItems.filter(item => !item.hidden).reduce((sum, item) => sum + item.netValue, 0);
+  // Calculate totals (excluding hidden items like disabled drainage) + extra items
+  const extraExcavationTotal = extraExcavationItems.reduce((sum, item) => sum + item.netValue, 0);
+  const totalNet = lineItems.filter(item => !item.hidden).reduce((sum, item) => sum + item.netValue, 0) + extraExcavationTotal;
   const vatAmount = totalNet * (vatRate / 100);
   const totalGross = totalNet + vatAmount;
 
@@ -1391,6 +1397,8 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
         data: {
           ...sections.roboty_ziemne,
           scope: excavationScope,
+          notes: excavationNotes,
+          extraItems: extraExcavationItems,
           excavation: excavationScope === 'our' ? {
             ...excavation,
             customDimensions: { length: excLength, width: excWidth, depth: excDepth },
@@ -1401,7 +1409,7 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
         },
       },
     });
-  }, [excavationScope, excavation, excLength, excWidth, excDepth, lineItems, vatRate]);
+  }, [excavationScope, excavation, excLength, excWidth, excDepth, lineItems, vatRate, excavationNotes, extraExcavationItems]);
 
   // Save construction scope to sections
   useEffect(() => {
@@ -1413,6 +1421,7 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
           ...sections.prace_budowlane,
           scope: constructionScope,
           notes: constructionNotes,
+          extraItems: extraConstructionItems,
           excavation: constructionScope === 'our' ? {
             technology: constructionTechnology,
             lineItems: constructionMaterials,
@@ -1435,7 +1444,7 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
         },
       },
     });
-  }, [constructionScope, constructionNotes, constructionTechnology, constructionMaterials, constructionVatRate, sandBeddingHeight, leanConcreteHeight, floorSlabThickness, constructionTotalNet, constructionTotalGross, reinforcement.reinforcementType, reinforcement.unit, reinforcement.meshSize, reinforcement.items, reinforcement.totalNet]);
+  }, [constructionScope, constructionNotes, constructionTechnology, constructionMaterials, constructionVatRate, sandBeddingHeight, leanConcreteHeight, floorSlabThickness, constructionTotalNet, constructionTotalGross, reinforcement.reinforcementType, reinforcement.unit, reinforcement.meshSize, reinforcement.items, reinforcement.totalNet, extraConstructionItems]);
 
   return (
     <div className="animate-slide-up">
@@ -1919,6 +1928,11 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
                           </TableCell>
                         </TableRow>
                       ))}
+                      <ExtraLineItemRows
+                        items={extraExcavationItems}
+                        onRemove={(id) => setExtraExcavationItems(prev => prev.filter(i => i.id !== id))}
+                      />
+                      <AddItemRow onAdd={(item) => setExtraExcavationItems(prev => [...prev, item])} />
                     </TableBody>
                     <TableFooter>
                       <TableRow>
@@ -1962,6 +1976,19 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
                       </TableRow>
                     </TableFooter>
                   </Table>
+                </div>
+
+                {/* Excavation Notes */}
+                <div className="mt-4">
+                  <Label htmlFor="excavation-notes">Uwagi</Label>
+                  <Textarea
+                    id="excavation-notes"
+                    value={excavationNotes}
+                    onChange={(e) => setExcavationNotes(e.target.value)}
+                    placeholder="Dodatkowe uwagi dotyczące robót ziemnych..."
+                    className="mt-2"
+                    rows={3}
+                  />
                 </div>
               </div>
             </div>
@@ -3002,6 +3029,11 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
                           </TableCell>
                         </TableRow>
                       ))}
+                      <ExtraLineItemRows
+                        items={extraConstructionItems}
+                        onRemove={(id) => setExtraConstructionItems(prev => prev.filter(i => i.id !== id))}
+                      />
+                      <AddItemRow onAdd={(item) => setExtraConstructionItems(prev => [...prev, item])} />
                     </TableBody>
                     <TableFooter>
                       <TableRow>

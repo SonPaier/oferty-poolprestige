@@ -266,6 +266,7 @@ export interface ConfiguratorSection {
   excavation?: any; // For roboty_ziemne
   notes?: string; // For additional notes
   estimatedCost?: number; // For prace_budowlane
+  extraItems?: any[]; // For additional custom line items
 }
 
 export interface ConfiguratorState {
