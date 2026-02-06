@@ -129,13 +129,13 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
   const wallInsThickness = wallInsulationThickness[wallInsulation];
   
   const [excDepth, setExcDepth] = useState(() => 
-    dimensions.depth + floorSlabThickness + floorInsThickness + leanConcreteHeight + sandBeddingHeight
+    Math.round((dimensions.depth + floorSlabThickness + floorInsThickness + leanConcreteHeight + sandBeddingHeight) * 100) / 100
   );
   
   // Update excavation depth when components change
   useEffect(() => {
     const newDepth = dimensions.depth + floorSlabThickness + floorInsulationThickness[floorInsulation] + leanConcreteHeight + sandBeddingHeight;
-    setExcDepth(newDepth);
+    setExcDepth(Math.round(newDepth * 100) / 100);
   }, [dimensions.depth, floorSlabThickness, floorInsulation, leanConcreteHeight, sandBeddingHeight]);
   
   // Drainage toggle
