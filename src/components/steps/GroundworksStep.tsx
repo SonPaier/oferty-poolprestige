@@ -779,7 +779,7 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
   const LABOR_WADING_RATE = 1000; // PLN/m²
   
   // Pool floor area (length * width)
-  const poolFloorArea = dimensions.length * dimensions.width;
+  const poolFloorArea = Math.round(dimensions.length * dimensions.width);
   
   // Stairs projection area
   const stairsProjectionArea = useMemo(() => {
@@ -2478,8 +2478,8 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
                                 <Input
                                   type="number"
                                   min="0"
-                                  step="0.1"
-                                  value={item.quantity.toFixed(2)}
+                                  step={item.id === 'labor_pool' ? "1" : "0.1"}
+                                  value={item.id === 'labor_pool' ? String(Math.round(item.quantity)) : item.quantity.toFixed(2)}
                                   onChange={(e) => updateLaborItem(item.id, 'quantity', parseFloat(e.target.value) || 0)}
                                   className="input-field w-[70px] text-right"
                                 />
@@ -2491,7 +2491,7 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
                                   size="icon"
                                   className="h-8 w-8"
                                   onClick={() => resetLaborItemQuantity(item.id)}
-                                  title={`Przywróć: ${getExpectedLaborQuantity(item.id).toFixed(2)}`}
+                                  title={`Przywróć: ${item.id === 'labor_pool' ? Math.round(getExpectedLaborQuantity(item.id)) : getExpectedLaborQuantity(item.id).toFixed(2)}`}
                                 >
                                   <RotateCcw className="h-4 w-4" />
                                 </Button>
