@@ -772,12 +772,157 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
   const b25TotalRounded = Math.ceil(b25TotalQuantity * 2) / 2;
   const b25TotalNet = b25TotalRounded * b25ConcreteGroup.rate;
   
-  // Calculate construction totals (materials + B25 group + reinforcement) using rounded quantities
+  // ============ LABOR COST SECTION ============
+  // Base rate: 35,000 PLN per 50m² = 700 PLN/m²
+  const LABOR_BASE_RATE = 700; // PLN/m²
+  const LABOR_STAIRS_RATE = 1000; // PLN/m²
+  const LABOR_WADING_RATE = 1000; // PLN/m²
+  
+  // Pool floor area (length * width)
+  const poolFloorArea = dimensions.length * dimensions.width;
+  
+  // Stairs projection area
+  const stairsProjectionArea = useMemo(() => {
+    const s = dimensions.stairs;
+    if (!s?.enabled) return 0;
+    const w = Number(s.width) || 0;
+    const sc = Number(s.stepCount) || 0;
+    const sd = Number(s.stepDepth) || 0;
+    return w * sc * sd;
+  }, [dimensions.stairs]);
+  
+  // Wading pool area
+  const wadingPoolProjectionArea = useMemo(() => {
+    const wp = dimensions.wadingPool;
+    if (!wp?.enabled) return 0;
+    return (wp.width || 0) * (wp.length || 0);
+  }, [dimensions.wadingPool]);
+  
+  type LaborUnitType = 'm2' | 'ryczalt';
+  
+  interface LaborLineItem {
+    id: string;
+    name: string;
+    quantity: number;
+    unit: LaborUnitType;
+    rate: number;
+    netValue: number;
+    customOverride?: boolean;
+    hidden?: boolean;
+  }
+  
+  const [laborItems, setLaborItems] = useState<LaborLineItem[]>(() => [
+    {
+      id: 'labor_pool',
+      name: 'Prace budowlane – basen',
+      quantity: poolFloorArea,
+      unit: 'm2',
+      rate: LABOR_BASE_RATE,
+      netValue: poolFloorArea * LABOR_BASE_RATE,
+    },
+    {
+      id: 'labor_stairs',
+      name: 'Prace budowlane – schody',
+      quantity: stairsProjectionArea,
+      unit: 'm2',
+      rate: LABOR_STAIRS_RATE,
+      netValue: stairsProjectionArea * LABOR_STAIRS_RATE,
+      hidden: !dimensions.stairs?.enabled,
+    },
+    {
+      id: 'labor_wading',
+      name: 'Prace budowlane – brodzik',
+      quantity: wadingPoolProjectionArea,
+      unit: 'm2',
+      rate: LABOR_WADING_RATE,
+      netValue: wadingPoolProjectionArea * LABOR_WADING_RATE,
+      hidden: !dimensions.wadingPool?.enabled,
+    },
+  ]);
+  
+  // Sync labor items when dimensions change
+  useEffect(() => {
+    setLaborItems(prev => prev.map(item => {
+      if (item.id === 'labor_pool' && !item.customOverride) {
+        const qty = item.unit === 'ryczalt' ? 1 : poolFloorArea;
+        return { ...item, quantity: qty, netValue: qty * item.rate };
+      }
+      if (item.id === 'labor_stairs') {
+        const updated = { ...item, hidden: !dimensions.stairs?.enabled };
+        if (!item.customOverride) {
+          const qty = item.unit === 'ryczalt' ? 1 : stairsProjectionArea;
+          updated.quantity = qty;
+          updated.netValue = qty * item.rate;
+        }
+        return updated;
+      }
+      if (item.id === 'labor_wading') {
+        const updated = { ...item, hidden: !dimensions.wadingPool?.enabled };
+        if (!item.customOverride) {
+          const qty = item.unit === 'ryczalt' ? 1 : wadingPoolProjectionArea;
+          updated.quantity = qty;
+          updated.netValue = qty * item.rate;
+        }
+        return updated;
+      }
+      return item;
+    }));
+  }, [poolFloorArea, stairsProjectionArea, wadingPoolProjectionArea, dimensions.stairs?.enabled, dimensions.wadingPool?.enabled]);
+  
+  const updateLaborItem = (id: string, field: keyof LaborLineItem, value: any) => {
+    setLaborItems(prev => prev.map(item => {
+      if (item.id !== id) return item;
+      const updated = { ...item, [field]: value };
+      if (field === 'quantity') {
+        updated.customOverride = true;
+        updated.netValue = updated.quantity * updated.rate;
+      }
+      if (field === 'rate') {
+        updated.netValue = updated.quantity * updated.rate;
+      }
+      if (field === 'unit') {
+        const newUnit = value as LaborUnitType;
+        if (newUnit === 'ryczalt') {
+          updated.quantity = 1;
+          updated.netValue = updated.rate;
+          updated.customOverride = false;
+        } else {
+          // Switch back to m² - recalculate from dimensions
+          const expectedQty = getExpectedLaborQuantity(id);
+          updated.quantity = expectedQty;
+          updated.netValue = expectedQty * updated.rate;
+          updated.customOverride = false;
+        }
+      }
+      return updated;
+    }));
+  };
+  
+  const getExpectedLaborQuantity = useCallback((id: string): number => {
+    switch (id) {
+      case 'labor_pool': return poolFloorArea;
+      case 'labor_stairs': return stairsProjectionArea;
+      case 'labor_wading': return wadingPoolProjectionArea;
+      default: return 0;
+    }
+  }, [poolFloorArea, stairsProjectionArea, wadingPoolProjectionArea]);
+  
+  const resetLaborItemQuantity = (id: string) => {
+    const expectedQty = getExpectedLaborQuantity(id);
+    setLaborItems(prev => prev.map(item => {
+      if (item.id !== id) return item;
+      return { ...item, quantity: expectedQty, customOverride: false, netValue: expectedQty * item.rate };
+    }));
+  };
+  
+  // ============ TOTALS ============
+  // Calculate construction totals (materials + B25 group + reinforcement + labor) using rounded quantities
   const materialsTotalNet = constructionMaterials.reduce((sum, item) => {
     const roundedQty = roundQuantity(item.id, item.quantity);
     return sum + (roundedQty * item.rate);
   }, 0);
-  const constructionTotalNet = materialsTotalNet + b25TotalNet + reinforcement.totalNet;
+  const laborTotalNet = laborItems.filter(i => !i.hidden).reduce((sum, item) => sum + item.netValue, 0);
+  const constructionTotalNet = materialsTotalNet + b25TotalNet + reinforcement.totalNet + laborTotalNet;
   const constructionVatAmount = constructionTotalNet * (constructionVatRate / 100);
   const constructionTotalGross = constructionTotalNet + constructionVatAmount;
   
@@ -2310,6 +2455,80 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
                         changedRates={changedMaterialRates}
                         onConfirmRateChange={confirmReinforcementRateChange}
                       />
+                      
+                      {/* Labor cost rows */}
+                      {laborItems.filter(item => !item.hidden).map((item) => (
+                        <TableRow key={item.id} className="bg-accent/5">
+                          <TableCell className="font-medium">
+                            {item.name}
+                            {item.customOverride && (
+                              <span className="ml-2 text-xs text-amber-600">(zmieniono)</span>
+                            )}
+                            {item.id === 'labor_pool' && (
+                              <span className="ml-1 text-xs text-muted-foreground">
+                                (35 000 zł / 50 m²)
+                              </span>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center justify-end gap-1">
+                              {item.unit === 'ryczalt' ? (
+                                <span className="text-sm text-muted-foreground pr-2">ryczałt</span>
+                              ) : (
+                                <Input
+                                  type="number"
+                                  min="0"
+                                  step="0.1"
+                                  value={item.quantity.toFixed(2)}
+                                  onChange={(e) => updateLaborItem(item.id, 'quantity', parseFloat(e.target.value) || 0)}
+                                  className="input-field w-[70px] text-right"
+                                />
+                              )}
+                              {item.customOverride && item.unit !== 'ryczalt' && (
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8"
+                                  onClick={() => resetLaborItemQuantity(item.id)}
+                                  title={`Przywróć: ${getExpectedLaborQuantity(item.id).toFixed(2)}`}
+                                >
+                                  <RotateCcw className="h-4 w-4" />
+                                </Button>
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <Select
+                              value={item.unit}
+                              onValueChange={(v) => updateLaborItem(item.id, 'unit', v)}
+                            >
+                              <SelectTrigger className="w-[90px]">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent className="bg-popover">
+                                <SelectItem value="m2">m²</SelectItem>
+                                <SelectItem value="ryczalt">ryczałt</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center justify-end gap-1">
+                              <Input
+                                type="number"
+                                min="0"
+                                step="100"
+                                value={item.rate}
+                                onChange={(e) => updateLaborItem(item.id, 'rate', parseFloat(e.target.value) || 0)}
+                                className="input-field w-[80px] text-right"
+                              />
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-right font-semibold">
+                            {formatPrice(item.netValue)}
+                          </TableCell>
+                        </TableRow>
+                      ))}
                     </TableBody>
                     <TableFooter>
                       <TableRow>
