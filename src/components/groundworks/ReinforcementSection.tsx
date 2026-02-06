@@ -806,7 +806,7 @@ export function ReinforcementTableRows({
     
     // Main item row
     rows.push(
-      <TableRow key={item.id} className="bg-accent/5">
+      <TableRow key={item.id}>
         <TableCell>
           {item.positions.length > 0 ? (
             <button

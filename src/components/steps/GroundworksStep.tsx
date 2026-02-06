@@ -2383,8 +2383,8 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {/* Construction materials */}
-                      {constructionMaterials.map((item) => (
+                      {/* Concretes first: B15 then B25 group */}
+                      {constructionMaterials.filter(item => item.id === 'chudziak').map((item) => (
                         <TableRow key={item.id}>
                           <TableCell className="font-medium">
                             {item.name}
@@ -2397,7 +2397,7 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
                               <Input
                                 type="number"
                                 min="0"
-                                step={['bloczek', 'pompogruszka'].includes(item.id) ? '1' : '0.5'}
+                                step="0.5"
                                 value={formatQuantity(item.id, item.quantity)}
                                 onChange={(e) => updateConstructionMaterial(item.id, 'quantity', parseFloat(e.target.value) || 0)}
                                 className="input-field w-[70px] text-right"
@@ -2447,8 +2447,8 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
                         </TableRow>
                       ))}
                       
-                      {/* B25 Concrete Group (expandable like reinforcement) */}
-                      <TableRow className="bg-accent/5">
+                      {/* B25 Concrete Group (right after B15) */}
+                      <TableRow>
                         <TableCell>
                           <button
                             type="button"
@@ -2540,8 +2540,72 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
                           </TableCell>
                         </TableRow>
                       ))}
-                      
-                      {/* Reinforcement rows integrated directly */}
+
+                      {/* Remaining materials: Pompogruszka, Bloczek */}
+                      {constructionMaterials.filter(item => item.id !== 'chudziak').map((item) => (
+                        <TableRow key={item.id}>
+                          <TableCell className="font-medium">
+                            {item.name}
+                            {item.customOverride && (
+                              <span className="ml-2 text-xs text-amber-600">(zmieniono)</span>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center justify-end gap-1">
+                              <Input
+                                type="number"
+                                min="0"
+                                step={['bloczek', 'pompogruszka'].includes(item.id) ? '1' : '0.5'}
+                                value={formatQuantity(item.id, item.quantity)}
+                                onChange={(e) => updateConstructionMaterial(item.id, 'quantity', parseFloat(e.target.value) || 0)}
+                                className="input-field w-[70px] text-right"
+                              />
+                              {item.customOverride && (
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8"
+                                  onClick={() => resetConstructionMaterialQuantity(item.id)}
+                                  title={`Przywróć: ${formatQuantity(item.id, getExpectedMaterialQuantity(item.id))}`}
+                                >
+                                  <RotateCcw className="h-4 w-4" />
+                                </Button>
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-muted-foreground">{item.unit}</TableCell>
+                          <TableCell>
+                            <div className="flex items-center justify-end gap-1">
+                              <Input
+                                type="number"
+                                min="0"
+                                step="10"
+                                value={item.rate}
+                                onChange={(e) => updateConstructionMaterial(item.id, 'rate', parseFloat(e.target.value) || 0)}
+                                className="input-field w-[80px] text-right"
+                              />
+                              {changedMaterialRates[item.id] !== undefined && (
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8 text-success hover:text-success/80 hover:bg-success/10"
+                                  onClick={() => confirmMaterialRateChange(item.id, item.name)}
+                                  title="Zatwierdź zmianę stawki"
+                                >
+                                  <Check className="h-4 w-4" />
+                                </Button>
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-right font-semibold">
+                            {formatPrice(roundQuantity(item.id, item.quantity) * item.rate)}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+
+                      {/* Reinforcement rows */}
                       <ReinforcementTableRows
                         items={reinforcement.items}
                         onToggleExpand={reinforcement.toggleExpand}
@@ -2561,11 +2625,6 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
                             {item.name}
                             {item.customOverride && (
                               <span className="ml-2 text-xs text-amber-600">(zmieniono)</span>
-                            )}
-                            {item.id === 'labor_pool' && (
-                              <span className="ml-1 text-xs text-muted-foreground">
-                                (35 000 zł / 50 m²)
-                              </span>
                             )}
                           </TableCell>
                           <TableCell>
