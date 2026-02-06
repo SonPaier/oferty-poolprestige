@@ -44,6 +44,7 @@ import {
   calculateCrownConcreteVolume,
   calculateColumnsConcreteVolume,
   BLOCK_DIMENSIONS,
+  BlockHeight,
 } from '@/components/groundworks/ReinforcementSection';
 import Pool2DPreview, { CustomColumnCounts, calculateDefaultColumnCounts, getTotalColumnCount } from '@/components/Pool2DPreview';
 import { ChevronDown, ChevronRight } from 'lucide-react';
@@ -52,7 +53,7 @@ import { defaultConstructionMaterialRates, ConstructionMaterialRates } from '@/t
 // Helper function to round quantities based on material type
 function roundQuantity(id: string, quantity: number): number {
   // Podsypka i betony - zaokrąglaj do 0.5
-  if (['podsypka', 'chudziak', 'plyta_denna', 'beton_wieniec'].includes(id)) {
+  if (['podsypka', 'chudziak', 'plyta_denna', 'beton_wieniec', 'beton_brodzik', 'beton_schody'].includes(id)) {
     return Math.ceil(quantity * 2) / 2;
   }
   // Bloczki, pompogruszka, zbrojenie, strzemiona - zaokrąglaj do jedności
@@ -239,6 +240,9 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
   type ConstructionTechnology = 'masonry' | 'poured';
   const [constructionTechnology, setConstructionTechnology] = useState<ConstructionTechnology>('masonry');
   
+  // Block height selection (12cm or 14cm)
+  const [blockHeight, setBlockHeight] = useState<BlockHeight>(12);
+  
   // (Material heights moved up to line 117-120 for excavation depth calculation)
   
   // Block layer calculation (only for masonry technology)
@@ -267,9 +271,10 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
       dimensions.depth,
       customBlockLayers,
       customCrownHeight,
-      totalColumnCount
+      totalColumnCount,
+      blockHeight
     );
-  }, [dimensions.length, dimensions.width, dimensions.depth, constructionTechnology, customBlockLayers, customCrownHeight, totalColumnCount]);
+  }, [dimensions.length, dimensions.width, dimensions.depth, constructionTechnology, customBlockLayers, customCrownHeight, totalColumnCount, blockHeight]);
   
   // Reset custom values when pool dimensions change
   useEffect(() => {
@@ -410,13 +415,18 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
           const bloczekQty = blockCalculation.totalBlocks;
           updated.push({
             id: 'bloczek',
-            name: 'Bloczek betonowy 38×24×12',
+            name: `Bloczek betonowy 38×24×${blockHeight}`,
             quantity: bloczekQty,
             unit: 'szt.',
             rate: materialRates.bloczek,
             netValue: bloczekQty * materialRates.bloczek,
             customOverride: false,
           });
+        } else {
+          // Update name when block height changes
+          updated = updated.map(item => 
+            item.id === 'bloczek' ? { ...item, name: `Bloczek betonowy 38×24×${blockHeight}` } : item
+          );
         }
       } else if (constructionTechnology !== 'masonry') {
         // Remove masonry-specific items for non-masonry
@@ -425,7 +435,7 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
       
       return updated;
     });
-  }, [excavationArea, leanConcreteHeight, dimensions.stairs?.enabled, dimensions.wadingPool?.enabled, constructionTechnology, blockCalculation]);
+  }, [excavationArea, leanConcreteHeight, dimensions.stairs?.enabled, dimensions.wadingPool?.enabled, constructionTechnology, blockCalculation, blockHeight]);
   
   // Update podsypka, piasek_zasypka, drenaz, and zakopanie in lineItems when excavation dimensions change
   useEffect(() => {
@@ -516,9 +526,35 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
         });
       }
       
+      // Wading pool concrete (when enabled)
+      if (dimensions.wadingPool?.enabled) {
+        const wpVolume = (dimensions.wadingPool.width || 0) * (dimensions.wadingPool.length || 0) * floorSlabThickness;
+        const existingWP = prev.subItems.find(s => s.id === 'beton_brodzik');
+        newSubItems.push({
+          id: 'beton_brodzik',
+          name: 'Brodzik',
+          quantity: existingWP?.customOverride ? existingWP.quantity : wpVolume,
+          customOverride: existingWP?.customOverride || false,
+        });
+      }
+      
+      // Stairs concrete (when enabled)
+      if (dimensions.stairs?.enabled) {
+        const s = dimensions.stairs;
+        const stairsArea = (Number(s.width) || 0) * (Number(s.stepCount) || 0) * (Number(s.stepDepth) || 0);
+        const stairsVolume = stairsArea * floorSlabThickness;
+        const existingStairs = prev.subItems.find(s => s.id === 'beton_schody');
+        newSubItems.push({
+          id: 'beton_schody',
+          name: 'Schody',
+          quantity: existingStairs?.customOverride ? existingStairs.quantity : stairsVolume,
+          customOverride: existingStairs?.customOverride || false,
+        });
+      }
+      
       return { ...prev, subItems: newSubItems };
     });
-  }, [floorSlabArea, floorSlabThickness, constructionTechnology, blockCalculation, dimensions.length, dimensions.width, dimensions.depth, totalColumnCount]);
+  }, [floorSlabArea, floorSlabThickness, constructionTechnology, blockCalculation, dimensions.length, dimensions.width, dimensions.depth, totalColumnCount, dimensions.wadingPool, dimensions.stairs]);
   
   // Calculate expected values for reset functionality
   const getExpectedMaterialQuantity = useCallback((id: string): number => {
@@ -556,10 +592,19 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
         return crownConcreteVolume;
       case 'beton_slupy':
         return columnsConcreteData.volume;
+      case 'beton_brodzik':
+        return dimensions.wadingPool?.enabled 
+          ? (dimensions.wadingPool.width || 0) * (dimensions.wadingPool.length || 0) * floorSlabThickness 
+          : 0;
+      case 'beton_schody': {
+        if (!dimensions.stairs?.enabled) return 0;
+        const s = dimensions.stairs;
+        return (Number(s.width) || 0) * (Number(s.stepCount) || 0) * (Number(s.stepDepth) || 0) * floorSlabThickness;
+      }
       default:
         return 0;
     }
-  }, [floorSlabArea, floorSlabThickness, blockCalculation, dimensions.length, dimensions.width, dimensions.depth]);
+  }, [floorSlabArea, floorSlabThickness, blockCalculation, dimensions.length, dimensions.width, dimensions.depth, dimensions.wadingPool, dimensions.stairs]);
 
   // Helper to get rate key from material id (construction materials only)
   const getMaterialRateKey = (id: string): keyof ConstructionMaterialRates | null => {
@@ -1924,6 +1969,27 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
                     </div>
                   </RadioGroup>
                 </div>
+
+                {/* Block height selection (only for masonry) */}
+                {constructionTechnology === 'masonry' && (
+                  <div className="mb-6">
+                    <Label className="mb-2 block">Wysokość bloczka</Label>
+                    <RadioGroup
+                      value={String(blockHeight)}
+                      onValueChange={(v) => setBlockHeight(Number(v) as BlockHeight)}
+                      className="flex flex-row gap-4"
+                    >
+                      <div className="flex items-center space-x-2">
+                        <RadioGroupItem value="12" id="block-12" />
+                        <Label htmlFor="block-12" className="cursor-pointer">12 cm</Label>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <RadioGroupItem value="14" id="block-14" />
+                        <Label htmlFor="block-14" className="cursor-pointer">14 cm</Label>
+                      </div>
+                    </RadioGroup>
+                  </div>
+                )}
 
                 {/* Material heights configuration */}
                 <div className="grid grid-cols-2 gap-4 mb-4">
