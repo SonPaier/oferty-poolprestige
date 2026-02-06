@@ -1,107 +1,74 @@
 
 
-## Plan: Domyslny bloczek 14cm + bloczki brodzik/schody + plyta brodzika
+# Nowa logika rozmieszczania slupow konstrukcyjnych
 
-### 1. Domyslna wysokosc bloczka: 14cm
+## Obecny problem
+Slupy sa rozmieszczone rownomiernie na calej dlugosci sciany, co powoduje:
+- Zbyt duza odleglosc miedzy slupem S1 a S9 (naroznik do naroznika po dlugosci)
+- Brak uwzglednienia polowy odstepow przy naroznikach
+- Brak slupow w miejscach styku brodzika ze sciana
 
-**Plik:** `src/components/steps/GroundworksStep.tsx`, linia 244
+## Nowe zasady rozmieszczania
 
-Zmiana:
-```typescript
-// PRZED:
-const [blockHeight, setBlockHeight] = useState<BlockHeight>(12);
-// PO:
-const [blockHeight, setBlockHeight] = useState<BlockHeight>(14);
+### 1. Ilosc slupow na sciane
+- Sciana 5m -> 2 slupy
+- Sciana 10m -> 4 slupy
+- Ogolna formula: `Math.round(wallLength / 2.5)` (ok. co 2.5m, zaokraglone)
+
+### 2. Rozmieszczenie z polowa odstepem przy naroznikach
+Odleglosc od naroznika do pierwszego slupa = polowa odleglosci miedzy slupami.
+
+Przyklad dla sciany 5m z 2 slupami:
+- Odstep miedzy slupami: `5 / (2 + 1 * 0.5 + 0.5) = 5 / 3 = ~1.67m` (ale precyzyjniej)
+- Formula: `spacing = wallLength / (n + 1)`, pozycje: `spacing * 0.5`, `spacing * 1.5`, ..., `spacing * (n - 0.5)`
+
+Uproszczone: jesli n slupow na scianie dlugosci L:
+- `spacing = L / (n + 1)` (rownomierny podzial na n+1 segmentow)  
+- Pozycja i-tego slupa: `spacing * 0.5 + (i * spacing)` for i=0..n-1
+- To daje polowe odstep od krawedzi, pelny odstep miedzy slupami
+
+Faktycznie lepiej: podzial na `n` rownych segmentow + 2 polowki na brzegach:
+- `spacing = L / (n + 1)` -> **NIE**, to rowne rozmieszczenie
+- Chcemy: `halfSpacing + (n-1) * fullSpacing + halfSpacing = L`
+- Wiec: `fullSpacing = L / n`, `halfSpacing = L / (2*n)`
+- Pozycja i-tego slupa (0-based): `halfSpacing + i * fullSpacing = L/(2n) + i * L/n`
+
+### 3. Slupy w miejscu styku brodzika
+Gdy brodzik jest wlaczony, w miejscach gdzie sciana brodzika styka sie ze sciana basenu (punkty E, F) dodawane sa slupy. Te slupy sa stale i nie wliczane do rownomiernego rozmieszczenia -- odcinki sciany sa dzielone osobno.
+
+## Zmiany techniczne
+
+### Plik: `src/components/Pool2DPreview.tsx`
+
+1. **Nowa formula `calculateDefaultColumnCounts`**:
+   - Zmiana z `Math.floor(length / 2) - 1` na `Math.round(length / 2.5)` (lub podobna formula dajaca 2 na 5m, 4 na 10m)
+
+2. **Nowa logika `columnPositions` w useMemo**:
+   - Wykrycie punktow styku brodzika ze scianami basenu (na podstawie `wadingPoolPoints` i `poolPoints`)
+   - Umieszczenie slupow-junkci w tych punktach
+   - Podzial pozostalych odcinkow scian na segmenty z zasada "polowa odstepem od konca"
+   - Numeracja slupow S1, S2, ... po kolei (obwodowo)
+
+3. **Interface `CustomColumnCounts`** -- rozszerzenie lub zachowanie kompatybilnosci z reczna edycja liczby slupow w GroundworksStep
+
+### Plik: `src/components/steps/GroundworksStep.tsx`
+- Aktualizacja `calculateDefaultColumnCounts` aby pasowalo do nowej formuly
+- Bez zmian w UI recznej edycji
+
+## Przyklad wizualny (basen 8x4m, brodzik back-left)
+
+```text
+  Naroznik A -------- S1 ---- S2 ---- S3 -------- Naroznik B
+  |                                                         |
+  S8                                                       S4
+  |                                                         |
+  Naroznik D --- S7(junction) --- S6 ---- S5 --- Naroznik C
+                  |              |
+                  |   brodzik   |
+                  |_____________|
 ```
 
-### 2. Nowy stan: grubosc plyty brodzika
-
-**Plik:** `src/components/steps/GroundworksStep.tsx`, po linii 244
-
-Dodanie nowych zmiennych stanu:
-```typescript
-const [wadingPoolSlabHeight, setWadingPoolSlabHeight] = useState<number>(0.20);
-const [wadingPoolSlabOverride, setWadingPoolSlabOverride] = useState(false);
-```
-
-### 3. Obliczenie warstw bloczkow brodzika i plyty brodzika
-
-**Plik:** `src/components/steps/GroundworksStep.tsx`
-
-Nowy `useMemo` obliczajacy bloczki brodzika:
-- Uzywa `calculateBlockLayers(wadingPool.depth, blockHeight)` -- ten sam algorytm co basen
-- Wynik `crownHeight` z algorytmu = grubosc plyty brodzika (18-30cm)
-- Obwod wewnetrzny (sciany nie wspolne z basenem) = `width + length` (2 sciany, bo brodzik w narozyniku dzieli 2 sciany z basenem)
-- Bloczki brodzika = `layers * Math.ceil((width + length) / 0.38)`
-
-Automatyczna aktualizacja `wadingPoolSlabHeight` gdy nie ma recznego override:
-```typescript
-const wpBlockCalc = calculateBlockLayers(wadingPool.depth, blockHeight);
-if (!wadingPoolSlabOverride) {
-  setWadingPoolSlabHeight(wpBlockCalc.crownHeight);
-}
-```
-
-### 4. Obliczenie bloczkow za schody
-
-**Plik:** `src/components/steps/GroundworksStep.tsx`
-
-```typescript
-const stairsBlocks = dimensions.stairs?.enabled
-  ? Math.ceil((stairs.stepCount * stairsWidth) / BLOCK_DIMENSIONS.length)
-  : 0;
-```
-
-Gdzie `stairsWidth` = `stairs.width === 'full' ? dimensions.width : stairs.width` (lub odpowiedni bok).
-
-### 5. Aktualizacja sumy bloczkow
-
-**Plik:** `src/components/steps/GroundworksStep.tsx`, useEffect aktualizujacy constructionMaterials (~linia 402)
-
-Zmiana ilosci bloczkow z `blockCalculation.totalBlocks` na:
-```typescript
-const totalBlocks = (blockCalculation?.totalBlocks || 0) + wadingPoolBlocks + stairsBlocks;
-```
-
-Dotyczy zarowno tworzenia nowej pozycji jak i aktualizacji istniejacej.
-
-### 6. Aktualizacja getExpectedMaterialQuantity('bloczek')
-
-**Plik:** `src/components/steps/GroundworksStep.tsx`, linia 572-573
-
-Zmiana:
-```typescript
-case 'bloczek':
-  return (blockCalculation?.totalBlocks || 0) + wadingPoolBlocks + stairsBlocks;
-```
-
-### 7. Beton B25 brodzik -- uzycie plyty brodzika
-
-**Plik:** `src/components/steps/GroundworksStep.tsx`, linia 531
-
-Zmiana wzoru z `floorSlabThickness` na `wadingPoolSlabHeight`:
-```typescript
-// PRZED:
-const wpVolume = (wadingPool.width || 0) * (wadingPool.length || 0) * floorSlabThickness;
-// PO:
-const wpVolume = (wadingPool.width || 0) * (wadingPool.length || 0) * wadingPoolSlabHeight;
-```
-
-Analogicznie w `getExpectedB25SubItemQuantity` (linia 597).
-
-### 8. UI: pole grubosci plyty brodzika
-
-**Plik:** `src/components/steps/GroundworksStep.tsx`, w sekcji parametrow budowy (obok selektora wysokosci bloczka, ~linia 1976)
-
-Gdy brodzik wlaczony, wyswietlic:
-- Label: "Grub. plyty brodzika (cm)"
-- Input z wartoscia `wadingPoolSlabHeight * 100`
-- Walidacja: 18-30cm
-- Przycisk reset gdy `wadingPoolSlabOverride === true`
-
-### Podsumowanie zmian
-
-| Plik | Zmiany |
-|------|--------|
-| `src/components/steps/GroundworksStep.tsx` | Domyslny blockHeight=14, stan wadingPoolSlabHeight, obliczenia bloczkow brodzik+schody, suma bloczkow, B25 brodzik z plyta brodzika, UI pole grubosci plyty brodzika, reset |
+- S7 jest w miejscu styku brodzika ze sciana (junction)
+- Odleglosc Naroznik A -> S1 = polowa odleglosci S1 -> S2
+- Slupy S5, S6 rozmieszczone rownomiernie na odcinku od Naroznika C do S7 (junction)
 
