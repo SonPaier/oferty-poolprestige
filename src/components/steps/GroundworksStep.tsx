@@ -2283,7 +2283,7 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
                       <div className="space-y-2">
                         <Label htmlFor="block-layers" className="text-xs text-muted-foreground">
-                          Warstwy bloczków
+                          Warstwy bloczków (basen)
                         </Label>
                         <div className="flex items-center gap-2">
                           <Input
@@ -2296,7 +2296,7 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
                             onChange={(e) => {
                               const val = parseInt(e.target.value) || 0;
                               setCustomBlockLayers(val > 0 ? val : undefined);
-                              setCustomCrownHeight(undefined); // Reset crown when layers change
+                              setCustomCrownHeight(undefined);
                             }}
                             className="input-field w-20"
                           />
@@ -2304,6 +2304,11 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
                             (wyl: {calculateTotalBlocks(dimensions.length, dimensions.width, dimensions.depth).layers})
                           </span>
                         </div>
+                        {dimensions.wadingPool?.enabled && wadingPoolBlockCalc && (
+                          <p className="text-xs text-muted-foreground">
+                            Brodzik: {wadingPoolBlockCalc.layers} warstw
+                          </p>
+                        )}
                       </div>
                       
                       <div className="space-y-2">
@@ -2360,11 +2365,17 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
                         <div>
                           <p className="text-xs text-muted-foreground">Razem bloczków</p>
                           <p className="text-2xl font-bold text-primary">
-                            {blockCalculation.totalBlocks} szt.
+                            {(blockCalculation.totalBlocks + wadingPoolBlocks + stairsBlocks)} szt.
                           </p>
                         </div>
-                        <div className="text-muted-foreground text-sm">
-                          ({blockCalculation.layers} warstw × {blockCalculation.blocksPerLayer} szt.)
+                        <div className="text-muted-foreground text-sm space-y-0.5">
+                          <div>Basen: {blockCalculation.totalBlocks} szt. ({blockCalculation.layers} warstw × {blockCalculation.blocksPerLayer} szt.)</div>
+                          {dimensions.wadingPool?.enabled && wadingPoolBlockCalc && (
+                            <div>Brodzik: {wadingPoolBlocks} szt. ({wadingPoolBlockCalc.layers} warstw × {Math.ceil(((dimensions.wadingPool.width || 0) + (dimensions.wadingPool.length || 0)) / BLOCK_DIMENSIONS.length)} szt.)</div>
+                          )}
+                          {dimensions.stairs?.enabled && stairsBlocks > 0 && (
+                            <div>Schody: {stairsBlocks} szt. ({dimensions.stairs.stepCount} stopni × {dimensions.stairs.width === 'full' ? (dimensions.stairs.wall === 'back' || dimensions.stairs.wall === 'front' ? dimensions.length : dimensions.width) : dimensions.stairs.width} m)</div>
+                          )}
                         </div>
                       </div>
                       <div className="text-right">
@@ -2375,7 +2386,7 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
                     
                     <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1">
                       <Info className="w-3 h-3" />
-                      Bloczek {BLOCK_DIMENSIONS.length * 100}×{BLOCK_DIMENSIONS.width * 100}×{BLOCK_DIMENSIONS.height * 100} cm, słupy co 2m
+                      Bloczek {BLOCK_DIMENSIONS.length * 100}×{BLOCK_DIMENSIONS.width * 100}×{blockHeight} cm, słupy co 2m
                     </p>
                   </div>
                 )}
