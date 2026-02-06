@@ -692,10 +692,21 @@ export default function Pool2DPreview({
       return positions;
     }
     
-    // Helper: calculate column count for a sub-segment based on proportional share
-    function columnsForSegment(segLen: number, totalLen: number, totalCols: number): number {
-      if (totalLen <= 0) return 0;
-      return Math.max(0, Math.round((segLen / totalLen) * totalCols));
+    // Helper: allocate columns to segments proportionally (largest-remainder method)
+    function allocateColumnsToSegments(segLengths: number[], totalCols: number): number[] {
+      const totalLen = segLengths.reduce((a, b) => a + b, 0);
+      if (totalLen <= 0 || totalCols <= 0) return segLengths.map(() => 0);
+      const exact = segLengths.map(s => (s / totalLen) * totalCols);
+      const floored = exact.map(e => Math.floor(e));
+      let remaining = totalCols - floored.reduce((a, b) => a + b, 0);
+      const remainders = exact.map((e, i) => ({ i, rem: e - floored[i] }));
+      remainders.sort((a, b) => b.rem - a.rem);
+      for (const r of remainders) {
+        if (remaining <= 0) break;
+        floored[r.i]++;
+        remaining--;
+      }
+      return floored;
     }
     
     // Build columns wall by wall in perimeter order
@@ -704,16 +715,15 @@ export default function Pool2DPreview({
     // Helper to add columns on a wall, splitting by junction points
     function addWallColumns(
       wall: 'top' | 'bottom' | 'left' | 'right',
-      wallStart: number, // coordinate along wall direction
+      wallStart: number,
       wallEnd: number,
       totalCols: number,
-      fixedCoord: number, // the perpendicular coordinate (with wallOffset)
+      fixedCoord: number,
       isHorizontal: boolean
     ) {
       const wallJunctions = junctions.filter(j => j.wall === wall);
       
       if (wallJunctions.length === 0) {
-        // No junctions - distribute evenly with half-spacing
         const positions = distributeOnSegment(wallStart, wallEnd, totalCols);
         for (const pos of positions) {
           if (isHorizontal) {
@@ -723,22 +733,23 @@ export default function Pool2DPreview({
           }
         }
       } else {
-        // Sort junction positions along wall direction
         const juncPositions = wallJunctions.map(j => j.pos);
         const dir = wallEnd > wallStart ? 1 : -1;
         juncPositions.sort((a, b) => (a - b) * dir);
         
-        // Build segments: wallStart -> junc1 -> junc2 -> ... -> wallEnd
         const breakpoints = [wallStart, ...juncPositions, wallEnd];
-        const wallLen = Math.abs(wallEnd - wallStart);
-        
-        // Junction columns consume from totalCols budget
         const remainingCols = Math.max(0, totalCols - wallJunctions.length);
+        
+        // Calculate segment lengths and allocate columns proportionally
+        const segLengths = [];
+        for (let s = 0; s < breakpoints.length - 1; s++) {
+          segLengths.push(Math.abs(breakpoints[s + 1] - breakpoints[s]));
+        }
+        const segAllocations = allocateColumnsToSegments(segLengths, remainingCols);
         
         for (let s = 0; s < breakpoints.length - 1; s++) {
           const segStart = breakpoints[s];
           const segEnd = breakpoints[s + 1];
-          const segLen = Math.abs(segEnd - segStart);
           
           // Add junction column at segStart (except for the very first segment start = corner)
           if (s > 0) {
@@ -749,9 +760,8 @@ export default function Pool2DPreview({
             }
           }
           
-          // Distribute remaining columns proportionally on this segment
-          const segCols = columnsForSegment(segLen, wallLen, remainingCols);
-          const positions = distributeOnSegment(segStart, segEnd, segCols);
+          // Distribute allocated columns on this segment
+          const positions = distributeOnSegment(segStart, segEnd, segAllocations[s]);
           for (const pos of positions) {
             if (isHorizontal) {
               allPositions.push({ x: pos, y: fixedCoord, label: '' });
