@@ -144,7 +144,7 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
   // Drainage toggle
   const [drainageEnabled, setDrainageEnabled] = useState(false);
   const [reusePercent, setReusePercent] = useState(0);
-  const [sandGroupExpanded, setSandGroupExpanded] = useState(true);
+  const [sandGroupExpanded, setSandGroupExpanded] = useState(false);
   
   // Track rate changes that need confirmation (instead of immediate dialog)
   const [changedExcavationRates, setChangedExcavationRates] = useState<Record<string, number>>({});
@@ -372,7 +372,7 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
     groupName: 'Beton B25',
     unit: 'm³',
     rate: materialRates.betonB25,
-    isExpanded: true,
+    isExpanded: false,
     subItems: [
       { id: 'plyta_denna', name: 'Płyta denna', quantity: Math.ceil(floorSlabArea * floorSlabThickness), customOverride: false },
     ],
