@@ -624,13 +624,16 @@ export default function Pool2DPreview({
     // Use custom counts or calculate defaults
     const counts = customColumnCounts ?? calculateDefaultColumnCounts(length, width);
     
+    // Wall thickness = 0.24m, column center should be at wall center (pool edge + 0.12m outward)
+    const wallOffset = 0.12; // half of 0.24m wall thickness
+    
     // Distribute columns evenly along length walls (top and bottom)
     if (counts.lengthWalls > 0) {
       const spacing = length / (counts.lengthWalls + 1);
       for (let i = 1; i <= counts.lengthWalls; i++) {
         const x = spacing * i - length / 2;
-        positions.push({ x, y: -width / 2, label: `S${labelIndex++}` }); // top
-        positions.push({ x, y: width / 2, label: `S${labelIndex++}` }); // bottom
+        positions.push({ x, y: -(width / 2 + wallOffset), label: `S${labelIndex++}` }); // top wall
+        positions.push({ x, y: width / 2 + wallOffset, label: `S${labelIndex++}` }); // bottom wall
       }
     }
     
@@ -639,8 +642,8 @@ export default function Pool2DPreview({
       const spacing = width / (counts.widthWalls + 1);
       for (let i = 1; i <= counts.widthWalls; i++) {
         const y = spacing * i - width / 2;
-        positions.push({ x: -length / 2, y, label: `S${labelIndex++}` }); // left
-        positions.push({ x: length / 2, y, label: `S${labelIndex++}` }); // right
+        positions.push({ x: -(length / 2 + wallOffset), y, label: `S${labelIndex++}` }); // left wall
+        positions.push({ x: length / 2 + wallOffset, y, label: `S${labelIndex++}` }); // right wall
       }
     }
     
