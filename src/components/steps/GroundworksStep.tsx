@@ -2126,7 +2126,7 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
 
               {/* Materials + Reinforcement combined cost table */}
               <div className="glass-card p-6">
-                <h3 className="text-base font-medium mb-4">Koszty materiałów budowlanych</h3>
+                <h3 className="text-base font-medium mb-4">Koszt budowy</h3>
                 
                 <div className="rounded-lg border border-border overflow-hidden">
                   <Table className="table-fixed">
