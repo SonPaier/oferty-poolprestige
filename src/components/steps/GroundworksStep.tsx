@@ -1829,7 +1829,7 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
                     <Info className="w-4 h-4 text-accent mt-0.5" />
                     <p className="text-sm font-medium">Wymiary konstrukcji</p>
                   </div>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     {/* Pool */}
                     <div className="p-3 rounded-lg bg-muted/30">
                       <p className="text-xs text-muted-foreground mb-1">Basen</p>
@@ -1856,6 +1856,14 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
                         </p>
                       </div>
                     )}
+                    {/* Excavation area & Technology */}
+                    <div className="p-3 rounded-lg bg-primary/10 border border-primary/20">
+                      <p className="text-xs text-muted-foreground mb-1">Pow. wykopu</p>
+                      <p className="text-sm font-bold text-primary">{excavationArea.toFixed(1)} m²</p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {constructionTechnology === 'masonry' ? 'Murowany' : 'Lany'}
+                      </p>
+                    </div>
                   </div>
                 </div>
 
@@ -2093,22 +2101,7 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
                   </div>
                 )}
 
-                <div className="p-4 rounded-lg bg-primary/10 border border-primary/20 mb-4">
-                  <div className="flex justify-between items-center">
-                    <div>
-                      <p className="text-xs text-muted-foreground">Powierzchnia wykopu</p>
-                      <p className="text-2xl font-bold text-primary">
-                        {excavationArea.toFixed(1)} m²
-                      </p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-xs text-muted-foreground">Technologia</p>
-                      <p className="text-lg font-medium">
-                        {constructionTechnology === 'masonry' ? 'Murowany' : 'Lany'}
-                      </p>
-                    </div>
-                  </div>
-                </div>
+
                 
                 {/* Reinforcement controls in material requirements section */}
                 <ReinforcementControls
