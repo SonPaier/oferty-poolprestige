@@ -2242,7 +2242,8 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
                       Konstrukcja murowana
                     </h4>
                     
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+                    {/* Pool block layers */}
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4 p-3 rounded-lg bg-muted/20 border border-border">
                       <div className="space-y-2">
                         <Label htmlFor="block-layers" className="text-xs text-muted-foreground">
                           Warstwy bloczków (basen)
@@ -2256,7 +2257,8 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
                             step="1"
                             value={customBlockLayers ?? blockCalculation.layers}
                             onChange={(e) => {
-                              const val = parseInt(e.target.value) || 0;
+                              const maxLayers = Math.floor(dimensions.depth / (blockHeight / 100));
+                              const val = Math.min(parseInt(e.target.value) || 0, maxLayers);
                               setCustomBlockLayers(val > 0 ? val : undefined);
                               setCustomCrownHeight(undefined);
                             }}
@@ -2278,33 +2280,15 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
                       </div>
                       
                       <div className="space-y-2">
-                        <Label htmlFor="crown-height" className="text-xs text-muted-foreground">
-                          Wysokość wieńca (cm)
+                        <Label className="text-xs text-muted-foreground">
+                          Wysokość wieńca
                         </Label>
-                        <div className="flex items-center gap-2">
-                          <Input
-                            id="crown-height"
-                            type="number"
-                            min="18"
-                            max="36"
-                            step="1"
-                            value={Math.round(blockCalculation.crownHeight * 100)}
-                            onChange={(e) => {
-                              const val = (parseFloat(e.target.value) || 18) / 100;
-                              if (val >= 0.18) {
-                                setCustomCrownHeight(val);
-                                setCustomBlockLayers(undefined); // Reset layers when crown changes
-                              }
-                            }}
-                            className="input-field w-20"
-                          />
-                          {blockCalculation.isOptimal && (
-                            <span className="text-xs text-green-600 font-medium">✓ opt.</span>
-                          )}
-                        </div>
-                        <p className="text-xs text-muted-foreground">
-                          min. 18cm, opt. 24cm
+                        <p className="text-lg font-semibold">
+                          {Math.round(blockCalculation.crownHeight * 100)} cm
                         </p>
+                        {blockCalculation.isOptimal && (
+                          <span className="text-xs text-green-600 font-medium">✓ opt.</span>
+                        )}
                       </div>
                       
                       <div className="space-y-2">
