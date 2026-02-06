@@ -169,9 +169,7 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
     rateKey: keyof ConstructionMaterialRates;
   } | null>(null);
   
-  // Track if user manually overrode the quantity for wykop
-  const [customQuantityOverride, setCustomQuantityOverride] = useState(false);
-  
+  // customQuantityOverride removed - now using per-item customOverride on ExcavationLineItem
   // VAT selection
   const [vatRate, setVatRate] = useState<VatRate>(23);
   
@@ -444,10 +442,12 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
         if (item.id === 'piasek_zasypka' && !item.customOverride) {
           return { ...item, quantity: sandForBackfill, netValue: sandForBackfill * item.rate };
         }
-        if (item.id === 'drenaz') {
+        if (item.id === 'drenaz' && !item.customOverride) {
           return { ...item, quantity: drainageQty, netValue: drainageQty * item.rate, hidden: !drainageEnabled };
+        } else if (item.id === 'drenaz' && item.customOverride) {
+          return { ...item, hidden: !drainageEnabled };
         }
-        if (item.id === 'zakopanie') {
+        if (item.id === 'zakopanie' && !item.customOverride) {
           return { ...item, quantity: backfillVolume, netValue: backfillVolume * item.rate };
         }
         return item;
@@ -799,7 +799,7 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
     
     setLineItems(prev => prev.map(item => {
       // Update wykop quantity
-      if (item.id === 'wykop' && item.unit === 'm3' && !customQuantityOverride) {
+      if (item.id === 'wykop' && item.unit === 'm3' && !item.customOverride) {
         return {
           ...item,
           quantity: excavationVolume,
@@ -807,7 +807,7 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
         };
       }
       // Update wywoz quantity (reduced by reused earth)
-      if (item.id === 'wywoz' && item.unit === 'm3' && !customQuantityOverride) {
+      if (item.id === 'wywoz' && item.unit === 'm3' && !item.customOverride) {
         return {
           ...item,
           quantity: wywozVolume,
@@ -816,7 +816,7 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
       }
       return item;
     }));
-  }, [excavationVolume, customQuantityOverride, backfillVolume, reusePercent]);
+  }, [excavationVolume, backfillVolume, reusePercent]);
 
   // Save excavation rate to global settings
   const handleSaveRateToSettings = async () => {
@@ -873,7 +873,7 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
       if (field === 'unit') {
         if (value === 'm3') {
           // When switching to m3, only reset to calculated volume if not manually overridden
-          if (!customQuantityOverride) {
+          if (!updated.customOverride) {
             updated.quantity = excavationVolume;
           }
           updated.netValue = updated.quantity * updated.rate;
@@ -881,9 +881,9 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
           updated.netValue = updated.rate;
         }
       } else if (field === 'quantity' || field === 'rate') {
-        // Mark as manually overridden when user changes quantity for wykop
-        if (id === 'wykop' && field === 'quantity') {
-          setCustomQuantityOverride(true);
+        // Mark as manually overridden when user changes quantity
+        if (field === 'quantity') {
+          updated.customOverride = true;
         }
         // For wykop/wywoz, unit can be m3 or ryczalt
         // For podsypka/drenaz, always multiply quantity * rate
@@ -940,18 +940,31 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
     }
   };
 
-  // Reset quantity to calculated volume
-  const resetQuantityToCalculated = () => {
-    setCustomQuantityOverride(false);
+  // Get expected (auto-calculated) quantity for any excavation line item
+  const getExpectedExcavationQuantity = useCallback((id: string): number => {
+    const reusedVolume = backfillVolume * (reusePercent / 100);
+    switch (id) {
+      case 'wykop': return excavationVolume;
+      case 'wywoz': return Math.max(0, excavationVolume - reusedVolume);
+      case 'podsypka': return excavationArea * sandBeddingHeight;
+      case 'piasek_zasypka': return Math.max(0, backfillVolume - reusedVolume);
+      case 'drenaz': return 2 * (excLength + excWidth);
+      case 'zakopanie': return backfillVolume;
+      default: return 0;
+    }
+  }, [excavationVolume, backfillVolume, reusePercent, excavationArea, sandBeddingHeight, excLength, excWidth]);
+
+  // Reset any excavation line item quantity to calculated value
+  const resetExcavationItemQuantity = (id: string) => {
+    const expectedQty = getExpectedExcavationQuantity(id);
     setLineItems(prev => prev.map(item => {
-      if (item.id === 'wykop' && item.unit === 'm3') {
-        return {
-          ...item,
-          quantity: excavationVolume,
-          netValue: excavationVolume * item.rate,
-        };
-      }
-      return item;
+      if (item.id !== id) return item;
+      return {
+        ...item,
+        quantity: expectedQty,
+        customOverride: false,
+        netValue: expectedQty * item.rate,
+      };
     }));
   };
 
@@ -1295,7 +1308,12 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
                       {/* Wykop and Wywóz */}
                       {lineItems.filter(item => !item.hidden && !item.groupId && (item.id === 'wykop' || item.id === 'wywoz')).map((item) => (
                         <TableRow key={item.id}>
-                          <TableCell className="font-medium">{item.name}</TableCell>
+                          <TableCell className="font-medium">
+                            {item.name}
+                            {item.customOverride && (
+                              <span className="ml-2 text-xs text-warning">(zmieniono)</span>
+                            )}
+                          </TableCell>
                           <TableCell className="text-right">
                             <div className="flex items-center justify-end gap-1">
                               <Input
@@ -1306,14 +1324,14 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
                                 onChange={(e) => updateLineItem(item.id, 'quantity', parseFloat(e.target.value) || 0)}
                                 className="input-field w-20 text-right"
                               />
-                              {item.id === 'wykop' && item.unit === 'm3' && customQuantityOverride && (
+                              {item.customOverride && (
                                 <Button
                                   type="button"
                                   variant="ghost"
                                   size="icon"
-                                  className="h-8 w-8"
-                                  onClick={resetQuantityToCalculated}
-                                  title={`Przywróć obliczoną wartość: ${excavationVolume.toFixed(1)} m³`}
+                                  className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                                  onClick={() => resetExcavationItemQuantity(item.id)}
+                                  title={`Przywróć: ${getExpectedExcavationQuantity(item.id).toFixed(1)} m³`}
                                 >
                                   <RotateCcw className="h-4 w-4" />
                                 </Button>
@@ -1474,7 +1492,12 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
                       {/* Remaining items (drenaż, zakopanie) */}
                       {lineItems.filter(item => !item.hidden && !item.groupId && item.id !== 'wykop' && item.id !== 'wywoz').map((item) => (
                         <TableRow key={item.id}>
-                          <TableCell className="font-medium">{item.name}</TableCell>
+                          <TableCell className="font-medium">
+                            {item.name}
+                            {item.customOverride && (
+                              <span className="ml-2 text-xs text-warning">(zmieniono)</span>
+                            )}
+                          </TableCell>
                           <TableCell className="text-right">
                             <div className="flex items-center justify-end gap-1">
                               <Input
@@ -1485,6 +1508,18 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
                                 onChange={(e) => updateLineItem(item.id, 'quantity', parseFloat(e.target.value) || 0)}
                                 className="input-field w-20 text-right"
                               />
+                              {item.customOverride && (
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                                  onClick={() => resetExcavationItemQuantity(item.id)}
+                                  title={`Przywróć: ${getExpectedExcavationQuantity(item.id).toFixed(1)}`}
+                                >
+                                  <RotateCcw className="h-4 w-4" />
+                                </Button>
+                              )}
                             </div>
                           </TableCell>
                           <TableCell>
