@@ -15,17 +15,18 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { 
   Settings as SettingsIcon, 
   Building, 
-  Shovel,
   Save,
   Mail,
   FileText,
-  Images
+  Images,
+  BadgePercent
 } from 'lucide-react';
 import { CompanySettings, defaultEmailTemplate } from '@/types/configurator';
 import { ExcavationSettings } from '@/types/offers';
 import { toast } from 'sonner';
 import { CompanyDescriptionSettings } from './settings/CompanyDescriptionSettings';
 import { PortfolioSettings } from './settings/PortfolioSettings';
+import { DefaultRatesSettings } from './settings/DefaultRatesSettings';
 
 interface SettingsDialogProps {
   open: boolean;
@@ -94,10 +95,14 @@ export function SettingsDialog({
 
         <Tabs defaultValue="company" className="w-full">
           <div className="px-6 pt-4">
-            <TabsList className="w-full grid grid-cols-4">
+            <TabsList className="w-full grid grid-cols-5">
               <TabsTrigger value="company" className="text-xs">
                 <Building className="w-4 h-4 mr-1" />
                 Firma
+              </TabsTrigger>
+              <TabsTrigger value="rates" className="text-xs">
+                <BadgePercent className="w-4 h-4 mr-1" />
+                Stawki
               </TabsTrigger>
               <TabsTrigger value="description" className="text-xs">
                 <FileText className="w-4 h-4 mr-1" />
@@ -241,84 +246,16 @@ export function SettingsDialog({
                   </div>
                 </div>
               </div>
+            </TabsContent>
 
-              <Separator />
-
-              {/* Excavation Settings */}
-              <div>
-                <h3 className="font-medium flex items-center gap-2 mb-4">
-                  <Shovel className="w-4 h-4 text-primary" />
-                  Roboty ziemne
-                </h3>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="pricePerM3">Cena za m³ wykopu (PLN)</Label>
-                    <Input
-                      id="pricePerM3"
-                      type="number"
-                      min="0"
-                      step="10"
-                      value={excavation.pricePerM3}
-                      onChange={(e) => setExcavation({ 
-                        ...excavation, 
-                        pricePerM3: parseFloat(e.target.value) || 0 
-                      })}
-                      className="input-field"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="removalPrice">Ryczałt za wywóz (PLN)</Label>
-                    <Input
-                      id="removalPrice"
-                      type="number"
-                      min="0"
-                      step="100"
-                      value={excavation.removalFixedPrice}
-                      onChange={(e) => setExcavation({ 
-                        ...excavation, 
-                        removalFixedPrice: parseFloat(e.target.value) || 0 
-                      })}
-                      className="input-field"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="marginWidth">Margines boczny (m)</Label>
-                    <Input
-                      id="marginWidth"
-                      type="number"
-                      min="0"
-                      step="0.1"
-                      value={excavation.marginWidth}
-                      onChange={(e) => setExcavation({ 
-                        ...excavation, 
-                        marginWidth: parseFloat(e.target.value) || 0 
-                      })}
-                      className="input-field"
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Dodatkowa szerokość z każdej strony basenu
-                    </p>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="marginDepth">Margines głębokości (m)</Label>
-                    <Input
-                      id="marginDepth"
-                      type="number"
-                      min="0"
-                      step="0.1"
-                      value={excavation.marginDepth}
-                      onChange={(e) => setExcavation({ 
-                        ...excavation, 
-                        marginDepth: parseFloat(e.target.value) || 0 
-                      })}
-                      className="input-field"
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Dodatkowa głębokość wykopu
-                    </p>
-                  </div>
-                </div>
-              </div>
+            {/* Rates Tab */}
+            <TabsContent value="rates" className="mt-0">
+              <DefaultRatesSettings
+                excavation={excavation}
+                onExcavationChange={setExcavation}
+                company={company}
+                onCompanyChange={setCompany}
+              />
             </TabsContent>
 
             {/* Description Tab */}
