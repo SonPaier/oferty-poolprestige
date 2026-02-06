@@ -2252,7 +2252,7 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
                             id="block-layers"
                             type="number"
                             min="1"
-                            max="20"
+                            max={Math.floor(dimensions.depth / (blockHeight / 100))}
                             step="1"
                             value={customBlockLayers ?? blockCalculation.layers}
                             onChange={(e) => {
@@ -2329,11 +2329,13 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
                               id="wp-block-layers"
                               type="number"
                               min="1"
-                              max="20"
+                              max={Math.floor((dimensions.depth - (dimensions.wadingPool?.depth || 0)) / (blockHeight / 100))}
                               step="1"
                               value={wadingPoolBlockCalc.layers}
                               onChange={(e) => {
-                                const val = parseInt(e.target.value) || 0;
+                                const wpWallHeight = dimensions.depth - (dimensions.wadingPool?.depth || 0);
+                                const maxLayers = Math.floor(wpWallHeight / (blockHeight / 100));
+                                const val = Math.min(parseInt(e.target.value) || 0, maxLayers);
                                 setCustomWadingPoolLayers(val > 0 ? val : undefined);
                               }}
                               className="input-field w-20"
