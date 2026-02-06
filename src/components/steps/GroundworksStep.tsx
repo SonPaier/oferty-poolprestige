@@ -2278,9 +2278,6 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
                               <RotateCcw className="w-4 h-4" />
                             </Button>
                           )}
-                          <span className="text-xs text-muted-foreground">
-                            (wyl: {calculateTotalBlocks(dimensions.length, dimensions.width, dimensions.depth).layers})
-                          </span>
                         </div>
                       </div>
                       
