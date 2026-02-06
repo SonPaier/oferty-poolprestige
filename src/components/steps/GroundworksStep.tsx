@@ -284,8 +284,10 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
   // Calculate wading pool blocks (2 non-shared walls: width + length)
   const wadingPoolBlockCalc = useMemo(() => {
     if (!dimensions.wadingPool?.enabled || constructionTechnology !== 'masonry') return null;
-    return calculateBlockLayers(dimensions.wadingPool.depth, blockHeight);
-  }, [dimensions.wadingPool?.enabled, dimensions.wadingPool?.depth, constructionTechnology, blockHeight]);
+    // Wall height = pool depth - wading pool depth (brodzik walls go from pool floor up to shallow depth)
+    const wallHeight = dimensions.depth - (dimensions.wadingPool.depth || 0);
+    return calculateBlockLayers(wallHeight, blockHeight);
+  }, [dimensions.wadingPool?.enabled, dimensions.wadingPool?.depth, dimensions.depth, constructionTechnology, blockHeight]);
   
   const wadingPoolBlocks = useMemo(() => {
     if (!wadingPoolBlockCalc || !dimensions.wadingPool?.enabled) return 0;
