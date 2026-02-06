@@ -1,142 +1,60 @@
 
 
-# Plan: Ocieplenie basenu, głębokość wykopu i zasypka
+# Plan: Automatyczne obliczanie strzemion (słupy + wieniec)
 
-## Cel
-1. Dodanie w sekcji **Prace budowlane** opcji ocieplenia:
-   - **Dno**: brak / XPS fundamentowy 5cm / XPS fundamentowy 10cm
-   - **Ściany**: brak / Hydropian 10cm / Styrodur 10cm / Piana PUR 5cm
-2. **Poprawienie formuły głębokości wykopu** - obecnie nie uwzględnia wszystkich warstw
-3. Dodanie w sekcji **Roboty ziemne** pozycji **"Zasypka"** - ilość ziemi do zakopania wykopu
+## Obecny stan
+Strzemiona 18x18 mają w kodzie `positions: []` i `totalQuantity: 0` - nie sa automatycznie obliczane. Uzytkownik musi recznie wpisac ilosc.
 
-## Poprawiona formuła głębokości wykopu
+## Nowa logika obliczen
 
-### Obecna (błędna):
+Strzemiona rozmieszczone co **20 cm** (0.20m) wzdluz:
+
+### 1. Slupy
+- Wysokosc slupa = glebokosc basenu - wysokosc wienca
+- Strzemiona na 1 slup = ceil(wysokosc slupa / 0.20)
+- Laczna ilosc = strzemiona na slup x liczba slupow
+
+### 2. Wieniec
+- Obwod wienca = 2 x (dlugosc + szerokosc)
+- Strzemiona na wieniec = ceil(obwod / 0.20)
+
+### 3. Suma
 ```
-Głębokość wykopu = głębokość basenu + margines (1m)
-```
-
-### Poprawna formuła:
-```
-Głębokość wykopu = głębokość basenu + płyta denna + ocieplenie dna + chudziak + podsypka
-```
-
-| Warstwa | Grubość domyślna |
-|---------|------------------|
-| Głębokość basenu | 1.5m (zmienna) |
-| Płyta denna | 20cm |
-| Ocieplenie dna (opcja) | 0 / 5cm / 10cm |
-| Chudziak (B15) | 10cm |
-| Podsypka piaskowa | 10cm |
-
-### Dla basenu 8×4×1.5m bez ocieplenia:
-```
-Głębokość wykopu = 1.5 + 0.2 + 0 + 0.1 + 0.1 = 1.9m
+Strzemiona = (ceil(wys_slupa / 0.20) x ilosc_slupow) + ceil(obwod / 0.20)
 ```
 
-### Z ociepleniem XPS 5cm:
-```
-Głębokość wykopu = 1.5 + 0.2 + 0.05 + 0.1 + 0.1 = 1.95m
-```
+### Przyklad (basen 8x4x1.5m, wieniec 0.18m, 8 slupow)
+- Wysokosc slupa: 1.5 - 0.18 = 1.32m
+- Strzemiona/slup: ceil(1.32 / 0.20) = 7
+- Strzemiona slupy: 7 x 8 = 56 szt.
+- Obwod: 2 x (8 + 4) = 24m
+- Strzemiona wieniec: ceil(24 / 0.20) = 120 szt.
+- **Razem: 176 szt.**
 
-## Obliczenia dla basenu 8×4×1.5m
+## Zmiany w kodzie
 
-### Wymiary wykopu (z marginesem 1m na boki)
-- Długość wykopu: 8 + 2 = **10m**
-- Szerokość wykopu: 4 + 2 = **6m**
-- Głębokość wykopu (bez ocieplenia): 1.5 + 0.2 + 0.1 + 0.1 = **1.9m**
+### Plik: `src/components/groundworks/ReinforcementSection.tsx`
 
-### Objętości
+1. **Dodanie nowej funkcji obliczeniowej** `calculateStirrups`:
+   - Parametry: length, width, depth, crownHeight, columnCount
+   - Zwraca: { columnsQty, crownQty, total }
 
-| Element | Wzór | Wynik |
-|---------|------|-------|
-| **Objętość wykopu** | 10 × 6 × 1.9 | **114 m³** |
-| **Podsypka piaskowa** | 10 × 6 × 0.1 | **6 m³** |
+2. **Rozszerzenie `calculatedPositions`** o dane strzemion (ilosc dla slupow i wienca)
 
-### Wymiary zewnętrzne konstrukcji basenu
-- Grubość ścian (bloczek): 0.24m
-- Grubość płyty dennej: 0.20m
-- Grubość chudziaka: 0.10m
+3. **Zmiana inicjalizacji strzemion** w `useEffect`:
+   - Dodanie `positions` z dwoma pozycjami: "Slupy" i "Wieniec"
+   - Automatyczne obliczanie `totalQuantity`
+   - Ustawienie `isExpanded: true` aby pokazac obliczenia
 
-**Bez ocieplenia:**
-- Długość zewn.: 8 + (0.24 × 2) = **8.48m**
-- Szerokość zewn.: 4 + (0.24 × 2) = **4.48m**
-- Wysokość konstrukcji: 1.5 + 0.2 + 0.1 = **1.8m** (głębokość + płyta + chudziak)
+4. **Aktualizacja `useEffect` synchronizacji** (meshSize/unit) aby uwzgledniac strzemiona przy przeliczaniu
 
-**Objętość konstrukcji:** 8.48 × 4.48 × 1.8 = **68.4 m³**
+5. Strzemiona widoczne tylko dla technologii **murowanej** (masonry) - przy lanej nie ma slupow ani wienca z bloczkow
 
-### Obliczenie zasypki
-```
-Zasypka = Objętość wykopu - Podsypka - Konstrukcja
-Zasypka = 114 - 6 - 68.4 = 39.6 m³
-```
+## Wyswietlanie obliczen
 
-### Z ociepleniem (XPS dno 5cm + Styrodur ściany 10cm)
-- Głębokość wykopu: 1.5 + 0.2 + 0.05 + 0.1 + 0.1 = **1.95m**
-- Objętość wykopu: 10 × 6 × 1.95 = **117 m³**
-- Wymiary zewn. konstrukcji: 8.68 × 4.68 × 1.85m
-- Objętość konstrukcji: **75.1 m³**
-- **Zasypka: 117 - 6 - 75.1 = 35.9 m³**
+Po rozwinieciu wiersza "Strzemiona 18x18" uzytkownik zobaczy:
+- **Slupy**: ceil(1.32 / 0.20) x 8 = 56 szt.
+- **Wieniec**: ceil(24 / 0.20) = 120 szt.
 
-## Szczegóły techniczne
-
-### 1. Nowe typy w `src/types/offers.ts`
-
-```
-FloorInsulationType: 'none' | 'xps-5cm' | 'xps-10cm'
-WallInsulationType: 'none' | 'hydropian-10cm' | 'styrodur-10cm' | 'pur-5cm'
-
-Grubości:
-- XPS 5cm = 0.05m
-- XPS 10cm = 0.10m
-- Hydropian/Styrodur 10cm = 0.10m
-- PUR 5cm = 0.05m
-```
-
-### 2. Modyfikacja `src/components/steps/GroundworksStep.tsx`
-
-**Nowe stany:**
-- `floorInsulation` - typ ocieplenia dna
-- `wallInsulation` - typ ocieplenia ścian
-
-**Zmiana formuły głębokości wykopu:**
-```typescript
-// Poprawiona formuła głębokości wykopu
-const floorInsThickness = floorInsulationThickness[floorInsulation];
-const excDepth = dimensions.depth + floorSlabThickness + floorInsThickness + leanConcreteHeight + sandBeddingHeight;
-```
-
-**Nowa pozycja "Zasypka" w tabeli robót ziemnych:**
-- Automatycznie obliczana na podstawie objętości wykopu, podsypki i konstrukcji
-
-**UI - sekcja ocieplenia w zakładce "Prace budowlane":**
-- Select dla ocieplenia dna (XPS 5cm / 10cm / brak)
-- Select dla ocieplenia ścian (Hydropian / Styrodur / PUR / brak)
-
-### 3. Nowe stawki materiałowe
-
-Rozszerzenie `ConstructionMaterialRates` o:
-- `hydropian10cm` - stawka za m²
-- `purFoam5cm` - stawka za m²
-(XPS już istnieje jako `styrodur5cm` i `styrodur10cm`)
-
-## Pliki do modyfikacji
-
-1. **`src/types/offers.ts`** - typy ocieplenia i ich grubości
-2. **`src/types/configurator.ts`** - nowe stawki w ConstructionMaterialRates
-3. **`src/components/steps/GroundworksStep.tsx`**:
-   - Nowe stany ocieplenia
-   - Poprawiona formuła głębokości wykopu
-   - Pozycja "Zasypka" w tabeli robót ziemnych
-   - UI dla wyboru ocieplenia
-   - Pozycje materiałowe dla ocieplenia
-
-## Kroki implementacji
-
-1. Rozszerzenie typów o typy ocieplenia i grubości
-2. Dodanie nowych stawek materiałowych (hydropian, PUR)
-3. Poprawienie formuły głębokości wykopu w GroundworksStep
-4. Dodanie stanów ocieplenia i ich UI w sekcji Prace budowlane
-5. Dodanie pozycji "Zasypka" do tabeli robót ziemnych
-6. Dodanie pozycji materiałowych dla ocieplenia
+Kazda podpozycja z mozliwoscia recznej edycji i resetu (tak jak pozostale pozycje zbrojenia).
 
