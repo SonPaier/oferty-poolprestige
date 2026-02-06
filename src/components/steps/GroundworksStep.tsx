@@ -773,10 +773,10 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
   const b25TotalNet = b25TotalRounded * b25ConcreteGroup.rate;
   
   // ============ LABOR COST SECTION ============
-  // Base rate: 35,000 PLN per 50m² = 700 PLN/m²
-  const LABOR_BASE_RATE = 700; // PLN/m²
-  const LABOR_STAIRS_RATE = 1000; // PLN/m²
-  const LABOR_WADING_RATE = 1000; // PLN/m²
+  // Use rates from settings (with fallback to defaults)
+  const LABOR_BASE_RATE = materialRates.laborPoolRate ?? 700; // PLN/m²
+  const LABOR_STAIRS_RATE = materialRates.laborStairsRate ?? 1000; // PLN/m²
+  const LABOR_WADING_RATE = materialRates.laborWadingRate ?? 1000; // PLN/m²
   
   // Pool floor area (length * width)
   const poolFloorArea = Math.round(dimensions.length * dimensions.width);
@@ -869,6 +869,16 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
     }));
   }, [poolFloorArea, stairsProjectionArea, wadingPoolProjectionArea, dimensions.stairs?.enabled, dimensions.wadingPool?.enabled]);
   
+  // Helper to get labor rate key from item id
+  const getLaborRateKey = (id: string): keyof ConstructionMaterialRates | null => {
+    switch (id) {
+      case 'labor_pool': return 'laborPoolRate';
+      case 'labor_stairs': return 'laborStairsRate';
+      case 'labor_wading': return 'laborWadingRate';
+      default: return null;
+    }
+  };
+
   const updateLaborItem = (id: string, field: keyof LaborLineItem, value: any) => {
     setLaborItems(prev => prev.map(item => {
       if (item.id !== id) return item;
@@ -879,6 +889,18 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
       }
       if (field === 'rate') {
         updated.netValue = updated.quantity * updated.rate;
+        // Track rate change for confirmation
+        const rateKey = getLaborRateKey(id);
+        if (rateKey) {
+          if (value !== materialRates[rateKey]) {
+            setChangedMaterialRates(prev => ({ ...prev, [id]: value }));
+          } else {
+            setChangedMaterialRates(prev => {
+              const { [id]: _, ...rest } = prev;
+              return rest;
+            });
+          }
+        }
       }
       if (field === 'unit') {
         const newUnit = value as LaborUnitType;
@@ -896,6 +918,23 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
       }
       return updated;
     }));
+  };
+
+  // Confirm labor rate change - opens dialog
+  const confirmLaborRateChange = (id: string) => {
+    const rateKey = getLaborRateKey(id);
+    const newRate = changedMaterialRates[id];
+    const item = laborItems.find(i => i.id === id);
+    if (rateKey && newRate !== undefined && item) {
+      setPendingRateChange({
+        materialId: id,
+        materialName: item.name,
+        oldRate: materialRates[rateKey],
+        newRate,
+        rateKey,
+      });
+      setShowMaterialRateDialog(true);
+    }
   };
   
   const getExpectedLaborQuantity = useCallback((id: string): number => {
@@ -2515,6 +2554,18 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
                                 onChange={(e) => updateLaborItem(item.id, 'rate', parseFloat(e.target.value) || 0)}
                                 className="input-field w-[80px] text-right"
                               />
+                              {changedMaterialRates[item.id] !== undefined && (
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8 text-green-600"
+                                  onClick={() => confirmLaborRateChange(item.id)}
+                                  title="Zatwierdź zmianę stawki"
+                                >
+                                  <Check className="h-4 w-4" />
+                                </Button>
+                              )}
                             </div>
                           </TableCell>
                           <TableCell className="text-right font-semibold">
