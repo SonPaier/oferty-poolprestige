@@ -105,10 +105,15 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
     dimensions.depth + excavationSettings.marginDepth
   );
   
-  // Editable rate - track original and current
-  const [excavationRate, setExcavationRate] = useState(excavationSettings.pricePerM3);
+  // Dialog state for excavation rate changes
   const [showRateDialog, setShowRateDialog] = useState(false);
-  const [rateChanged, setRateChanged] = useState(false);
+  const [pendingExcavationRateChange, setPendingExcavationRateChange] = useState<{
+    itemId: string;
+    itemName: string;
+    oldRate: number;
+    newRate: number;
+    rateKey: 'pricePerM3' | 'removalFixedPrice';
+  } | null>(null);
   
   // Material rate change dialog state
   const [showMaterialRateDialog, setShowMaterialRateDialog] = useState(false);
@@ -598,56 +603,46 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
   // Recalculate volume when dimensions change
   const excavationVolume = excLength * excWidth * excDepth;
   
-  // Update line items when dimensions or rate changes
+  // Update line items when dimensions change (auto-update quantity only if not manually overridden)
   useEffect(() => {
     setLineItems(prev => prev.map(item => {
-      if (item.id === 'wykop') {
-        // Only auto-update quantity if user hasn't manually overridden it
-        const newQuantity = (item.unit === 'm3' && !customQuantityOverride) 
-          ? excavationVolume 
-          : item.quantity;
+      if (item.id === 'wykop' && item.unit === 'm3' && !customQuantityOverride) {
         return {
           ...item,
-          quantity: newQuantity,
-          rate: excavationRate,
-          netValue: item.unit === 'm3' ? newQuantity * excavationRate : item.rate,
+          quantity: excavationVolume,
+          netValue: excavationVolume * item.rate,
         };
       }
       return item;
     }));
-  }, [excavationVolume, excavationRate, customQuantityOverride]);
+  }, [excavationVolume, customQuantityOverride]);
 
-  // Track if rate changed from settings
-  useEffect(() => {
-    setRateChanged(excavationRate !== excavationSettings.pricePerM3);
-  }, [excavationRate, excavationSettings.pricePerM3]);
-
-  // Handle rate change - just update local state
-  const handleRateChange = (newRate: number) => {
-    setExcavationRate(newRate);
-  };
-
-  // Show dialog when user clicks confirm button
-  const handleConfirmRateChange = () => {
-    if (rateChanged) {
-      setShowRateDialog(true);
-    }
-  };
-
-  // Save rate to global settings
+  // Save excavation rate to global settings
   const handleSaveRateToSettings = async () => {
-    await setExcavationSettings({
-      ...excavationSettings,
-      pricePerM3: excavationRate,
-    });
-    toast.success('Stawka zapisana w ustawieniach');
+    if (pendingExcavationRateChange) {
+      await setExcavationSettings({
+        ...excavationSettings,
+        [pendingExcavationRateChange.rateKey]: pendingExcavationRateChange.newRate,
+      });
+      toast.success('Stawka zapisana w ustawieniach');
+    }
     setShowRateDialog(false);
-    setRateChanged(false);
+    setPendingExcavationRateChange(null);
   };
 
   // Keep rate only for this offer
   const handleKeepRateLocal = () => {
     setShowRateDialog(false);
+    setPendingExcavationRateChange(null);
+  };
+
+  // Get excavation rate key from item id
+  const getExcavationRateKey = (id: string): 'pricePerM3' | 'removalFixedPrice' | null => {
+    switch (id) {
+      case 'wykop': return 'pricePerM3';
+      case 'wywoz': return 'removalFixedPrice';
+      default: return null;
+    }
   };
 
   // Update line item
@@ -676,6 +671,24 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
         updated.netValue = updated.unit === 'm3' 
           ? updated.quantity * updated.rate 
           : updated.rate;
+        
+        // Check if rate changed - prompt dialog for saving to settings
+        if (field === 'rate') {
+          const rateKey = getExcavationRateKey(id);
+          if (rateKey) {
+            const settingsRate = excavationSettings[rateKey];
+            if (value !== settingsRate) {
+              setPendingExcavationRateChange({
+                itemId: id,
+                itemName: item.name,
+                oldRate: settingsRate,
+                newRate: value,
+                rateKey,
+              });
+              setShowRateDialog(true);
+            }
+          }
+        }
       }
       
       return updated;
@@ -703,10 +716,11 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
   const totalGross = totalNet + vatAmount;
 
   // Build excavation data for state
+  const wykopItem = lineItems.find(i => i.id === 'wykop');
   const excavation: ExcavationData = {
     excavationVolume,
-    excavationPricePerM3: excavationRate,
-    excavationTotal: lineItems.find(i => i.id === 'wykop')?.netValue || 0,
+    excavationPricePerM3: wykopItem?.rate || excavationSettings.pricePerM3,
+    excavationTotal: wykopItem?.netValue || 0,
     removalFixedPrice: lineItems.find(i => i.id === 'wywoz')?.netValue || 0,
   };
 
@@ -917,39 +931,11 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
                 </div>
 
                 <div className="p-4 rounded-lg bg-primary/10 border border-primary/20">
-                  <div className="flex justify-between items-center">
-                    <div>
-                      <p className="text-xs text-muted-foreground">Objętość wykopu</p>
-                      <p className="text-2xl font-bold text-primary">
-                        {excavationVolume.toFixed(1)} m³
-                      </p>
-                    </div>
-                    <div className="text-right space-y-2">
-                      <Label htmlFor="exc-rate" className="text-xs text-muted-foreground">Stawka za m³</Label>
-                      <div className="flex items-center gap-2">
-                        <Input
-                          id="exc-rate"
-                          type="number"
-                          min="0"
-                          step="10"
-                          value={excavationRate}
-                          onChange={(e) => handleRateChange(parseFloat(e.target.value) || 0)}
-                          className="input-field w-28 text-right"
-                        />
-                        <span className="text-sm text-muted-foreground">zł/m³</span>
-                        {rateChanged && (
-                          <Button 
-                            size="sm" 
-                            variant="outline"
-                            onClick={handleConfirmRateChange}
-                            className="ml-2"
-                          >
-                            <Check className="w-4 h-4 mr-1" />
-                            Zatwierdź
-                          </Button>
-                        )}
-                      </div>
-                    </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Objętość wykopu</p>
+                    <p className="text-2xl font-bold text-primary">
+                      {excavationVolume.toFixed(1)} m³
+                    </p>
                   </div>
                 </div>
               </div>
@@ -1616,12 +1602,16 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
           <AlertDialogHeader>
             <AlertDialogTitle className="flex items-center gap-2">
               <Save className="w-5 h-5 text-primary" />
-              Zmiana stawki za wykop
+              Zmiana stawki
             </AlertDialogTitle>
             <AlertDialogDescription>
-              Zmieniono stawkę z {formatPrice(excavationSettings.pricePerM3)}/m³ na {formatPrice(excavationRate)}/m³.
-              <br /><br />
-              Czy chcesz zapisać nową stawkę w ustawieniach, aby była używana dla przyszłych ofert?
+              {pendingExcavationRateChange && (
+                <>
+                  Zmieniono stawkę dla <strong>{pendingExcavationRateChange.itemName}</strong> z {formatPrice(pendingExcavationRateChange.oldRate)} na {formatPrice(pendingExcavationRateChange.newRate)}.
+                  <br /><br />
+                  Czy chcesz zapisać nową stawkę w ustawieniach, aby była używana dla przyszłych ofert?
+                </>
+              )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
