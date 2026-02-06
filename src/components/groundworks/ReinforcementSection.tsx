@@ -6,7 +6,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { TableCell, TableRow } from '@/components/ui/table';
 import { formatPrice } from '@/lib/calculations';
-import { PoolDimensions } from '@/types/configurator';
+import { PoolDimensions, ConstructionMaterialRates, defaultConstructionMaterialRates } from '@/types/configurator';
 
 // Types
 export type ReinforcementType = 'traditional' | 'composite';
@@ -331,7 +331,8 @@ function mbToKg(mb: number, diameter: number): number {
 export function useReinforcement(
   dimensions: PoolDimensions,
   floorSlabThickness: number,
-  constructionTechnology: ConstructionTechnology
+  constructionTechnology: ConstructionTechnology,
+  materialRates: ConstructionMaterialRates = defaultConstructionMaterialRates
 ) {
   const [reinforcementType, setReinforcementType] = useState<ReinforcementType>('traditional');
   const [unit, setUnit] = useState<ReinforcementUnit>('mb');
@@ -358,7 +359,7 @@ export function useReinforcement(
   // Initialize/update items when type changes
   useEffect(() => {
     const mainDiameter = reinforcementType === 'traditional' ? 12 : 8;
-    const mainRate = reinforcementType === 'traditional' ? 8.50 : 12.00;
+    const mainRate = reinforcementType === 'traditional' ? materialRates.zbrojenie12mm : materialRates.zbrojenieKompozytowe;
     
     const createPositions = (): ReinforcementPosition[] => {
       const positions: ReinforcementPosition[] = [
@@ -422,10 +423,10 @@ export function useReinforcement(
         name: 'Zbrojenie 12mm',
         diameter: 12,
         unit,
-        rate: 7.00,
+        rate: materialRates.zbrojenie12mm,
         positions: positions12,
         totalQuantity: unit === 'mb' ? total12 : mbToKg(total12, 12),
-        netValue: (unit === 'mb' ? total12 : mbToKg(total12, 12)) * 7.00,
+        netValue: (unit === 'mb' ? total12 : mbToKg(total12, 12)) * materialRates.zbrojenie12mm,
         isExpanded: true,
         supportsKg: true,
       });
@@ -439,10 +440,10 @@ export function useReinforcement(
         name: 'Zbrojenie kompozytowe 8mm',
         diameter: 8,
         unit: 'mb', // Always mb for composite
-        rate: 3.00,
+        rate: materialRates.zbrojenieKompozytowe,
         positions: positions8,
         totalQuantity: total8, // No kg conversion for composite
-        netValue: total8 * 3.00,
+        netValue: total8 * materialRates.zbrojenieKompozytowe,
         isExpanded: true,
         supportsKg: false,
       });
@@ -454,7 +455,7 @@ export function useReinforcement(
       name: 'Zbrojenie 6mm',
       diameter: 6,
       unit,
-      rate: 6.00,
+      rate: materialRates.zbrojenie6mm,
       positions: [],
       totalQuantity: 0,
       netValue: 0,
@@ -462,13 +463,13 @@ export function useReinforcement(
       supportsKg: true,
     });
     
-    // Always add stirrups as separate item (visible in both variants) - supports kg
+    // Always add stirrups as separate item (visible in both variants)
     newItems.push({
       id: 'strzemiona',
       name: 'Strzemiona 18×18',
       diameter: 6,
       unit: 'szt.',
-      rate: 2.10,
+      rate: materialRates.strzemiona,
       positions: [],
       totalQuantity: 0,
       netValue: 0,

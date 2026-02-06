@@ -297,6 +297,35 @@ export interface ContactPersonSettings {
   photo?: string; // URL to photo in storage
 }
 
+// Construction material default rates
+export interface ConstructionMaterialRates {
+  podsypka: number;        // zł/m³
+  betonB15: number;        // zł/m³
+  betonB25: number;        // zł/m³
+  bloczek: number;         // zł/szt.
+  zbrojenie12mm: number;   // zł/kg
+  zbrojenie6mm: number;    // zł/kg
+  strzemiona: number;      // zł/szt.
+  styrodur5cm: number;     // zł/m²
+  styrodur10cm: number;    // zł/m²
+  zbrojenieKompozytowe: number; // zł/mb
+  pompogruszka: number;    // zł/szt.
+}
+
+export const defaultConstructionMaterialRates: ConstructionMaterialRates = {
+  podsypka: 150,
+  betonB15: 350,
+  betonB25: 450,
+  bloczek: 6.80,
+  zbrojenie12mm: 7.00,
+  zbrojenie6mm: 6.00,
+  strzemiona: 2.10,
+  styrodur5cm: 20,
+  styrodur10cm: 40,
+  zbrojenieKompozytowe: 3.00,
+  pompogruszka: 350,
+};
+
 export interface CompanySettings {
   name: string;
   address: string;
@@ -315,6 +344,8 @@ export interface CompanySettings {
   // New fields for public offer view
   companyDescription?: string;
   contactPerson?: ContactPersonSettings;
+  // Construction material rates
+  constructionMaterialRates?: ConstructionMaterialRates;
 }
 
 export interface EmailTemplateSettings {
@@ -346,6 +377,7 @@ export const defaultCompanySettings: CompanySettings = {
   notesTemplate: 'Oferta ważna 30 dni od daty wystawienia.',
   paymentTermsTemplate: 'Zaliczka 30% przy zamówieniu, pozostałe 70% przed montażem.',
   dueDays: 3,
+  constructionMaterialRates: defaultConstructionMaterialRates,
 };
 
 export const poolTypeLabels: Record<PoolType, string> = {
