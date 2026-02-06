@@ -91,6 +91,7 @@ interface ExcavationLineItem {
   rate: number;
   netValue: number;
   hidden?: boolean; // For items that should be hidden when disabled
+  groupId?: string; // For grouped items (e.g., 'piasek')
 }
 
 export function GroundworksStep({ onNext, onBack, excavationSettings }: GroundworksStepProps) {
@@ -140,6 +141,8 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
   
   // Drainage toggle
   const [drainageEnabled, setDrainageEnabled] = useState(false);
+  const [reusePercent, setReusePercent] = useState(0);
+  const [sandGroupExpanded, setSandGroupExpanded] = useState(true);
   
   // Track rate changes that need confirmation (instead of immediate dialog)
   const [changedExcavationRates, setChangedExcavationRates] = useState<Record<string, number>>({});
@@ -182,7 +185,7 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
     return [
       {
         id: 'wykop',
-        name: 'Wykop',
+        name: 'Wykop-koparka',
         quantity: volume,
         unit: 'm3' as UnitType,
         rate: excavationSettings.pricePerM3,
@@ -191,27 +194,37 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
       {
         id: 'wywoz',
         name: 'Wywóz ziemi',
-        quantity: volume, // domyślnie m³ na podstawie objętości wykopu
-        unit: 'm3' as UnitType, // domyślnie m³, ryczałt tylko ręcznie
-        rate: excavationSettings.removalFixedPrice, // stawka za m³
+        quantity: volume,
+        unit: 'm3' as UnitType,
+        rate: excavationSettings.removalFixedPrice,
         netValue: volume * excavationSettings.removalFixedPrice,
       },
       {
         id: 'podsypka',
-        name: 'Podsypka piaskowa',
+        name: 'Podsypka',
         quantity: podsypkaQty,
         unit: 'm3' as UnitType,
         rate: excavationSettings.podsypkaRate || 150,
         netValue: podsypkaQty * (excavationSettings.podsypkaRate || 150),
+        groupId: 'piasek',
+      },
+      {
+        id: 'piasek_zasypka',
+        name: 'Piasek do zasypu',
+        quantity: 0,
+        unit: 'm3' as UnitType,
+        rate: excavationSettings.podsypkaRate || 150,
+        netValue: 0,
+        groupId: 'piasek',
       },
       {
         id: 'drenaz',
         name: 'Drenaż opaskowy',
         quantity: 2 * (excLength + excWidth),
-        unit: 'm3' as UnitType, // will be treated as mb
+        unit: 'm3' as UnitType,
         rate: excavationSettings.drainageRate || 220,
         netValue: 2 * (excLength + excWidth) * (excavationSettings.drainageRate || 220),
-        hidden: true, // Initially hidden until enabled
+        hidden: true,
       },
     ];
   });
@@ -415,21 +428,25 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
     });
   }, [excavationArea, leanConcreteHeight, dimensions.stairs?.enabled, dimensions.wadingPool?.enabled, constructionTechnology, blockCalculation]);
   
-  // Update podsypka, drenaz, and zakopanie in lineItems when excavation dimensions change
+  // Update podsypka, piasek_zasypka, drenaz, and zakopanie in lineItems when excavation dimensions change
   useEffect(() => {
     const podsypkaQty = excavationArea * sandBeddingHeight;
     const drainageQty = 2 * (excLength + excWidth);
+    const reusedVolume = backfillVolume * (reusePercent / 100);
+    const sandForBackfill = Math.max(0, backfillVolume - reusedVolume);
     
     setLineItems(prev => {
       const updated = prev.map(item => {
         if (item.id === 'podsypka') {
           return { ...item, quantity: podsypkaQty, netValue: podsypkaQty * item.rate };
         }
+        if (item.id === 'piasek_zasypka') {
+          return { ...item, quantity: sandForBackfill, netValue: sandForBackfill * item.rate };
+        }
         if (item.id === 'drenaz') {
           return { ...item, quantity: drainageQty, netValue: drainageQty * item.rate, hidden: !drainageEnabled };
         }
         if (item.id === 'zakopanie') {
-          // Zakopanie uses its own rate from settings (defaults to same as wykop)
           return { ...item, quantity: backfillVolume, netValue: backfillVolume * item.rate };
         }
         return item;
@@ -440,7 +457,7 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
         const backfillRate = excavationSettings.backfillRate ?? excavationSettings.pricePerM3;
         updated.push({
           id: 'zakopanie',
-          name: 'Zakopanie',
+          name: 'Zakopanie-koparka',
           quantity: backfillVolume,
           unit: 'm3' as UnitType,
           rate: backfillRate,
@@ -450,7 +467,7 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
       
       return updated;
     });
-  }, [excavationArea, sandBeddingHeight, excLength, excWidth, drainageEnabled, backfillVolume, excavationSettings.backfillRate, excavationSettings.pricePerM3]);
+  }, [excavationArea, sandBeddingHeight, excLength, excWidth, drainageEnabled, backfillVolume, reusePercent, excavationSettings.backfillRate, excavationSettings.pricePerM3]);
 
   // Update B25 concrete group when dimensions change
   useEffect(() => {
@@ -776,6 +793,9 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
   // excavationVolume is already defined at line 271
   // Update line items when dimensions change (auto-update quantity only if not manually overridden)
   useEffect(() => {
+    const reusedVolume = backfillVolume * (reusePercent / 100);
+    const wywozVolume = Math.max(0, excavationVolume - reusedVolume);
+    
     setLineItems(prev => prev.map(item => {
       // Update wykop quantity
       if (item.id === 'wykop' && item.unit === 'm3' && !customQuantityOverride) {
@@ -785,17 +805,17 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
           netValue: excavationVolume * item.rate,
         };
       }
-      // Update wywoz quantity to match wykop volume (only if m3 mode, not ryczalt)
+      // Update wywoz quantity (reduced by reused earth)
       if (item.id === 'wywoz' && item.unit === 'm3' && !customQuantityOverride) {
         return {
           ...item,
-          quantity: excavationVolume,
-          netValue: excavationVolume * item.rate,
+          quantity: wywozVolume,
+          netValue: wywozVolume * item.rate,
         };
       }
       return item;
     }));
-  }, [excavationVolume, customQuantityOverride]);
+  }, [excavationVolume, customQuantityOverride, backfillVolume, reusePercent]);
 
   // Save excavation rate to global settings
   const handleSaveRateToSettings = async () => {
@@ -834,6 +854,7 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
       case 'wykop': return 'pricePerM3';
       case 'wywoz': return 'removalFixedPrice';
       case 'podsypka': return 'podsypkaRate';
+      case 'piasek_zasypka': return 'podsypkaRate';
       case 'drenaz': return 'drainageRate';
       case 'zakopanie': return 'backfillRate';
       default: return null;
@@ -873,14 +894,12 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
           updated.netValue = updated.quantity * updated.rate;
         }
         
-        // Round rate to integer for wykop and wywoz
-        if (field === 'rate' && (id === 'wykop' || id === 'wywoz')) {
+        // Round rate to integer for wykop, wywoz, and zakopanie
+        if (field === 'rate' && (id === 'wykop' || id === 'wywoz' || id === 'zakopanie')) {
           updated.rate = Math.round(updated.rate);
-          if (id === 'wykop' || id === 'wywoz') {
-            updated.netValue = updated.unit === 'm3' 
-              ? updated.quantity * updated.rate 
-              : updated.rate;
-          }
+          updated.netValue = updated.unit === 'm3' 
+            ? updated.quantity * updated.rate 
+            : updated.rate;
         }
         
         // Track rate change (don't open dialog immediately)
@@ -933,6 +952,43 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
       }
       return item;
     }));
+  };
+
+  // Piasek group calculations
+  const piasekGroupItems = lineItems.filter(item => item.groupId === 'piasek');
+  const piasekTotalQty = piasekGroupItems.reduce((s, i) => s + i.quantity, 0);
+  const piasekTotalNet = piasekGroupItems.reduce((s, i) => s + i.netValue, 0);
+  const piasekGroupRate = piasekGroupItems[0]?.rate || 0;
+  
+  const updatePiasekGroupRate = (newRate: number) => {
+    setLineItems(prev => prev.map(item => {
+      if (item.groupId === 'piasek') {
+        return { ...item, rate: newRate, netValue: item.quantity * newRate };
+      }
+      return item;
+    }));
+    if (newRate !== (excavationSettings.podsypkaRate || 150)) {
+      setChangedExcavationRates(prev => ({ ...prev, piasek_group: newRate }));
+    } else {
+      setChangedExcavationRates(prev => {
+        const { piasek_group: _, ...rest } = prev;
+        return rest;
+      });
+    }
+  };
+  
+  const confirmPiasekGroupRateChange = () => {
+    const newRate = changedExcavationRates['piasek_group'];
+    if (newRate !== undefined) {
+      setPendingExcavationRateChange({
+        itemId: 'piasek_group',
+        itemName: 'Piasek',
+        oldRate: excavationSettings.podsypkaRate || 150,
+        newRate,
+        rateKey: 'podsypkaRate',
+      });
+      setShowRateDialog(true);
+    }
   };
 
   // Calculate totals (excluding hidden items like disabled drainage)
@@ -1089,7 +1145,7 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
                   </div>
                   <div className="p-3 rounded-lg bg-muted/30 text-center">
                     <p className="text-xs text-muted-foreground">Głębokość</p>
-                    <p className="text-lg font-bold">{excDepth.toFixed(1)} m</p>
+                    <p className="text-lg font-bold">{excDepth.toFixed(2)} m</p>
                   </div>
                 </div>
                 <p className="text-sm text-muted-foreground mt-3 text-center">
@@ -1147,9 +1203,9 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
                       id="exc-depth"
                       type="number"
                       min="0.5"
-                      step="0.1"
-                      value={excDepth}
-                      onChange={(e) => setExcDepth(parseFloat(e.target.value) || 0)}
+                      step="0.01"
+                      value={excDepth.toFixed(2)}
+                      onChange={(e) => setExcDepth(Math.round((parseFloat(e.target.value) || 0) * 100) / 100)}
                       className="input-field"
                     />
                   </div>
@@ -1196,6 +1252,27 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
                   />
                   <span className="text-sm text-muted-foreground">cm</span>
                 </div>
+
+                {/* Wykorzystanie gruntu z wykopu */}
+                <div className="flex items-center gap-4 p-3 rounded-lg bg-muted/30 border border-border mt-4">
+                  <Label htmlFor="reuse-percent" className="whitespace-nowrap text-sm">Wykorzystanie gruntu z wykopu:</Label>
+                  <Input
+                    id="reuse-percent"
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="5"
+                    value={reusePercent}
+                    onChange={(e) => setReusePercent(Math.min(100, Math.max(0, parseFloat(e.target.value) || 0)))}
+                    className="input-field w-20"
+                  />
+                  <span className="text-sm text-muted-foreground">%</span>
+                  {reusePercent > 0 && (
+                    <span className="text-xs text-muted-foreground ml-2">
+                      ({(backfillVolume * reusePercent / 100).toFixed(1)} m³ gruntu ponownie wykorzystane)
+                    </span>
+                  )}
+                </div>
               </div>
 
               {/* Cost table */}
@@ -1214,7 +1291,8 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {lineItems.filter(item => !item.hidden).map((item) => (
+                      {/* Wykop and Wywóz */}
+                      {lineItems.filter(item => !item.hidden && !item.groupId && (item.id === 'wykop' || item.id === 'wywoz')).map((item) => (
                         <TableRow key={item.id}>
                           <TableCell className="font-medium">{item.name}</TableCell>
                           <TableCell className="text-right">
@@ -1242,31 +1320,148 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
                             </div>
                           </TableCell>
                           <TableCell>
-                            {item.id === 'wykop' || item.id === 'wywoz' ? (
-                              <Select
-                                value={item.unit}
-                                onValueChange={(v) => updateLineItem(item.id, 'unit', v as UnitType)}
-                              >
-                                <SelectTrigger className="w-[100px]">
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="m3">m³</SelectItem>
-                                  <SelectItem value="ryczalt">ryczałt</SelectItem>
-                                </SelectContent>
-                              </Select>
-                            ) : (
-                              <span className="text-muted-foreground">
-                                {item.id === 'drenaz' ? 'mb' : 'm³'}
-                              </span>
-                            )}
+                            <Select
+                              value={item.unit}
+                              onValueChange={(v) => updateLineItem(item.id, 'unit', v as UnitType)}
+                            >
+                              <SelectTrigger className="w-[100px]">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="m3">m³</SelectItem>
+                                <SelectItem value="ryczalt">ryczałt</SelectItem>
+                              </SelectContent>
+                            </Select>
                           </TableCell>
                           <TableCell className="text-right">
                             <div className="flex items-center justify-end gap-1">
                               <Input
                                 type="number"
                                 min="0"
-                                step={item.id === 'wykop' || item.id === 'wywoz' ? 1 : 10}
+                                step={1}
+                                value={Math.round(item.rate)}
+                                onChange={(e) => updateLineItem(item.id, 'rate', parseFloat(e.target.value) || 0)}
+                                className="input-field w-24 text-right"
+                              />
+                              {changedExcavationRates[item.id] !== undefined && (
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8 text-success hover:text-success/80 hover:bg-success/10"
+                                  onClick={() => confirmExcavationRateChange(item.id, item.name)}
+                                  title="Zatwierdź zmianę stawki"
+                                >
+                                  <Check className="h-4 w-4" />
+                                </Button>
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-right font-semibold">
+                            {formatPrice(item.netValue)}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                      
+                      {/* Piasek group header */}
+                      <TableRow className="bg-accent/5">
+                        <TableCell>
+                          <button
+                            type="button"
+                            className="flex items-center gap-2 font-medium hover:text-primary transition-colors"
+                            onClick={() => setSandGroupExpanded(!sandGroupExpanded)}
+                          >
+                            {sandGroupExpanded ? (
+                              <ChevronDown className="w-4 h-4" />
+                            ) : (
+                              <ChevronRight className="w-4 h-4" />
+                            )}
+                            Piasek
+                          </button>
+                        </TableCell>
+                        <TableCell>
+                          <span className="font-medium block text-right pr-2">
+                            {piasekTotalQty.toFixed(1)}
+                          </span>
+                        </TableCell>
+                        <TableCell className="text-muted-foreground">m³</TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex items-center justify-end gap-1">
+                            <Input
+                              type="number"
+                              min="0"
+                              step="10"
+                              value={Math.round(piasekGroupRate)}
+                              onChange={(e) => updatePiasekGroupRate(parseFloat(e.target.value) || 0)}
+                              className="input-field w-24 text-right"
+                            />
+                            {changedExcavationRates['piasek_group'] !== undefined && (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 text-success hover:text-success/80 hover:bg-success/10"
+                                onClick={confirmPiasekGroupRateChange}
+                                title="Zatwierdź zmianę stawki"
+                              >
+                                <Check className="h-4 w-4" />
+                              </Button>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-right font-semibold">
+                          {formatPrice(piasekTotalNet)}
+                        </TableCell>
+                      </TableRow>
+                      
+                      {/* Piasek sub-items */}
+                      {sandGroupExpanded && piasekGroupItems.map((subItem) => (
+                        <TableRow key={subItem.id} className="bg-background">
+                          <TableCell className="pl-10 text-muted-foreground">
+                            └ {subItem.name}
+                          </TableCell>
+                          <TableCell>
+                            <span className="block text-right pr-2 text-muted-foreground">
+                              {subItem.quantity.toFixed(1)}
+                            </span>
+                          </TableCell>
+                          <TableCell className="text-muted-foreground">m³</TableCell>
+                          <TableCell className="text-right text-muted-foreground pr-2">
+                            {piasekGroupRate.toFixed(0)}
+                          </TableCell>
+                          <TableCell className="text-right text-muted-foreground">
+                            {formatPrice(subItem.netValue)}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                      
+                      {/* Remaining items (drenaż, zakopanie) */}
+                      {lineItems.filter(item => !item.hidden && !item.groupId && item.id !== 'wykop' && item.id !== 'wywoz').map((item) => (
+                        <TableRow key={item.id}>
+                          <TableCell className="font-medium">{item.name}</TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex items-center justify-end gap-1">
+                              <Input
+                                type="number"
+                                min="0"
+                                step="0.1"
+                                value={item.quantity.toFixed(1)}
+                                onChange={(e) => updateLineItem(item.id, 'quantity', parseFloat(e.target.value) || 0)}
+                                className="input-field w-20 text-right"
+                              />
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <span className="text-muted-foreground">
+                              {item.id === 'drenaz' ? 'mb' : 'm³'}
+                            </span>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex items-center justify-end gap-1">
+                              <Input
+                                type="number"
+                                min="0"
+                                step={item.id === 'zakopanie' ? 1 : 10}
                                 value={Math.round(item.rate)}
                                 onChange={(e) => updateLineItem(item.id, 'rate', parseFloat(e.target.value) || 0)}
                                 className="input-field w-24 text-right"
