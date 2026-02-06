@@ -69,6 +69,7 @@ export interface ExcavationSettings {
   removalFixedPrice: number; // PLN fixed price for removal
   podsypkaRate: number; // PLN per m³ for sand bedding
   drainageRate: number; // PLN per mb for perimeter drainage
+  backfillRate: number; // PLN per m³ for backfill (zakopanie)
 }
 
 export const defaultExcavationSettings: ExcavationSettings = {
@@ -78,6 +79,7 @@ export const defaultExcavationSettings: ExcavationSettings = {
   removalFixedPrice: 40, // domyślna stawka za m³ (nie ryczałt)
   podsypkaRate: 150,
   drainageRate: 220,
+  backfillRate: 20, // domyślnie taka sama jak wykop
 };
 
 export function calculateExcavation(

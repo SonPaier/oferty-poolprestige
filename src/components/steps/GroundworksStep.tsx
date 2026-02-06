@@ -152,7 +152,7 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
     itemName: string;
     oldRate: number;
     newRate: number;
-    rateKey: 'pricePerM3' | 'removalFixedPrice' | 'podsypkaRate' | 'drainageRate';
+    rateKey: 'pricePerM3' | 'removalFixedPrice' | 'podsypkaRate' | 'drainageRate' | 'backfillRate';
   } | null>(null);
   
   // Material rate change dialog state
@@ -415,7 +415,7 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
     });
   }, [excavationArea, leanConcreteHeight, dimensions.stairs?.enabled, dimensions.wadingPool?.enabled, constructionTechnology, blockCalculation]);
   
-  // Update podsypka, drenaz, and zasypka in lineItems when excavation dimensions change
+  // Update podsypka, drenaz, and zakopanie in lineItems when excavation dimensions change
   useEffect(() => {
     const podsypkaQty = excavationArea * sandBeddingHeight;
     const drainageQty = 2 * (excLength + excWidth);
@@ -428,32 +428,29 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
         if (item.id === 'drenaz') {
           return { ...item, quantity: drainageQty, netValue: drainageQty * item.rate, hidden: !drainageEnabled };
         }
-        if (item.id === 'zasypka') {
-          // Zasypka rate is same as wywoz (earth transport)
-          const wywozItem = prev.find(i => i.id === 'wywoz');
-          const zasypkaRate = wywozItem?.rate || excavationSettings.removalFixedPrice;
-          return { ...item, quantity: backfillVolume, netValue: backfillVolume * zasypkaRate, rate: zasypkaRate };
+        if (item.id === 'zakopanie') {
+          // Zakopanie uses its own rate from settings (defaults to same as wykop)
+          return { ...item, quantity: backfillVolume, netValue: backfillVolume * item.rate };
         }
         return item;
       });
       
-      // Add zasypka if not present
-      if (!updated.find(item => item.id === 'zasypka')) {
-        const wywozItem = updated.find(i => i.id === 'wywoz');
-        const zasypkaRate = wywozItem?.rate || excavationSettings.removalFixedPrice;
+      // Add zakopanie if not present
+      if (!updated.find(item => item.id === 'zakopanie')) {
+        const backfillRate = excavationSettings.backfillRate ?? excavationSettings.pricePerM3;
         updated.push({
-          id: 'zasypka',
-          name: 'Zasypka',
+          id: 'zakopanie',
+          name: 'Zakopanie',
           quantity: backfillVolume,
           unit: 'm3' as UnitType,
-          rate: zasypkaRate,
-          netValue: backfillVolume * zasypkaRate,
+          rate: backfillRate,
+          netValue: backfillVolume * backfillRate,
         });
       }
       
       return updated;
     });
-  }, [excavationArea, sandBeddingHeight, excLength, excWidth, drainageEnabled, backfillVolume, excavationSettings.removalFixedPrice]);
+  }, [excavationArea, sandBeddingHeight, excLength, excWidth, drainageEnabled, backfillVolume, excavationSettings.backfillRate, excavationSettings.pricePerM3]);
 
   // Update B25 concrete group when dimensions change
   useEffect(() => {
@@ -832,12 +829,13 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
   };
 
   // Get excavation rate key from item id
-  const getExcavationRateKey = (id: string): 'pricePerM3' | 'removalFixedPrice' | 'podsypkaRate' | 'drainageRate' | null => {
+  const getExcavationRateKey = (id: string): 'pricePerM3' | 'removalFixedPrice' | 'podsypkaRate' | 'drainageRate' | 'backfillRate' | null => {
     switch (id) {
       case 'wykop': return 'pricePerM3';
       case 'wywoz': return 'removalFixedPrice';
       case 'podsypka': return 'podsypkaRate';
       case 'drenaz': return 'drainageRate';
+      case 'zakopanie': return 'backfillRate';
       default: return null;
     }
   };
