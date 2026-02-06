@@ -1,7 +1,8 @@
 import { useState, useEffect, useMemo } from 'react';
-import { ChevronDown, ChevronRight } from 'lucide-react';
+import { ChevronDown, ChevronRight, Check } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Button } from '@/components/ui/button';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { TableCell, TableRow } from '@/components/ui/table';
@@ -664,6 +665,8 @@ interface ReinforcementTableRowsProps {
   onUpdateItemRate: (itemId: string, rate: number) => void;
   onUpdateItemQuantity: (itemId: string, qty: number) => void;
   onUpdateItemUnit: (itemId: string, unit: ReinforcementUnit) => void;
+  changedRates?: Record<string, number>; // Track which rates have pending changes
+  onConfirmRateChange?: (itemId: string) => void; // Callback when user confirms rate change
 }
 
 // Format quantity for reinforcement - always round to integers, no decimals
@@ -679,6 +682,8 @@ export function ReinforcementTableRows({
   onUpdateItemRate,
   onUpdateItemQuantity,
   onUpdateItemUnit,
+  changedRates = {},
+  onConfirmRateChange,
 }: ReinforcementTableRowsProps) {
   const rows: JSX.Element[] = [];
   
@@ -739,14 +744,28 @@ export function ReinforcementTableRows({
           )}
         </TableCell>
         <TableCell>
-          <Input
-            type="number"
-            min="0"
-            step="0.5"
-            value={item.rate}
-            onChange={(e) => onUpdateItemRate(item.id, parseFloat(e.target.value) || 0)}
-            className="input-field w-[80px] text-right ml-auto"
-          />
+          <div className="flex items-center justify-end gap-1">
+            <Input
+              type="number"
+              min="0"
+              step="0.5"
+              value={item.rate}
+              onChange={(e) => onUpdateItemRate(item.id, parseFloat(e.target.value) || 0)}
+              className="input-field w-[80px] text-right"
+            />
+            {changedRates[item.id] !== undefined && onConfirmRateChange && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-success hover:text-success/80 hover:bg-success/10"
+                onClick={() => onConfirmRateChange(item.id)}
+                title="Zatwierdź zmianę stawki"
+              >
+                <Check className="h-4 w-4" />
+              </Button>
+            )}
+          </div>
         </TableCell>
         <TableCell className="text-right font-semibold">
           {formatPrice(roundedTotal * item.rate)}

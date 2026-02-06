@@ -105,6 +105,10 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
     dimensions.depth + excavationSettings.marginDepth
   );
   
+  // Track rate changes that need confirmation (instead of immediate dialog)
+  const [changedExcavationRates, setChangedExcavationRates] = useState<Record<string, number>>({});
+  const [changedMaterialRates, setChangedMaterialRates] = useState<Record<string, number>>({});
+  
   // Dialog state for excavation rate changes
   const [showRateDialog, setShowRateDialog] = useState(false);
   const [pendingExcavationRateChange, setPendingExcavationRateChange] = useState<{
@@ -449,21 +453,38 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
       }
       if (field === 'rate') {
         updated.netValue = updated.quantity * updated.rate;
-        // Check if rate differs from default - prompt dialog
+        // Track that rate was changed (don't open dialog immediately)
         const rateKey = getMaterialRateKey(id);
-        if (rateKey && value !== materialRates[rateKey]) {
-          setPendingRateChange({
-            materialId: id,
-            materialName: item.name,
-            oldRate: materialRates[rateKey],
-            newRate: value,
-            rateKey,
-          });
-          setShowMaterialRateDialog(true);
+        if (rateKey) {
+          if (value !== materialRates[rateKey]) {
+            setChangedMaterialRates(prev => ({ ...prev, [id]: value }));
+          } else {
+            // Rate matches default, remove from changed list
+            setChangedMaterialRates(prev => {
+              const { [id]: _, ...rest } = prev;
+              return rest;
+            });
+          }
         }
       }
       return updated;
     }));
+  };
+  
+  // Confirm material rate change - opens dialog
+  const confirmMaterialRateChange = (id: string, itemName: string) => {
+    const rateKey = getMaterialRateKey(id);
+    const newRate = changedMaterialRates[id];
+    if (rateKey && newRate !== undefined) {
+      setPendingRateChange({
+        materialId: id,
+        materialName: itemName,
+        oldRate: materialRates[rateKey],
+        newRate,
+        rateKey,
+      });
+      setShowMaterialRateDialog(true);
+    }
   };
 
   // Reset construction material to calculated value
@@ -508,8 +529,21 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
   // Update B25 group rate
   const updateB25Rate = (newRate: number) => {
     setB25ConcreteGroup(prev => ({ ...prev, rate: newRate }));
-    // Check if rate differs from default - prompt dialog
+    // Track that rate was changed (don't open dialog immediately)
     if (newRate !== materialRates.betonB25) {
+      setChangedMaterialRates(prev => ({ ...prev, 'beton_b25_group': newRate }));
+    } else {
+      setChangedMaterialRates(prev => {
+        const { 'beton_b25_group': _, ...rest } = prev;
+        return rest;
+      });
+    }
+  };
+  
+  // Confirm B25 rate change - opens dialog
+  const confirmB25RateChange = () => {
+    const newRate = changedMaterialRates['beton_b25_group'];
+    if (newRate !== undefined) {
       setPendingRateChange({
         materialId: 'beton_b25_group',
         materialName: 'Beton B25',
@@ -530,12 +564,24 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
       constructionMaterialRates: updatedRates,
     });
     toast.success(`Stawka dla "${pendingRateChange.materialName}" zapisana w ustawieniach`);
+    // Remove from changed rates tracking
+    setChangedMaterialRates(prev => {
+      const { [pendingRateChange.materialId]: _, ...rest } = prev;
+      return rest;
+    });
     setShowMaterialRateDialog(false);
     setPendingRateChange(null);
   };
   
   // Keep rate only for this offer
   const handleKeepMaterialRateLocal = () => {
+    // Remove from changed rates tracking (user confirmed it's just for this offer)
+    if (pendingRateChange) {
+      setChangedMaterialRates(prev => {
+        const { [pendingRateChange.materialId]: _, ...rest } = prev;
+        return rest;
+      });
+    }
     setShowMaterialRateDialog(false);
     setPendingRateChange(null);
   };
@@ -561,13 +607,29 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
     // First update the item rate in reinforcement hook
     reinforcement.updateItemRate(itemId, newRate);
     
-    // Check if rate differs from default - prompt dialog
+    // Track that rate was changed (don't open dialog immediately)
     const rateKey = getReinforcementRateKey(itemId);
-    if (rateKey && newRate !== materialRates[rateKey]) {
-      const item = reinforcement.items.find(i => i.id === itemId);
+    if (rateKey) {
+      if (newRate !== materialRates[rateKey]) {
+        setChangedMaterialRates(prev => ({ ...prev, [itemId]: newRate }));
+      } else {
+        setChangedMaterialRates(prev => {
+          const { [itemId]: _, ...rest } = prev;
+          return rest;
+        });
+      }
+    }
+  };
+  
+  // Confirm reinforcement rate change - opens dialog
+  const confirmReinforcementRateChange = (itemId: string) => {
+    const rateKey = getReinforcementRateKey(itemId);
+    const newRate = changedMaterialRates[itemId];
+    const item = reinforcement.items.find(i => i.id === itemId);
+    if (rateKey && newRate !== undefined && item) {
       setPendingRateChange({
         materialId: itemId,
-        materialName: item?.name || itemId,
+        materialName: item.name,
         oldRate: materialRates[rateKey],
         newRate,
         rateKey,
@@ -625,6 +687,11 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
         [pendingExcavationRateChange.rateKey]: pendingExcavationRateChange.newRate,
       });
       toast.success('Stawka zapisana w ustawieniach');
+      // Remove from changed rates tracking
+      setChangedExcavationRates(prev => {
+        const { [pendingExcavationRateChange.itemId]: _, ...rest } = prev;
+        return rest;
+      });
     }
     setShowRateDialog(false);
     setPendingExcavationRateChange(null);
@@ -632,6 +699,13 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
 
   // Keep rate only for this offer
   const handleKeepRateLocal = () => {
+    // Remove from changed rates tracking
+    if (pendingExcavationRateChange) {
+      setChangedExcavationRates(prev => {
+        const { [pendingExcavationRateChange.itemId]: _, ...rest } = prev;
+        return rest;
+      });
+    }
     setShowRateDialog(false);
     setPendingExcavationRateChange(null);
   };
@@ -672,20 +746,18 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
           ? updated.quantity * updated.rate 
           : updated.rate;
         
-        // Check if rate changed - prompt dialog for saving to settings
+        // Track rate change (don't open dialog immediately)
         if (field === 'rate') {
           const rateKey = getExcavationRateKey(id);
           if (rateKey) {
             const settingsRate = excavationSettings[rateKey];
             if (value !== settingsRate) {
-              setPendingExcavationRateChange({
-                itemId: id,
-                itemName: item.name,
-                oldRate: settingsRate,
-                newRate: value,
-                rateKey,
+              setChangedExcavationRates(prev => ({ ...prev, [id]: value }));
+            } else {
+              setChangedExcavationRates(prev => {
+                const { [id]: _, ...rest } = prev;
+                return rest;
               });
-              setShowRateDialog(true);
             }
           }
         }
@@ -693,6 +765,22 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
       
       return updated;
     }));
+  };
+
+  // Confirm excavation rate change - opens dialog
+  const confirmExcavationRateChange = (id: string, itemName: string) => {
+    const rateKey = getExcavationRateKey(id);
+    const newRate = changedExcavationRates[id];
+    if (rateKey && newRate !== undefined) {
+      setPendingExcavationRateChange({
+        itemId: id,
+        itemName,
+        oldRate: excavationSettings[rateKey],
+        newRate,
+        rateKey,
+      });
+      setShowRateDialog(true);
+    }
   };
 
   // Reset quantity to calculated volume
@@ -998,14 +1086,28 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
                             </Select>
                           </TableCell>
                           <TableCell className="text-right">
-                            <Input
-                              type="number"
-                              min="0"
-                              step="10"
-                              value={item.rate}
-                              onChange={(e) => updateLineItem(item.id, 'rate', parseFloat(e.target.value) || 0)}
-                              className="input-field w-24 text-right"
-                            />
+                            <div className="flex items-center justify-end gap-1">
+                              <Input
+                                type="number"
+                                min="0"
+                                step="10"
+                                value={item.rate}
+                                onChange={(e) => updateLineItem(item.id, 'rate', parseFloat(e.target.value) || 0)}
+                                className="input-field w-24 text-right"
+                              />
+                              {changedExcavationRates[item.id] !== undefined && (
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8 text-success hover:text-success/80 hover:bg-success/10"
+                                  onClick={() => confirmExcavationRateChange(item.id, item.name)}
+                                  title="Zatwierdź zmianę stawki"
+                                >
+                                  <Check className="h-4 w-4" />
+                                </Button>
+                              )}
+                            </div>
                           </TableCell>
                           <TableCell className="text-right font-semibold">
                             {formatPrice(item.netValue)}
@@ -1429,14 +1531,28 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
                           </TableCell>
                           <TableCell className="text-muted-foreground">{item.unit}</TableCell>
                           <TableCell>
-                            <Input
-                              type="number"
-                              min="0"
-                              step="10"
-                              value={item.rate}
-                              onChange={(e) => updateConstructionMaterial(item.id, 'rate', parseFloat(e.target.value) || 0)}
-                              className="input-field w-[80px] text-right ml-auto"
-                            />
+                            <div className="flex items-center justify-end gap-1">
+                              <Input
+                                type="number"
+                                min="0"
+                                step="10"
+                                value={item.rate}
+                                onChange={(e) => updateConstructionMaterial(item.id, 'rate', parseFloat(e.target.value) || 0)}
+                                className="input-field w-[80px] text-right"
+                              />
+                              {changedMaterialRates[item.id] !== undefined && (
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8 text-success hover:text-success/80 hover:bg-success/10"
+                                  onClick={() => confirmMaterialRateChange(item.id, item.name)}
+                                  title="Zatwierdź zmianę stawki"
+                                >
+                                  <Check className="h-4 w-4" />
+                                </Button>
+                              )}
+                            </div>
                           </TableCell>
                           <TableCell className="text-right font-semibold">
                             {formatPrice(roundQuantity(item.id, item.quantity) * item.rate)}
@@ -1467,14 +1583,28 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
                         </TableCell>
                         <TableCell className="text-muted-foreground">{b25ConcreteGroup.unit}</TableCell>
                         <TableCell>
-                          <Input
-                            type="number"
-                            min="0"
-                            step="10"
-                            value={b25ConcreteGroup.rate}
-                            onChange={(e) => updateB25Rate(parseFloat(e.target.value) || 0)}
-                            className="input-field w-[80px] text-right ml-auto"
-                          />
+                          <div className="flex items-center justify-end gap-1">
+                            <Input
+                              type="number"
+                              min="0"
+                              step="10"
+                              value={b25ConcreteGroup.rate}
+                              onChange={(e) => updateB25Rate(parseFloat(e.target.value) || 0)}
+                              className="input-field w-[80px] text-right"
+                            />
+                            {changedMaterialRates['beton_b25_group'] !== undefined && (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 text-success hover:text-success/80 hover:bg-success/10"
+                                onClick={confirmB25RateChange}
+                                title="Zatwierdź zmianę stawki"
+                              >
+                                <Check className="h-4 w-4" />
+                              </Button>
+                            )}
+                          </div>
                         </TableCell>
                         <TableCell className="text-right font-semibold">
                           {formatPrice(b25TotalNet)}
@@ -1532,6 +1662,8 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
                         onUpdateItemRate={handleReinforcementRateChange}
                         onUpdateItemQuantity={reinforcement.updateItemQuantity}
                         onUpdateItemUnit={reinforcement.updateItemUnit}
+                        changedRates={changedMaterialRates}
+                        onConfirmRateChange={confirmReinforcementRateChange}
                       />
                     </TableBody>
                     <TableFooter>
