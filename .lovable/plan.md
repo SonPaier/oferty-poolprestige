@@ -1,60 +1,41 @@
 
 
-# Plan: Automatyczne obliczanie strzemion (słupy + wieniec)
+## Plan: Wysokosc bloczka + Beton B25 na brodzik i schody
 
-## Obecny stan
-Strzemiona 18x18 mają w kodzie `positions: []` i `totalQuantity: 0` - nie sa automatycznie obliczane. Uzytkownik musi recznie wpisac ilosc.
+### 1. Opcja wyboru wysokosci bloczka (12cm / 14cm)
 
-## Nowa logika obliczen
+**Gdzie:** `src/components/groundworks/ReinforcementSection.tsx`
 
-Strzemiona rozmieszczone co **20 cm** (0.20m) wzdluz:
+- Dodanie nowego typu `BlockHeight = 12 | 14` i zmiennej stanu w `GroundworksStep.tsx`
+- Zmiana stalej `BLOCK_DIMENSIONS.height` na parametr przekazywany do funkcji obliczeniowych (`calculateBlockLayers`, `calculateTotalBlocks`, `calculateBlocksPerLayer`)
+- Dodanie selektora (Select lub RadioGroup) w sekcji "Parametry budowy" w `GroundworksStep.tsx` pozwalajacego wybrac 12cm lub 14cm
+- Aktualizacja nazwy pozycji w tabeli materialow: "Bloczek betonowy 38x24x12" -> "Bloczek betonowy 38x24x14" dynamicznie
+- Zmiana wpływa na: liczbe warstw, wysokosc wieniec, ilosc bloczkow
 
-### 1. Slupy
-- Wysokosc slupa = glebokosc basenu - wysokosc wienca
-- Strzemiona na 1 slup = ceil(wysokosc slupa / 0.20)
-- Laczna ilosc = strzemiona na slup x liczba slupow
+### 2. Beton B25 na brodzik
 
-### 2. Wieniec
-- Obwod wienca = 2 x (dlugosc + szerokosc)
-- Strzemiona na wieniec = ceil(obwod / 0.20)
+**Gdzie:** `src/components/steps/GroundworksStep.tsx` (useEffect aktualizujacy `b25ConcreteGroup`)
 
-### 3. Suma
-```
-Strzemiona = (ceil(wys_slupa / 0.20) x ilosc_slupow) + ceil(obwod / 0.20)
-```
+- Dodanie nowej podpozycji `beton_brodzik` w grupie B25 gdy `dimensions.wadingPool?.enabled`
+- Wzor: `wadingPool.width * wadingPool.length * floorSlabThickness`
+- Wyswietlanie analogicznie do "Plyta denna", "Wieniec", "Slupy"
 
-### Przyklad (basen 8x4x1.5m, wieniec 0.18m, 8 slupow)
-- Wysokosc slupa: 1.5 - 0.18 = 1.32m
-- Strzemiona/slup: ceil(1.32 / 0.20) = 7
-- Strzemiona slupy: 7 x 8 = 56 szt.
-- Obwod: 2 x (8 + 4) = 24m
-- Strzemiona wieniec: ceil(24 / 0.20) = 120 szt.
-- **Razem: 176 szt.**
+### 3. Beton B25 na schody
 
-## Zmiany w kodzie
+**Gdzie:** `src/components/steps/GroundworksStep.tsx` (useEffect aktualizujacy `b25ConcreteGroup`)
 
-### Plik: `src/components/groundworks/ReinforcementSection.tsx`
+- Dodanie nowej podpozycji `beton_schody` w grupie B25 gdy `dimensions.stairs?.enabled`
+- Wzor: `stairsProjectionArea * floorSlabThickness` (powierzchnia rzutu schodow * grubosc plyty)
+- Wyswietlanie analogicznie do innych podpozycji B25
 
-1. **Dodanie nowej funkcji obliczeniowej** `calculateStirrups`:
-   - Parametry: length, width, depth, crownHeight, columnCount
-   - Zwraca: { columnsQty, crownQty, total }
+### 4. Aktualizacja `getExpectedB25SubItemQuantity`
 
-2. **Rozszerzenie `calculatedPositions`** o dane strzemion (ilosc dla slupow i wienca)
+- Dodanie case'ow `beton_brodzik` i `beton_schody` aby funkcja reset dzialala poprawnie
 
-3. **Zmiana inicjalizacji strzemion** w `useEffect`:
-   - Dodanie `positions` z dwoma pozycjami: "Slupy" i "Wieniec"
-   - Automatyczne obliczanie `totalQuantity`
-   - Ustawienie `isExpanded: true` aby pokazac obliczenia
+### Zmiany w plikach
 
-4. **Aktualizacja `useEffect` synchronizacji** (meshSize/unit) aby uwzgledniac strzemiona przy przeliczaniu
-
-5. Strzemiona widoczne tylko dla technologii **murowanej** (masonry) - przy lanej nie ma slupow ani wienca z bloczkow
-
-## Wyswietlanie obliczen
-
-Po rozwinieciu wiersza "Strzemiona 18x18" uzytkownik zobaczy:
-- **Slupy**: ceil(1.32 / 0.20) x 8 = 56 szt.
-- **Wieniec**: ceil(24 / 0.20) = 120 szt.
-
-Kazda podpozycja z mozliwoscia recznej edycji i resetu (tak jak pozostale pozycje zbrojenia).
+| Plik | Zakres zmian |
+|------|-------------|
+| `src/components/groundworks/ReinforcementSection.tsx` | Parametryzacja `BLOCK_DIMENSIONS.height`, aktualizacja sygnatur funkcji `calculateBlockLayers`, `calculateTotalBlocks`, `calculateBlocksPerLayer` aby przyjmowaly `blockHeight` |
+| `src/components/steps/GroundworksStep.tsx` | Dodanie stanu `blockHeight`, selektora UI, przekazanie do obliczen bloczków, dodanie podpozycji B25 brodzik/schody, aktualizacja nazwy bloczka |
 
