@@ -482,7 +482,7 @@ export function useReinforcement(
         positions: positions12,
         totalQuantity: unit === 'mb' ? total12 : mbToKg(total12, 12),
         netValue: (unit === 'mb' ? total12 : mbToKg(total12, 12)) * materialRates.zbrojenie12mm,
-        isExpanded: true,
+        isExpanded: false,
         supportsKg: true,
       });
     } else {
@@ -499,7 +499,7 @@ export function useReinforcement(
         positions: positions8,
         totalQuantity: total8, // No kg conversion for composite
         netValue: total8 * materialRates.zbrojenieKompozytowe,
-        isExpanded: true,
+        isExpanded: false,
         supportsKg: false,
       });
     }
@@ -547,7 +547,7 @@ export function useReinforcement(
       positions: stirrupPositions,
       totalQuantity: stirrupTotal,
       netValue: stirrupTotal * materialRates.strzemiona,
-      isExpanded: constructionTechnology === 'masonry',
+      isExpanded: false,
       supportsKg: false,
     });
     
