@@ -36,6 +36,7 @@ import {
 } from '@/components/groundworks/ReinforcementSection';
 import Pool2DPreview from '@/components/Pool2DPreview';
 import { ChevronDown, ChevronRight } from 'lucide-react';
+import { defaultConstructionMaterialRates, ConstructionMaterialRates } from '@/types/configurator';
 
 // Helper function to round quantities based on material type
 function roundQuantity(id: string, quantity: number): number {
@@ -82,8 +83,11 @@ interface ExcavationLineItem {
 
 export function GroundworksStep({ onNext, onBack, excavationSettings }: GroundworksStepProps) {
   const { state, dispatch } = useConfigurator();
-  const { setExcavationSettings } = useSettings();
+  const { setExcavationSettings, companySettings, setCompanySettings } = useSettings();
   const { dimensions, sections } = state;
+  
+  // Get material rates from settings (with fallback to defaults)
+  const materialRates = companySettings.constructionMaterialRates || defaultConstructionMaterialRates;
   
   // Excavation state - editable dimensions
   const [excavationScope, setExcavationScope] = useState<ScopeType>(
@@ -105,6 +109,16 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
   const [excavationRate, setExcavationRate] = useState(excavationSettings.pricePerM3);
   const [showRateDialog, setShowRateDialog] = useState(false);
   const [rateChanged, setRateChanged] = useState(false);
+  
+  // Material rate change dialog state
+  const [showMaterialRateDialog, setShowMaterialRateDialog] = useState(false);
+  const [pendingRateChange, setPendingRateChange] = useState<{
+    materialId: string;
+    materialName: string;
+    oldRate: number;
+    newRate: number;
+    rateKey: keyof ConstructionMaterialRates;
+  } | null>(null);
   
   // Track if user manually overrode the quantity for wykop
   const [customQuantityOverride, setCustomQuantityOverride] = useState(false);
@@ -221,8 +235,8 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
         name: 'Podsypka piaskowa',
         quantity: excavationArea * sandBeddingHeight,
         unit: 'm³',
-        rate: 150,
-        netValue: excavationArea * sandBeddingHeight * 150,
+        rate: materialRates.podsypka,
+        netValue: excavationArea * sandBeddingHeight * materialRates.podsypka,
         customOverride: false,
       },
       {
@@ -230,8 +244,8 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
         name: 'Beton na chudziak B15',
         quantity: excavationArea * leanConcreteHeight,
         unit: 'm³',
-        rate: 350,
-        netValue: excavationArea * leanConcreteHeight * 350,
+        rate: materialRates.betonB15,
+        netValue: excavationArea * leanConcreteHeight * materialRates.betonB15,
         customOverride: false,
       },
       {
@@ -239,8 +253,8 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
         name: 'Pompogruszka',
         quantity: pompogruszkaQty,
         unit: 'szt.',
-        rate: 350,
-        netValue: pompogruszkaQty * 350,
+        rate: materialRates.pompogruszka,
+        netValue: pompogruszkaQty * materialRates.pompogruszka,
         customOverride: false,
       },
     ];
@@ -252,7 +266,7 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
     id: 'beton_b25_group',
     groupName: 'Beton B25',
     unit: 'm³',
-    rate: 450,
+    rate: materialRates.betonB25,
     isExpanded: true,
     subItems: [
       { id: 'plyta_denna', name: 'Płyta denna', quantity: Math.ceil(floorSlabArea * floorSlabThickness), customOverride: false },
@@ -260,7 +274,7 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
   });
   
   // Reinforcement hook
-  const reinforcement = useReinforcement(dimensions, floorSlabThickness, constructionTechnology);
+  const reinforcement = useReinforcement(dimensions, floorSlabThickness, constructionTechnology, materialRates);
   
   // Update construction materials when dimensions, heights, or block calculation changes
   useEffect(() => {
@@ -303,8 +317,8 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
             name: 'Bloczek betonowy 38×24×12',
             quantity: bloczekQty,
             unit: 'szt.',
-            rate: 6.80,
-            netValue: bloczekQty * 6.80,
+            rate: materialRates.bloczek,
+            netValue: bloczekQty * materialRates.bloczek,
             customOverride: false,
           });
         }
@@ -408,6 +422,17 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
     }
   }, [floorSlabArea, floorSlabThickness, blockCalculation, dimensions.length, dimensions.width, dimensions.depth]);
 
+  // Helper to get rate key from material id
+  const getMaterialRateKey = (id: string): keyof ConstructionMaterialRates | null => {
+    switch (id) {
+      case 'podsypka': return 'podsypka';
+      case 'chudziak': return 'betonB15';
+      case 'pompogruszka': return 'pompogruszka';
+      case 'bloczek': return 'bloczek';
+      default: return null;
+    }
+  };
+
   // Update construction material
   const updateConstructionMaterial = (id: string, field: keyof ConstructionMaterialItem, value: any) => {
     setConstructionMaterials(prev => prev.map(item => {
@@ -419,6 +444,18 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
       }
       if (field === 'rate') {
         updated.netValue = updated.quantity * updated.rate;
+        // Check if rate differs from default - prompt dialog
+        const rateKey = getMaterialRateKey(id);
+        if (rateKey && value !== materialRates[rateKey]) {
+          setPendingRateChange({
+            materialId: id,
+            materialName: item.name,
+            oldRate: materialRates[rateKey],
+            newRate: value,
+            rateKey,
+          });
+          setShowMaterialRateDialog(true);
+        }
       }
       return updated;
     }));
@@ -466,11 +503,72 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
   // Update B25 group rate
   const updateB25Rate = (newRate: number) => {
     setB25ConcreteGroup(prev => ({ ...prev, rate: newRate }));
+    // Check if rate differs from default - prompt dialog
+    if (newRate !== materialRates.betonB25) {
+      setPendingRateChange({
+        materialId: 'beton_b25_group',
+        materialName: 'Beton B25',
+        oldRate: materialRates.betonB25,
+        newRate,
+        rateKey: 'betonB25',
+      });
+      setShowMaterialRateDialog(true);
+    }
+  };
+  
+  // Handle save rate to global settings
+  const handleSaveMaterialRateToSettings = async () => {
+    if (!pendingRateChange) return;
+    const updatedRates = { ...materialRates, [pendingRateChange.rateKey]: pendingRateChange.newRate };
+    await setCompanySettings({
+      ...companySettings,
+      constructionMaterialRates: updatedRates,
+    });
+    toast.success(`Stawka dla "${pendingRateChange.materialName}" zapisana w ustawieniach`);
+    setShowMaterialRateDialog(false);
+    setPendingRateChange(null);
+  };
+  
+  // Keep rate only for this offer
+  const handleKeepMaterialRateLocal = () => {
+    setShowMaterialRateDialog(false);
+    setPendingRateChange(null);
   };
   
   // Toggle B25 group expand
   const toggleB25Expand = () => {
     setB25ConcreteGroup(prev => ({ ...prev, isExpanded: !prev.isExpanded }));
+  };
+  
+  // Helper to get reinforcement rate key from item id
+  const getReinforcementRateKey = (itemId: string): keyof ConstructionMaterialRates | null => {
+    switch (itemId) {
+      case 'rebar_12mm': return 'zbrojenie12mm';
+      case 'rebar_6mm': return 'zbrojenie6mm';
+      case 'composite_8mm': return 'zbrojenieKompozytowe';
+      case 'strzemiona': return 'strzemiona';
+      default: return null;
+    }
+  };
+
+  // Wrapper for reinforcement rate update with dialog prompt
+  const handleReinforcementRateChange = (itemId: string, newRate: number) => {
+    // First update the item rate in reinforcement hook
+    reinforcement.updateItemRate(itemId, newRate);
+    
+    // Check if rate differs from default - prompt dialog
+    const rateKey = getReinforcementRateKey(itemId);
+    if (rateKey && newRate !== materialRates[rateKey]) {
+      const item = reinforcement.items.find(i => i.id === itemId);
+      setPendingRateChange({
+        materialId: itemId,
+        materialName: item?.name || itemId,
+        oldRate: materialRates[rateKey],
+        newRate,
+        rateKey,
+      });
+      setShowMaterialRateDialog(true);
+    }
   };
   
   // Calculate B25 total quantity (sum of sub-items, rounded to 0.5)
@@ -1445,7 +1543,7 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
                         items={reinforcement.items}
                         onToggleExpand={reinforcement.toggleExpand}
                         onUpdatePositionQuantity={reinforcement.updatePositionQuantity}
-                        onUpdateItemRate={reinforcement.updateItemRate}
+                        onUpdateItemRate={handleReinforcementRateChange}
                         onUpdateItemQuantity={reinforcement.updateItemQuantity}
                         onUpdateItemUnit={reinforcement.updateItemUnit}
                       />
@@ -1512,7 +1610,7 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
         </TabsContent>
       </Tabs>
 
-      {/* Rate change dialog */}
+      {/* Rate change dialog for excavation */}
       <AlertDialog open={showRateDialog} onOpenChange={setShowRateDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -1531,6 +1629,35 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
               Tylko dla tej oferty
             </AlertDialogCancel>
             <AlertDialogAction onClick={handleSaveRateToSettings}>
+              Zapisz w ustawieniach
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Rate change dialog for construction materials */}
+      <AlertDialog open={showMaterialRateDialog} onOpenChange={setShowMaterialRateDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <Save className="w-5 h-5 text-primary" />
+              Zmiana stawki materiału
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {pendingRateChange && (
+                <>
+                  Zmieniono stawkę dla <strong>{pendingRateChange.materialName}</strong> z {formatPrice(pendingRateChange.oldRate)} na {formatPrice(pendingRateChange.newRate)}.
+                  <br /><br />
+                  Czy chcesz zapisać nową stawkę w ustawieniach, aby była używana dla przyszłych ofert?
+                </>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={handleKeepMaterialRateLocal}>
+              Tylko dla tej oferty
+            </AlertDialogCancel>
+            <AlertDialogAction onClick={handleSaveMaterialRateToSettings}>
               Zapisz w ustawieniach
             </AlertDialogAction>
           </AlertDialogFooter>
