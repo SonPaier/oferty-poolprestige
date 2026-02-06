@@ -35,7 +35,7 @@ import {
   calculateColumnsConcreteVolume,
   BLOCK_DIMENSIONS,
 } from '@/components/groundworks/ReinforcementSection';
-import Pool2DPreview from '@/components/Pool2DPreview';
+import Pool2DPreview, { CustomColumnCounts, calculateDefaultColumnCounts, getTotalColumnCount } from '@/components/Pool2DPreview';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { defaultConstructionMaterialRates, ConstructionMaterialRates } from '@/types/configurator';
 
@@ -205,6 +205,19 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
   const [customBlockLayers, setCustomBlockLayers] = useState<number | undefined>(undefined);
   const [customCrownHeight, setCustomCrownHeight] = useState<number | undefined>(undefined);
   
+  // Custom column counts for manual override
+  const [customColumnCounts, setCustomColumnCounts] = useState<CustomColumnCounts | undefined>(undefined);
+  
+  // Calculate default column counts based on dimensions
+  const defaultColumnCounts = useMemo(() => 
+    calculateDefaultColumnCounts(dimensions.length, dimensions.width), 
+    [dimensions.length, dimensions.width]
+  );
+  
+  // Current effective column counts (custom or default)
+  const effectiveColumnCounts = customColumnCounts ?? defaultColumnCounts;
+  const totalColumnCount = getTotalColumnCount(effectiveColumnCounts);
+  
   // Calculate block data based on pool dimensions
   const blockCalculation = useMemo(() => {
     if (constructionTechnology !== 'masonry') return null;
@@ -213,15 +226,17 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
       dimensions.width,
       dimensions.depth,
       customBlockLayers,
-      customCrownHeight
+      customCrownHeight,
+      totalColumnCount
     );
-  }, [dimensions.length, dimensions.width, dimensions.depth, constructionTechnology, customBlockLayers, customCrownHeight]);
+  }, [dimensions.length, dimensions.width, dimensions.depth, constructionTechnology, customBlockLayers, customCrownHeight, totalColumnCount]);
   
-  // Reset custom values when pool depth changes
+  // Reset custom values when pool dimensions change
   useEffect(() => {
     setCustomBlockLayers(undefined);
     setCustomCrownHeight(undefined);
-  }, [dimensions.depth]);
+    setCustomColumnCounts(undefined);
+  }, [dimensions.depth, dimensions.length, dimensions.width]);
   
   // Calculate excavation area (for material calculations)
   const excavationArea = excLength * excWidth;
@@ -382,7 +397,7 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
     
     // Calculate columns concrete volume (only for masonry technology)
     const columnsConcreteData = blockCalculation 
-      ? calculateColumnsConcreteVolume(dimensions.length, dimensions.width, dimensions.depth, blockCalculation.crownHeight)
+      ? calculateColumnsConcreteVolume(dimensions.length, dimensions.width, dimensions.depth, blockCalculation.crownHeight, totalColumnCount)
       : { volume: 0, columnCount: 0 };
     
     setB25ConcreteGroup(prev => {
@@ -418,7 +433,7 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
       
       return { ...prev, subItems: newSubItems };
     });
-  }, [floorSlabArea, floorSlabThickness, constructionTechnology, blockCalculation, dimensions.length, dimensions.width, dimensions.depth]);
+  }, [floorSlabArea, floorSlabThickness, constructionTechnology, blockCalculation, dimensions.length, dimensions.width, dimensions.depth, totalColumnCount]);
   
   // Calculate expected values for reset functionality
   const getExpectedMaterialQuantity = useCallback((id: string): number => {
@@ -446,7 +461,7 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
       : 0;
     
     const columnsConcreteData = blockCalculation 
-      ? calculateColumnsConcreteVolume(dimensions.length, dimensions.width, dimensions.depth, blockCalculation.crownHeight)
+      ? calculateColumnsConcreteVolume(dimensions.length, dimensions.width, dimensions.depth, blockCalculation.crownHeight, totalColumnCount)
       : { volume: 0, columnCount: 0 };
     
     switch (subItemId) {
@@ -1558,7 +1573,145 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
                     dimensions={dimensions} 
                     height={250}
                     showColumns={true}
+                    customColumnCounts={customColumnCounts}
+                    onColumnCountsChange={setCustomColumnCounts}
                   />
+                  
+                  {/* Column count control panel */}
+                  <div className="mt-4 p-4 rounded-lg bg-muted/30 border border-border">
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-3">
+                      <div className="space-y-2">
+                        <Label className="text-xs text-muted-foreground">
+                          Słupy wzdłuż długości
+                        </Label>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="icon"
+                            className="h-8 w-8"
+                            onClick={() => {
+                              const current = effectiveColumnCounts.lengthWalls;
+                              if (current > 0) {
+                                setCustomColumnCounts({
+                                  ...effectiveColumnCounts,
+                                  lengthWalls: current - 1
+                                });
+                              }
+                            }}
+                            disabled={effectiveColumnCounts.lengthWalls <= 0}
+                          >
+                            -
+                          </Button>
+                          <span className="text-lg font-semibold w-8 text-center">
+                            {effectiveColumnCounts.lengthWalls}
+                          </span>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="icon"
+                            className="h-8 w-8"
+                            onClick={() => {
+                              const current = effectiveColumnCounts.lengthWalls;
+                              const maxColumns = Math.floor(dimensions.length / 1.5);
+                              if (current < maxColumns) {
+                                setCustomColumnCounts({
+                                  ...effectiveColumnCounts,
+                                  lengthWalls: current + 1
+                                });
+                              }
+                            }}
+                            disabled={effectiveColumnCounts.lengthWalls >= Math.floor(dimensions.length / 1.5)}
+                          >
+                            +
+                          </Button>
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          (wyl: {defaultColumnCounts.lengthWalls})
+                        </p>
+                      </div>
+                      
+                      <div className="space-y-2">
+                        <Label className="text-xs text-muted-foreground">
+                          Słupy wzdłuż szerokości
+                        </Label>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="icon"
+                            className="h-8 w-8"
+                            onClick={() => {
+                              const current = effectiveColumnCounts.widthWalls;
+                              if (current > 0) {
+                                setCustomColumnCounts({
+                                  ...effectiveColumnCounts,
+                                  widthWalls: current - 1
+                                });
+                              }
+                            }}
+                            disabled={effectiveColumnCounts.widthWalls <= 0}
+                          >
+                            -
+                          </Button>
+                          <span className="text-lg font-semibold w-8 text-center">
+                            {effectiveColumnCounts.widthWalls}
+                          </span>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="icon"
+                            className="h-8 w-8"
+                            onClick={() => {
+                              const current = effectiveColumnCounts.widthWalls;
+                              const maxColumns = Math.floor(dimensions.width / 1.5);
+                              if (current < maxColumns) {
+                                setCustomColumnCounts({
+                                  ...effectiveColumnCounts,
+                                  widthWalls: current + 1
+                                });
+                              }
+                            }}
+                            disabled={effectiveColumnCounts.widthWalls >= Math.floor(dimensions.width / 1.5)}
+                          >
+                            +
+                          </Button>
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          (wyl: {defaultColumnCounts.widthWalls})
+                        </p>
+                      </div>
+                      
+                      <div className="space-y-2">
+                        <Label className="text-xs text-muted-foreground">
+                          Razem słupów
+                        </Label>
+                        <p className="text-2xl font-bold text-primary">
+                          {totalColumnCount} szt.
+                        </p>
+                      </div>
+                      
+                      <div className="flex items-end">
+                        {customColumnCounts && (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setCustomColumnCounts(undefined)}
+                            className="flex items-center gap-2"
+                          >
+                            <RotateCcw className="h-4 w-4" />
+                            Przywróć domyślne
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                    
+                    <p className="text-xs text-muted-foreground flex items-center gap-1">
+                      <Info className="w-3 h-3" />
+                      Słupy rozmieszczone równomiernie wzdłuż ścian. Min. odległość między słupami: {dimensions.length > 0 && effectiveColumnCounts.lengthWalls > 0 ? (dimensions.length / (effectiveColumnCounts.lengthWalls + 1)).toFixed(2) : '—'} m (długość), {dimensions.width > 0 && effectiveColumnCounts.widthWalls > 0 ? (dimensions.width / (effectiveColumnCounts.widthWalls + 1)).toFixed(2) : '—'} m (szerokość)
+                    </p>
+                  </div>
                 </div>
               )}
 

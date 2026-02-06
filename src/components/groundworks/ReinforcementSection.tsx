@@ -92,12 +92,18 @@ export function calculateColumnsConcreteVolume(
   poolLength: number,
   poolWidth: number,
   poolDepth: number,
-  crownHeight: number
+  crownHeight: number,
+  customColumnCount?: number
 ): { volume: number; columnCount: number } {
-  // Calculate column count
-  const columnsOnLength = Math.max(0, Math.floor(poolLength / 2) - 1);
-  const columnsOnWidth = Math.max(0, Math.floor(poolWidth / 2) - 1);
-  const columnCount = (columnsOnLength * 2) + (columnsOnWidth * 2);
+  // Calculate column count - use custom count if provided, otherwise calculate default
+  let columnCount: number;
+  if (customColumnCount !== undefined) {
+    columnCount = customColumnCount;
+  } else {
+    const columnsOnLength = Math.max(0, Math.floor(poolLength / 2) - 1);
+    const columnsOnWidth = Math.max(0, Math.floor(poolWidth / 2) - 1);
+    columnCount = (columnsOnLength * 2) + (columnsOnWidth * 2);
+  }
   
   if (columnCount === 0) return { volume: 0, columnCount: 0 };
   
@@ -149,11 +155,21 @@ export function calculateBlockLayers(poolDepth: number): BlockLayerCalculation {
 export function calculateBlocksPerLayer(
   poolLength: number,
   poolWidth: number,
-  columnCount: number
+  customColumnCount?: number
 ): number {
   const perimeter = 2 * (poolLength + poolWidth); // m
   const columnWidth = BLOCK_DIMENSIONS.width; // 0.24m
   const blockLength = BLOCK_DIMENSIONS.length; // 0.38m
+  
+  // Calculate column count - use custom count if provided, otherwise calculate default
+  let columnCount: number;
+  if (customColumnCount !== undefined) {
+    columnCount = customColumnCount;
+  } else {
+    const columnsOnLength = Math.max(0, Math.floor(poolLength / 2) - 1);
+    const columnsOnWidth = Math.max(0, Math.floor(poolWidth / 2) - 1);
+    columnCount = (columnsOnLength * 2) + (columnsOnWidth * 2);
+  }
   
   // Subtract space occupied by columns
   const effectiveLength = perimeter - (columnCount * columnWidth);
@@ -167,7 +183,8 @@ export function calculateTotalBlocks(
   poolWidth: number,
   poolDepth: number,
   customLayers?: number,
-  customCrownHeight?: number
+  customCrownHeight?: number,
+  customColumnCount?: number
 ): { 
   layers: number; 
   blocksPerLayer: number; 
@@ -177,10 +194,15 @@ export function calculateTotalBlocks(
   columnCount: number;
   isOptimal: boolean;
 } {
-  // Calculate columns based on pool dimensions
-  const columnsOnLength = Math.max(0, Math.floor(poolLength / 2) - 1);
-  const columnsOnWidth = Math.max(0, Math.floor(poolWidth / 2) - 1);
-  const columnCount = (columnsOnLength * 2) + (columnsOnWidth * 2);
+  // Calculate column count - use custom count if provided, otherwise calculate default
+  let columnCount: number;
+  if (customColumnCount !== undefined) {
+    columnCount = customColumnCount;
+  } else {
+    const columnsOnLength = Math.max(0, Math.floor(poolLength / 2) - 1);
+    const columnsOnWidth = Math.max(0, Math.floor(poolWidth / 2) - 1);
+    columnCount = (columnsOnLength * 2) + (columnsOnWidth * 2);
+  }
   
   // Calculate layers and crown height
   let layerCalc = calculateBlockLayers(poolDepth);

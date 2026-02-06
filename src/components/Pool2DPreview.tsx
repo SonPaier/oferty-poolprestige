@@ -9,11 +9,32 @@ import {
   calculateExpandingTrapezoidSteps 
 } from '@/lib/scaleneTriangleStairs';
 
+// Custom column counts for manual override
+export interface CustomColumnCounts {
+  lengthWalls: number; // columns on top/bottom walls (along length)
+  widthWalls: number;  // columns on left/right walls (along width)
+}
+
+// Calculate default column counts based on pool dimensions (2m spacing)
+export function calculateDefaultColumnCounts(length: number, width: number): CustomColumnCounts {
+  return {
+    lengthWalls: Math.max(0, Math.floor(length / 2) - 1),
+    widthWalls: Math.max(0, Math.floor(width / 2) - 1),
+  };
+}
+
+// Calculate total column count from custom counts
+export function getTotalColumnCount(counts: CustomColumnCounts): number {
+  return (counts.lengthWalls * 2) + (counts.widthWalls * 2);
+}
+
 interface Pool2DPreviewProps {
   dimensions: PoolDimensions;
   height?: number;
   dimensionDisplay?: DimensionDisplay;
   showColumns?: boolean; // Show masonry column positions
+  customColumnCounts?: CustomColumnCounts; // Optional manual override for column counts
+  onColumnCountsChange?: (counts: CustomColumnCounts) => void; // Callback when counts change
 }
 
 // Generate pool outline points for 2D view
@@ -287,7 +308,14 @@ function transformCustomVertices(
   }));
 }
 
-export default function Pool2DPreview({ dimensions, height = 300, dimensionDisplay = 'pool', showColumns = false }: Pool2DPreviewProps) {
+export default function Pool2DPreview({ 
+  dimensions, 
+  height = 300, 
+  dimensionDisplay = 'pool', 
+  showColumns = false,
+  customColumnCounts,
+  onColumnCountsChange 
+}: Pool2DPreviewProps) {
   const poolPoints = useMemo(() => getPoolPoints(dimensions), [dimensions]);
   const outerShellPoints = useMemo(() => getOuterShellPoints(dimensions), [dimensions]);
   // Zoom state
@@ -584,45 +612,40 @@ export default function Pool2DPreview({ dimensions, height = 300, dimensionDispl
   const showStairsDims = dimensionDisplay === 'all' || dimensionDisplay === 'stairs';
   const showWadingDims = dimensionDisplay === 'all' || dimensionDisplay === 'wading';
   
-  // Calculate column positions for masonry pools (2m spacing)
+  // Calculate column positions for masonry pools
+  // Uses custom counts if provided, otherwise defaults to 2m spacing
   const columnPositions = useMemo(() => {
     if (!showColumns || dimensions.shape !== 'prostokatny') return [];
     
     const { length, width } = dimensions;
-    const spacing = 2; // 2m
     const positions: { x: number; y: number; label: string }[] = [];
     let labelIndex = 1;
     
-    // Columns along length (top and bottom walls)
-    for (let x = spacing; x < length; x += spacing) {
-      positions.push({ 
-        x: x - length / 2, 
-        y: -width / 2, 
-        label: `S${labelIndex++}` 
-      }); // top
-      positions.push({ 
-        x: x - length / 2, 
-        y: width / 2, 
-        label: `S${labelIndex++}` 
-      }); // bottom
+    // Use custom counts or calculate defaults
+    const counts = customColumnCounts ?? calculateDefaultColumnCounts(length, width);
+    
+    // Distribute columns evenly along length walls (top and bottom)
+    if (counts.lengthWalls > 0) {
+      const spacing = length / (counts.lengthWalls + 1);
+      for (let i = 1; i <= counts.lengthWalls; i++) {
+        const x = spacing * i - length / 2;
+        positions.push({ x, y: -width / 2, label: `S${labelIndex++}` }); // top
+        positions.push({ x, y: width / 2, label: `S${labelIndex++}` }); // bottom
+      }
     }
     
-    // Columns along width (left and right walls)
-    for (let y = spacing; y < width; y += spacing) {
-      positions.push({ 
-        x: -length / 2, 
-        y: y - width / 2, 
-        label: `S${labelIndex++}` 
-      }); // left
-      positions.push({ 
-        x: length / 2, 
-        y: y - width / 2, 
-        label: `S${labelIndex++}` 
-      }); // right
+    // Distribute columns evenly along width walls (left and right)
+    if (counts.widthWalls > 0) {
+      const spacing = width / (counts.widthWalls + 1);
+      for (let i = 1; i <= counts.widthWalls; i++) {
+        const y = spacing * i - width / 2;
+        positions.push({ x: -length / 2, y, label: `S${labelIndex++}` }); // left
+        positions.push({ x: length / 2, y, label: `S${labelIndex++}` }); // right
+      }
     }
     
     return positions;
-  }, [showColumns, dimensions.shape, dimensions.length, dimensions.width]);
+  }, [showColumns, dimensions.shape, dimensions.length, dimensions.width, customColumnCounts]);
   
   // Calculate scaled viewBox for zoom
   const scaledViewBox = useMemo(() => {
