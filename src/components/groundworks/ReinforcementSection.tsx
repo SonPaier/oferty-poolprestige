@@ -55,11 +55,13 @@ export interface ReinforcementData {
 // BLOCK AND CROWN HEIGHT CALCULATION
 // =====================================================
 
+export type BlockHeight = 12 | 14;
+
 // Concrete block dimensions (cm converted to m)
 export const BLOCK_DIMENSIONS = {
   length: 0.38, // 38 cm - length of block
   width: 0.24,  // 24 cm - wall thickness
-  height: 0.12, // 12 cm - laid flat (na leżąco)
+  height: 0.12, // 12 cm - default, laid flat (na leżąco)
 };
 
 // Crown height constraints (wieniec)
@@ -118,8 +120,8 @@ export function calculateColumnsConcreteVolume(
 }
 
 // Calculate optimal number of block layers and crown height
-export function calculateBlockLayers(poolDepth: number): BlockLayerCalculation {
-  const blockHeight = BLOCK_DIMENSIONS.height; // 0.12m
+export function calculateBlockLayers(poolDepth: number, blockHeightCm: BlockHeight = 12): BlockLayerCalculation {
+  const blockHeight = blockHeightCm / 100; // convert cm to m
   
   // Maximum number of layers (if no crown)
   const maxLayers = Math.floor(poolDepth / blockHeight);
@@ -143,6 +145,7 @@ export function calculateBlockLayers(poolDepth: number): BlockLayerCalculation {
   // Fallback - use minimum crown height
   const fallbackLayers = Math.floor((poolDepth - MIN_CROWN_HEIGHT) / blockHeight);
   const fallbackWallHeight = fallbackLayers * blockHeight;
+  /* eslint-disable @typescript-eslint/no-unused-vars */
   return {
     layers: fallbackLayers,
     wallHeight: fallbackWallHeight,
@@ -184,7 +187,8 @@ export function calculateTotalBlocks(
   poolDepth: number,
   customLayers?: number,
   customCrownHeight?: number,
-  customColumnCount?: number
+  customColumnCount?: number,
+  blockHeightCm: BlockHeight = 12
 ): { 
   layers: number; 
   blocksPerLayer: number; 
@@ -194,6 +198,7 @@ export function calculateTotalBlocks(
   columnCount: number;
   isOptimal: boolean;
 } {
+  const blockHeight = blockHeightCm / 100;
   // Calculate column count - use custom count if provided, otherwise calculate default
   let columnCount: number;
   if (customColumnCount !== undefined) {
@@ -205,11 +210,11 @@ export function calculateTotalBlocks(
   }
   
   // Calculate layers and crown height
-  let layerCalc = calculateBlockLayers(poolDepth);
+  let layerCalc = calculateBlockLayers(poolDepth, blockHeightCm);
   
   // Apply custom values if provided
   if (customLayers !== undefined && customLayers > 0) {
-    const wallHeight = customLayers * BLOCK_DIMENSIONS.height;
+    const wallHeight = customLayers * blockHeight;
     const crownHeight = poolDepth - wallHeight;
     layerCalc = {
       layers: customLayers,
@@ -221,11 +226,11 @@ export function calculateTotalBlocks(
   
   if (customCrownHeight !== undefined && customCrownHeight >= MIN_CROWN_HEIGHT) {
     const wallHeight = poolDepth - customCrownHeight;
-    const layers = Math.round(wallHeight / BLOCK_DIMENSIONS.height);
+    const layers = Math.round(wallHeight / blockHeight);
     layerCalc = {
       layers,
-      wallHeight: layers * BLOCK_DIMENSIONS.height,
-      crownHeight: poolDepth - (layers * BLOCK_DIMENSIONS.height),
+      wallHeight: layers * blockHeight,
+      crownHeight: poolDepth - (layers * blockHeight),
       isOptimal: Math.abs(customCrownHeight - OPTIMAL_CROWN_HEIGHT) < 0.01,
     };
   }
