@@ -732,6 +732,9 @@ export default function Pool2DPreview({
         const breakpoints = [wallStart, ...juncPositions, wallEnd];
         const wallLen = Math.abs(wallEnd - wallStart);
         
+        // Junction columns consume from totalCols budget
+        const remainingCols = Math.max(0, totalCols - wallJunctions.length);
+        
         for (let s = 0; s < breakpoints.length - 1; s++) {
           const segStart = breakpoints[s];
           const segEnd = breakpoints[s + 1];
@@ -746,8 +749,8 @@ export default function Pool2DPreview({
             }
           }
           
-          // Distribute proportional columns on this segment
-          const segCols = columnsForSegment(segLen, wallLen, totalCols);
+          // Distribute remaining columns proportionally on this segment
+          const segCols = columnsForSegment(segLen, wallLen, remainingCols);
           const positions = distributeOnSegment(segStart, segEnd, segCols);
           for (const pos of positions) {
             if (isHorizontal) {
