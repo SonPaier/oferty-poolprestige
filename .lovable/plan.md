@@ -1,42 +1,70 @@
 
 
-# Zmiana logiki slupow junction -- wliczanie w pulę sciany
+# Dodanie uwag do robót ziemnych + dodatkowe pozycje wyceny w obu tabelach
 
-## Problem
-Aktualnie gdy brodzik styka sie ze sciana, slup junction jest dodawany jako **dodatkowy** slup, wiec np. na scianie z 2 slupami pojawia sie 3 (2 rozlozonych + 1 junction). Powinien byc **jednym z** zdefiniowanych slupow.
+## 1. Uwagi w robotach ziemnych
 
-## Rozwiazanie
+Dodanie pola tekstowego "Uwagi" pod tabelą kosztów robót ziemnych, analogicznie do istniejącego pola w pracach budowlanych (linie 3050-3061). Nowy stan `excavationNotes` zapisywany do sekcji `roboty_ziemne`.
 
-Zmiana w funkcji `addWallColumns` w pliku `src/components/Pool2DPreview.tsx`:
+## 2. Dodatkowe pozycje wyceny (obie tabele)
 
-1. Gdy sciana ma junction points, jeden slup z puli `totalCols` jest "zuzywany" na kazdy junction point.
-2. Pozostale slupy (`totalCols - liczbaJunctions`) sa rozdzielane proporcjonalnie na segmenty miedzy junction points / naroznikami.
+### Mechanizm
+- W obu tabelach (roboty ziemne i prace budowlane) za ostatnią pozycją pojawi się wiersz "Dodaj pozycję"
+- Po kliknięciu/wypełnieniu wiersza, nowa pozycja zostaje dodana do listy, a wiersz dodawania przesuwa się niżej
+- Kazda dodana pozycja ma przycisk usuwania (ikona kosza)
 
-### Przyklad
-Sciana 8m, `totalCols = 3`, 1 junction point:
-- 1 slup idzie na junction -> zostaja 2 slupy
-- 2 slupy rozkladane proporcjonalnie na 2 segmenty (np. segment 6m dostaje 2, segment 2m dostaje 0)
+### Dodawanie pozycji -- dwa tryby
+1. **Wyszukaj z bazy produktów** -- pole tekstowe z wyszukiwaniem (Popover/Command z listy produktów z bazy danych). Po wybraniu produktu nazwa i cena zostają wstawione automatycznie
+2. **Wpisz recznie** -- wpisanie nazwy, ilości, jednostki, stawki recznie
 
-### Zmiana techniczna
+### UI wiersza dodawania
+- Kolumna "Nazwa" -- input z autouzupelnianiem (wyszukiwanie produktów) lub wolny tekst
+- Kolumna "Ilość" -- input numeryczny (domyslnie 1)
+- Kolumna "Jednostka" -- select (szt./m2/m3/mb/kpl/ryczalt)
+- Kolumna "Stawka" -- input numeryczny (auto z produktu lub reczna)
+- Kolumna "Wartość netto" -- obliczana automatycznie
+- Przycisk "+" do zatwierdzenia pozycji
 
-W funkcji `addWallColumns` (linie ~705-760):
+### Stan danych
+- Nowy stan `extraExcavationItems` (tablica dodatkowych pozycji robót ziemnych)
+- Nowy stan `extraConstructionItems` (tablica dodatkowych pozycji prac budowlanych)
+- Kazda pozycja: `{ id, name, quantity, unit, rate, netValue, productId? }`
+- Sumy tabel uwzgledniaja dodatkowe pozycje
 
-```
-// Obecna logika (bledna):
-// 1. Dodaj junction column (EXTRA)
-// 2. Rozdziel totalCols proporcjonalnie na segmenty
+## Zmiany techniczne
 
-// Nowa logika:
-// 1. remainingCols = totalCols - junctionCount
-// 2. Dodaj junction column (wliczone w totalCols)
-// 3. Rozdziel remainingCols proporcjonalnie na segmenty
-```
+### Plik: `src/components/steps/GroundworksStep.tsx`
 
-Konkretnie:
-- Linia z `columnsForSegment(segLen, wallLen, totalCols)` zmieni sie na `columnsForSegment(segLen, wallLen, remainingCols)`
-- Gdzie `remainingCols = Math.max(0, totalCols - wallJunctions.length)`
-- Dodatkowe zabezpieczenie: jesli `totalCols <= junctionCount`, tylko junction columns sa umieszczane (0 dodatkowych)
+1. **Nowe stany**:
+   - `excavationNotes: string` -- uwagi do robót ziemnych
+   - `extraExcavationItems: ExtraLineItem[]` -- dodatkowe pozycje w tabeli robót ziemnych
+   - `extraConstructionItems: ExtraLineItem[]` -- dodatkowe pozycje w tabeli prac budowlanych
+   - `excSearchQuery / constSearchQuery` -- zapytania wyszukiwania produktów
 
-### Plik do zmiany
-- `src/components/Pool2DPreview.tsx` -- funkcja `addWallColumns`, ~10 linii zmian
+2. **Nowy interface** `ExtraLineItem`:
+   ```
+   { id: string, name: string, quantity: number, unit: string, rate: number, netValue: number, productId?: string }
+   ```
+
+3. **Nowy komponent wewnetrzny** `AddItemRow` -- wiersz dodawania pozycji z wyszukiwaniem produktów (Popover + Command z wynikami z bazy)
+
+4. **Tabela robót ziemnych** (linie ~1921-1964):
+   - Po ostatnim `TableRow` w `TableBody` (przed `TableFooter`) -- dodanie renderowania `extraExcavationItems` + wiersza `AddItemRow`
+   - Aktualizacja `totalNet` o sume `extraExcavationItems`
+
+5. **Tabela prac budowlanych** (linie ~3004-3006):
+   - Po ostatnim wierszu labor (przed `TableFooter`) -- dodanie renderowania `extraConstructionItems` + wiersza `AddItemRow`
+   - Aktualizacja `constructionTotalNet` o sume `extraConstructionItems`
+
+6. **Pole uwag robót ziemnych**:
+   - Pod tabelą kosztów (po zamknieciu `</Table>`, przed zamknieciem glass-card) -- Textarea analogicznie do linii 3050-3061
+
+7. **Zapis do sekcji**:
+   - `roboty_ziemne` -- dodanie `notes: excavationNotes`, `extraItems: extraExcavationItems`
+   - `prace_budowlane` -- dodanie `extraItems: extraConstructionItems`
+
+### Wyszukiwanie produktów
+- Wykorzystanie istniejacego hooka `useProducts` z `src/hooks/useProducts.ts` do wyszukiwania
+- Popover z listą wyników (nazwa, symbol, cena) -- uzytkownik klika aby wstawic
+- Jesli brak wyników lub uzytkownik wpisze tekst bez wyboru -- traktowane jako pozycja reczna
 
