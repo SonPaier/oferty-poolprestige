@@ -43,6 +43,7 @@ import {
   calculateTotalBlocks,
   calculateCrownConcreteVolume,
   calculateColumnsConcreteVolume,
+  calculateBlockLayers,
   BLOCK_DIMENSIONS,
   BlockHeight,
 } from '@/components/groundworks/ReinforcementSection';
@@ -241,7 +242,11 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
   const [constructionTechnology, setConstructionTechnology] = useState<ConstructionTechnology>('masonry');
   
   // Block height selection (12cm or 14cm)
-  const [blockHeight, setBlockHeight] = useState<BlockHeight>(12);
+  const [blockHeight, setBlockHeight] = useState<BlockHeight>(14);
+  
+  // Wading pool slab thickness (płyta brodzika) - calculated like block layers but no crown
+  const [wadingPoolSlabHeight, setWadingPoolSlabHeight] = useState<number>(0.20);
+  const [wadingPoolSlabOverride, setWadingPoolSlabOverride] = useState(false);
   
   // (Material heights moved up to line 117-120 for excavation depth calculation)
   
@@ -275,6 +280,38 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
       blockHeight
     );
   }, [dimensions.length, dimensions.width, dimensions.depth, constructionTechnology, customBlockLayers, customCrownHeight, totalColumnCount, blockHeight]);
+  
+  // Calculate wading pool blocks (2 non-shared walls: width + length)
+  const wadingPoolBlockCalc = useMemo(() => {
+    if (!dimensions.wadingPool?.enabled || constructionTechnology !== 'masonry') return null;
+    return calculateBlockLayers(dimensions.wadingPool.depth, blockHeight);
+  }, [dimensions.wadingPool?.enabled, dimensions.wadingPool?.depth, constructionTechnology, blockHeight]);
+  
+  const wadingPoolBlocks = useMemo(() => {
+    if (!wadingPoolBlockCalc || !dimensions.wadingPool?.enabled) return 0;
+    const wp = dimensions.wadingPool;
+    const innerPerimeter = (wp.width || 0) + (wp.length || 0); // 2 non-shared walls
+    const blocksPerLayer = Math.ceil(innerPerimeter / BLOCK_DIMENSIONS.length);
+    return wadingPoolBlockCalc.layers * blocksPerLayer;
+  }, [wadingPoolBlockCalc, dimensions.wadingPool]);
+  
+  // Auto-update wading pool slab height when not manually overridden
+  useEffect(() => {
+    if (wadingPoolBlockCalc && !wadingPoolSlabOverride) {
+      setWadingPoolSlabHeight(wadingPoolBlockCalc.crownHeight);
+    }
+  }, [wadingPoolBlockCalc, wadingPoolSlabOverride]);
+  
+  // Calculate stairs blocks (total step meters / block length)
+  const stairsBlocks = useMemo(() => {
+    if (!dimensions.stairs?.enabled || constructionTechnology !== 'masonry') return 0;
+    const s = dimensions.stairs;
+    const stairsWidth = s.width === 'full' 
+      ? (s.wall === 'back' || s.wall === 'front' ? dimensions.length : dimensions.width)
+      : (Number(s.width) || 0);
+    const totalStepMeters = (s.stepCount || 0) * stairsWidth;
+    return Math.ceil(totalStepMeters / BLOCK_DIMENSIONS.length);
+  }, [dimensions.stairs, dimensions.length, dimensions.width, constructionTechnology]);
   
   // Reset custom values when pool dimensions change
   useEffect(() => {
@@ -400,7 +437,7 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
           return { ...item, quantity: currentPompogruszkaQty, netValue: currentPompogruszkaQty * item.rate };
         }
         if (item.id === 'bloczek') {
-          const qty = blockCalculation?.totalBlocks || 0;
+          const qty = (blockCalculation?.totalBlocks || 0) + wadingPoolBlocks + stairsBlocks;
           return { ...item, quantity: qty, netValue: qty * item.rate };
         }
         return item;
@@ -412,7 +449,7 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
       if (constructionTechnology === 'masonry' && blockCalculation) {
         // Add bloczek item for masonry if not present
         if (!hasBloczek) {
-          const bloczekQty = blockCalculation.totalBlocks;
+          const bloczekQty = blockCalculation.totalBlocks + wadingPoolBlocks + stairsBlocks;
           updated.push({
             id: 'bloczek',
             name: `Bloczek betonowy 38×24×${blockHeight}`,
@@ -435,7 +472,7 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
       
       return updated;
     });
-  }, [excavationArea, leanConcreteHeight, dimensions.stairs?.enabled, dimensions.wadingPool?.enabled, constructionTechnology, blockCalculation, blockHeight]);
+  }, [excavationArea, leanConcreteHeight, dimensions.stairs?.enabled, dimensions.wadingPool?.enabled, constructionTechnology, blockCalculation, blockHeight, wadingPoolBlocks, stairsBlocks]);
   
   // Update podsypka, piasek_zasypka, drenaz, and zakopanie in lineItems when excavation dimensions change
   useEffect(() => {
@@ -526,9 +563,9 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
         });
       }
       
-      // Wading pool concrete (when enabled)
+      // Wading pool concrete (when enabled) - uses wadingPoolSlabHeight instead of floorSlabThickness
       if (dimensions.wadingPool?.enabled) {
-        const wpVolume = (dimensions.wadingPool.width || 0) * (dimensions.wadingPool.length || 0) * floorSlabThickness;
+        const wpVolume = (dimensions.wadingPool.width || 0) * (dimensions.wadingPool.length || 0) * wadingPoolSlabHeight;
         const existingWP = prev.subItems.find(s => s.id === 'beton_brodzik');
         newSubItems.push({
           id: 'beton_brodzik',
@@ -554,7 +591,7 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
       
       return { ...prev, subItems: newSubItems };
     });
-  }, [floorSlabArea, floorSlabThickness, constructionTechnology, blockCalculation, dimensions.length, dimensions.width, dimensions.depth, totalColumnCount, dimensions.wadingPool, dimensions.stairs]);
+  }, [floorSlabArea, floorSlabThickness, constructionTechnology, blockCalculation, dimensions.length, dimensions.width, dimensions.depth, totalColumnCount, dimensions.wadingPool, dimensions.stairs, wadingPoolSlabHeight]);
   
   // Calculate expected values for reset functionality
   const getExpectedMaterialQuantity = useCallback((id: string): number => {
@@ -570,11 +607,11 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
       case 'pompogruszka':
         return currentPompogruszkaQty;
       case 'bloczek':
-        return blockCalculation?.totalBlocks || 0;
+        return (blockCalculation?.totalBlocks || 0) + wadingPoolBlocks + stairsBlocks;
       default:
         return 0;
     }
-  }, [excavationArea, sandBeddingHeight, leanConcreteHeight, dimensions.stairs?.enabled, dimensions.wadingPool?.enabled, blockCalculation]);
+  }, [excavationArea, sandBeddingHeight, leanConcreteHeight, dimensions.stairs?.enabled, dimensions.wadingPool?.enabled, blockCalculation, wadingPoolBlocks, stairsBlocks]);
 
   const getExpectedB25SubItemQuantity = useCallback((subItemId: string): number => {
     const crownConcreteVolume = blockCalculation 
@@ -594,7 +631,7 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
         return columnsConcreteData.volume;
       case 'beton_brodzik':
         return dimensions.wadingPool?.enabled 
-          ? (dimensions.wadingPool.width || 0) * (dimensions.wadingPool.length || 0) * floorSlabThickness 
+          ? (dimensions.wadingPool.width || 0) * (dimensions.wadingPool.length || 0) * wadingPoolSlabHeight 
           : 0;
       case 'beton_schody': {
         if (!dimensions.stairs?.enabled) return 0;
@@ -604,7 +641,7 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
       default:
         return 0;
     }
-  }, [floorSlabArea, floorSlabThickness, blockCalculation, dimensions.length, dimensions.width, dimensions.depth, dimensions.wadingPool, dimensions.stairs]);
+  }, [floorSlabArea, floorSlabThickness, blockCalculation, dimensions.length, dimensions.width, dimensions.depth, dimensions.wadingPool, dimensions.stairs, wadingPoolSlabHeight]);
 
   // Helper to get rate key from material id (construction materials only)
   const getMaterialRateKey = (id: string): keyof ConstructionMaterialRates | null => {
@@ -1988,6 +2025,48 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
                         <Label htmlFor="block-14" className="cursor-pointer">14 cm</Label>
                       </div>
                     </RadioGroup>
+                  </div>
+                )}
+
+                {/* Wading pool slab thickness (only when wading pool enabled and masonry) */}
+                {dimensions.wadingPool?.enabled && constructionTechnology === 'masonry' && (
+                  <div className="mb-4">
+                    <div className="flex items-center gap-2">
+                      <div className="space-y-2 flex-1 max-w-[200px]">
+                        <Label htmlFor="wp-slab-height">Grub. płyty brodzika (cm)</Label>
+                        <div className="flex items-center gap-2">
+                          <Input
+                            id="wp-slab-height"
+                            type="number"
+                            min="18"
+                            max="30"
+                            step="1"
+                            value={Math.round(wadingPoolSlabHeight * 100)}
+                            onChange={(e) => {
+                              const val = Math.min(30, Math.max(18, parseFloat(e.target.value) || 18));
+                              setWadingPoolSlabHeight(val / 100);
+                              setWadingPoolSlabOverride(true);
+                            }}
+                            className="input-field"
+                          />
+                          {wadingPoolSlabOverride && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8"
+                              onClick={() => {
+                                setWadingPoolSlabOverride(false);
+                                const wpBlockCalc = calculateBlockLayers(dimensions.wadingPool!.depth, blockHeight);
+                                setWadingPoolSlabHeight(wpBlockCalc.crownHeight);
+                              }}
+                              title="Przywróć wartość obliczoną"
+                            >
+                              <RotateCcw className="w-4 h-4" />
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 )}
 
