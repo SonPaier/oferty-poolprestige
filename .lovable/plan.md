@@ -1,41 +1,107 @@
 
 
-## Plan: Wysokosc bloczka + Beton B25 na brodzik i schody
+## Plan: Domyslny bloczek 14cm + bloczki brodzik/schody + plyta brodzika
 
-### 1. Opcja wyboru wysokosci bloczka (12cm / 14cm)
+### 1. Domyslna wysokosc bloczka: 14cm
 
-**Gdzie:** `src/components/groundworks/ReinforcementSection.tsx`
+**Plik:** `src/components/steps/GroundworksStep.tsx`, linia 244
 
-- Dodanie nowego typu `BlockHeight = 12 | 14` i zmiennej stanu w `GroundworksStep.tsx`
-- Zmiana stalej `BLOCK_DIMENSIONS.height` na parametr przekazywany do funkcji obliczeniowych (`calculateBlockLayers`, `calculateTotalBlocks`, `calculateBlocksPerLayer`)
-- Dodanie selektora (Select lub RadioGroup) w sekcji "Parametry budowy" w `GroundworksStep.tsx` pozwalajacego wybrac 12cm lub 14cm
-- Aktualizacja nazwy pozycji w tabeli materialow: "Bloczek betonowy 38x24x12" -> "Bloczek betonowy 38x24x14" dynamicznie
-- Zmiana wpływa na: liczbe warstw, wysokosc wieniec, ilosc bloczkow
+Zmiana:
+```typescript
+// PRZED:
+const [blockHeight, setBlockHeight] = useState<BlockHeight>(12);
+// PO:
+const [blockHeight, setBlockHeight] = useState<BlockHeight>(14);
+```
 
-### 2. Beton B25 na brodzik
+### 2. Nowy stan: grubosc plyty brodzika
 
-**Gdzie:** `src/components/steps/GroundworksStep.tsx` (useEffect aktualizujacy `b25ConcreteGroup`)
+**Plik:** `src/components/steps/GroundworksStep.tsx`, po linii 244
 
-- Dodanie nowej podpozycji `beton_brodzik` w grupie B25 gdy `dimensions.wadingPool?.enabled`
-- Wzor: `wadingPool.width * wadingPool.length * floorSlabThickness`
-- Wyswietlanie analogicznie do "Plyta denna", "Wieniec", "Slupy"
+Dodanie nowych zmiennych stanu:
+```typescript
+const [wadingPoolSlabHeight, setWadingPoolSlabHeight] = useState<number>(0.20);
+const [wadingPoolSlabOverride, setWadingPoolSlabOverride] = useState(false);
+```
 
-### 3. Beton B25 na schody
+### 3. Obliczenie warstw bloczkow brodzika i plyty brodzika
 
-**Gdzie:** `src/components/steps/GroundworksStep.tsx` (useEffect aktualizujacy `b25ConcreteGroup`)
+**Plik:** `src/components/steps/GroundworksStep.tsx`
 
-- Dodanie nowej podpozycji `beton_schody` w grupie B25 gdy `dimensions.stairs?.enabled`
-- Wzor: `stairsProjectionArea * floorSlabThickness` (powierzchnia rzutu schodow * grubosc plyty)
-- Wyswietlanie analogicznie do innych podpozycji B25
+Nowy `useMemo` obliczajacy bloczki brodzika:
+- Uzywa `calculateBlockLayers(wadingPool.depth, blockHeight)` -- ten sam algorytm co basen
+- Wynik `crownHeight` z algorytmu = grubosc plyty brodzika (18-30cm)
+- Obwod wewnetrzny (sciany nie wspolne z basenem) = `width + length` (2 sciany, bo brodzik w narozyniku dzieli 2 sciany z basenem)
+- Bloczki brodzika = `layers * Math.ceil((width + length) / 0.38)`
 
-### 4. Aktualizacja `getExpectedB25SubItemQuantity`
+Automatyczna aktualizacja `wadingPoolSlabHeight` gdy nie ma recznego override:
+```typescript
+const wpBlockCalc = calculateBlockLayers(wadingPool.depth, blockHeight);
+if (!wadingPoolSlabOverride) {
+  setWadingPoolSlabHeight(wpBlockCalc.crownHeight);
+}
+```
 
-- Dodanie case'ow `beton_brodzik` i `beton_schody` aby funkcja reset dzialala poprawnie
+### 4. Obliczenie bloczkow za schody
 
-### Zmiany w plikach
+**Plik:** `src/components/steps/GroundworksStep.tsx`
 
-| Plik | Zakres zmian |
-|------|-------------|
-| `src/components/groundworks/ReinforcementSection.tsx` | Parametryzacja `BLOCK_DIMENSIONS.height`, aktualizacja sygnatur funkcji `calculateBlockLayers`, `calculateTotalBlocks`, `calculateBlocksPerLayer` aby przyjmowaly `blockHeight` |
-| `src/components/steps/GroundworksStep.tsx` | Dodanie stanu `blockHeight`, selektora UI, przekazanie do obliczen bloczków, dodanie podpozycji B25 brodzik/schody, aktualizacja nazwy bloczka |
+```typescript
+const stairsBlocks = dimensions.stairs?.enabled
+  ? Math.ceil((stairs.stepCount * stairsWidth) / BLOCK_DIMENSIONS.length)
+  : 0;
+```
+
+Gdzie `stairsWidth` = `stairs.width === 'full' ? dimensions.width : stairs.width` (lub odpowiedni bok).
+
+### 5. Aktualizacja sumy bloczkow
+
+**Plik:** `src/components/steps/GroundworksStep.tsx`, useEffect aktualizujacy constructionMaterials (~linia 402)
+
+Zmiana ilosci bloczkow z `blockCalculation.totalBlocks` na:
+```typescript
+const totalBlocks = (blockCalculation?.totalBlocks || 0) + wadingPoolBlocks + stairsBlocks;
+```
+
+Dotyczy zarowno tworzenia nowej pozycji jak i aktualizacji istniejacej.
+
+### 6. Aktualizacja getExpectedMaterialQuantity('bloczek')
+
+**Plik:** `src/components/steps/GroundworksStep.tsx`, linia 572-573
+
+Zmiana:
+```typescript
+case 'bloczek':
+  return (blockCalculation?.totalBlocks || 0) + wadingPoolBlocks + stairsBlocks;
+```
+
+### 7. Beton B25 brodzik -- uzycie plyty brodzika
+
+**Plik:** `src/components/steps/GroundworksStep.tsx`, linia 531
+
+Zmiana wzoru z `floorSlabThickness` na `wadingPoolSlabHeight`:
+```typescript
+// PRZED:
+const wpVolume = (wadingPool.width || 0) * (wadingPool.length || 0) * floorSlabThickness;
+// PO:
+const wpVolume = (wadingPool.width || 0) * (wadingPool.length || 0) * wadingPoolSlabHeight;
+```
+
+Analogicznie w `getExpectedB25SubItemQuantity` (linia 597).
+
+### 8. UI: pole grubosci plyty brodzika
+
+**Plik:** `src/components/steps/GroundworksStep.tsx`, w sekcji parametrow budowy (obok selektora wysokosci bloczka, ~linia 1976)
+
+Gdy brodzik wlaczony, wyswietlic:
+- Label: "Grub. plyty brodzika (cm)"
+- Input z wartoscia `wadingPoolSlabHeight * 100`
+- Walidacja: 18-30cm
+- Przycisk reset gdy `wadingPoolSlabOverride === true`
+
+### Podsumowanie zmian
+
+| Plik | Zmiany |
+|------|--------|
+| `src/components/steps/GroundworksStep.tsx` | Domyslny blockHeight=14, stan wadingPoolSlabHeight, obliczenia bloczkow brodzik+schody, suma bloczkow, B25 brodzik z plyta brodzika, UI pole grubosci plyty brodzika, reset |
 
