@@ -692,18 +692,19 @@ export default function Pool2DPreview({
       return positions;
     }
     
-    // Helper: allocate columns to segments proportionally (largest-remainder method)
+    // Helper: allocate columns to segments proportionally, giving remainders to longest segments
     function allocateColumnsToSegments(segLengths: number[], totalCols: number): number[] {
       const totalLen = segLengths.reduce((a, b) => a + b, 0);
       if (totalLen <= 0 || totalCols <= 0) return segLengths.map(() => 0);
       const exact = segLengths.map(s => (s / totalLen) * totalCols);
       const floored = exact.map(e => Math.floor(e));
       let remaining = totalCols - floored.reduce((a, b) => a + b, 0);
-      const remainders = exact.map((e, i) => ({ i, rem: e - floored[i] }));
-      remainders.sort((a, b) => b.rem - a.rem);
-      for (const r of remainders) {
+      // Give remaining columns to the longest segments (not largest fractional remainder)
+      const byLength = segLengths.map((len, i) => ({ i, len }));
+      byLength.sort((a, b) => b.len - a.len);
+      for (const s of byLength) {
         if (remaining <= 0) break;
-        floored[r.i]++;
+        floored[s.i]++;
         remaining--;
       }
       return floored;
