@@ -160,10 +160,10 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
       {
         id: 'wywoz',
         name: 'Wywóz ziemi',
-        quantity: 1,
-        unit: 'ryczalt' as UnitType,
-        rate: excavationSettings.removalFixedPrice,
-        netValue: excavationSettings.removalFixedPrice,
+        quantity: volume, // domyślnie m³ na podstawie objętości wykopu
+        unit: 'm3' as UnitType, // domyślnie m³, ryczałt tylko ręcznie
+        rate: excavationSettings.removalFixedPrice, // stawka za m³
+        netValue: volume * excavationSettings.removalFixedPrice,
       },
       {
         id: 'podsypka',
@@ -697,7 +697,16 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
   // Update line items when dimensions change (auto-update quantity only if not manually overridden)
   useEffect(() => {
     setLineItems(prev => prev.map(item => {
+      // Update wykop quantity
       if (item.id === 'wykop' && item.unit === 'm3' && !customQuantityOverride) {
+        return {
+          ...item,
+          quantity: excavationVolume,
+          netValue: excavationVolume * item.rate,
+        };
+      }
+      // Update wywoz quantity to match wykop volume (only if m3 mode, not ryczalt)
+      if (item.id === 'wywoz' && item.unit === 'm3' && !customQuantityOverride) {
         return {
           ...item,
           quantity: excavationVolume,

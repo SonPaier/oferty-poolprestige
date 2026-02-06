@@ -38,8 +38,8 @@ export interface ExcavationSettings {
 export const defaultExcavationSettings: ExcavationSettings = {
   marginWidth: 1,
   marginDepth: 1,
-  pricePerM3: 200,
-  removalFixedPrice: 2000,
+  pricePerM3: 20,
+  removalFixedPrice: 40, // domyślna stawka za m³ (nie ryczałt)
   podsypkaRate: 150,
   drainageRate: 220,
 };
