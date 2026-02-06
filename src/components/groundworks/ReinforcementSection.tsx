@@ -120,11 +120,23 @@ export function calculateColumnsConcreteVolume(
 }
 
 // Calculate optimal number of block layers and crown height
-export function calculateBlockLayers(poolDepth: number, blockHeightCm: BlockHeight = 12): BlockLayerCalculation {
+export function calculateBlockLayers(poolDepth: number, blockHeightCm: BlockHeight = 12, customLayers?: number): BlockLayerCalculation {
   const blockHeight = blockHeightCm / 100; // convert cm to m
   
   // Maximum number of layers (if no crown)
   const maxLayers = Math.floor(poolDepth / blockHeight);
+  
+  // If custom layers provided, use them directly
+  if (customLayers !== undefined && customLayers > 0) {
+    const wallHeight = customLayers * blockHeight;
+    const crownHeight = poolDepth - wallHeight;
+    return {
+      layers: customLayers,
+      wallHeight,
+      crownHeight,
+      isOptimal: Math.abs(crownHeight - OPTIMAL_CROWN_HEIGHT) < 0.01,
+    };
+  }
   
   // Search for optimal number of layers (prioritize values close to 24cm)
   for (let layers = maxLayers; layers >= 1; layers--) {

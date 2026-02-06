@@ -244,9 +244,9 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
   // Block height selection (12cm or 14cm)
   const [blockHeight, setBlockHeight] = useState<BlockHeight>(14);
   
-  // Wading pool slab thickness (płyta brodzika) - calculated like block layers but no crown
+  // Wading pool slab thickness (płyta brodzika) - auto-calculated from layers
   const [wadingPoolSlabHeight, setWadingPoolSlabHeight] = useState<number>(0.20);
-  const [wadingPoolSlabOverride, setWadingPoolSlabOverride] = useState(false);
+  const [customWadingPoolLayers, setCustomWadingPoolLayers] = useState<number | undefined>(undefined);
   
   // (Material heights moved up to line 117-120 for excavation depth calculation)
   
@@ -284,25 +284,24 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
   // Calculate wading pool blocks (2 non-shared walls: width + length)
   const wadingPoolBlockCalc = useMemo(() => {
     if (!dimensions.wadingPool?.enabled || constructionTechnology !== 'masonry') return null;
-    // Wall height = pool depth - wading pool depth (brodzik walls go from pool floor up to shallow depth)
     const wallHeight = dimensions.depth - (dimensions.wadingPool.depth || 0);
-    return calculateBlockLayers(wallHeight, blockHeight);
-  }, [dimensions.wadingPool?.enabled, dimensions.wadingPool?.depth, dimensions.depth, constructionTechnology, blockHeight]);
+    return calculateBlockLayers(wallHeight, blockHeight, customWadingPoolLayers);
+  }, [dimensions.wadingPool?.enabled, dimensions.wadingPool?.depth, dimensions.depth, constructionTechnology, blockHeight, customWadingPoolLayers]);
   
   const wadingPoolBlocks = useMemo(() => {
     if (!wadingPoolBlockCalc || !dimensions.wadingPool?.enabled) return 0;
     const wp = dimensions.wadingPool;
-    const innerPerimeter = (wp.width || 0) + (wp.length || 0); // 2 non-shared walls
+    const innerPerimeter = (wp.width || 0) + (wp.length || 0);
     const blocksPerLayer = Math.ceil(innerPerimeter / BLOCK_DIMENSIONS.length);
     return wadingPoolBlockCalc.layers * blocksPerLayer;
   }, [wadingPoolBlockCalc, dimensions.wadingPool]);
   
-  // Auto-update wading pool slab height when not manually overridden
+  // Auto-update wading pool slab height from calculated layers
   useEffect(() => {
-    if (wadingPoolBlockCalc && !wadingPoolSlabOverride) {
+    if (wadingPoolBlockCalc) {
       setWadingPoolSlabHeight(wadingPoolBlockCalc.crownHeight);
     }
-  }, [wadingPoolBlockCalc, wadingPoolSlabOverride]);
+  }, [wadingPoolBlockCalc]);
   
   // Calculate stairs blocks (total step meters / block length)
   const stairsBlocks = useMemo(() => {
@@ -320,6 +319,7 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
     setCustomBlockLayers(undefined);
     setCustomCrownHeight(undefined);
     setCustomColumnCounts(undefined);
+    setCustomWadingPoolLayers(undefined);
   }, [dimensions.depth, dimensions.length, dimensions.width]);
   
   // Calculate excavation area (for material calculations)
@@ -2125,47 +2125,7 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
                   </div>
                 )}
 
-                {/* Wading pool slab thickness (only when wading pool enabled and masonry) */}
-                {dimensions.wadingPool?.enabled && constructionTechnology === 'masonry' && (
-                  <div className="mb-4">
-                    <div className="flex items-center gap-2">
-                      <div className="space-y-2 flex-1 max-w-[200px]">
-                        <Label htmlFor="wp-slab-height">Grub. płyty brodzika (cm)</Label>
-                        <div className="flex items-center gap-2">
-                          <Input
-                            id="wp-slab-height"
-                            type="number"
-                            min="18"
-                            max="30"
-                            step="1"
-                            value={Math.round(wadingPoolSlabHeight * 100)}
-                            onChange={(e) => {
-                              const val = Math.min(30, Math.max(18, parseFloat(e.target.value) || 18));
-                              setWadingPoolSlabHeight(val / 100);
-                              setWadingPoolSlabOverride(true);
-                            }}
-                            className="input-field"
-                          />
-                          {wadingPoolSlabOverride && (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-8 w-8"
-                              onClick={() => {
-                                setWadingPoolSlabOverride(false);
-                                const wpBlockCalc = calculateBlockLayers(dimensions.wadingPool!.depth, blockHeight);
-                                setWadingPoolSlabHeight(wpBlockCalc.crownHeight);
-                              }}
-                              title="Przywróć wartość obliczoną"
-                            >
-                              <RotateCcw className="w-4 h-4" />
-                            </Button>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
+                {/* Wading pool slab thickness removed - now in Konstrukcja murowana section */}
 
                 {/* Material heights configuration */}
                 <div className="grid grid-cols-2 gap-4 mb-4">
@@ -2306,11 +2266,6 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
                             (wyl: {calculateTotalBlocks(dimensions.length, dimensions.width, dimensions.depth).layers})
                           </span>
                         </div>
-                        {dimensions.wadingPool?.enabled && wadingPoolBlockCalc && (
-                          <p className="text-xs text-muted-foreground">
-                            Brodzik: {wadingPoolBlockCalc.layers} warstw
-                          </p>
-                        )}
                       </div>
                       
                       <div className="space-y-2">
@@ -2361,6 +2316,73 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
                         </p>
                       </div>
                     </div>
+                    
+                    {/* Wading pool layers and slab */}
+                    {dimensions.wadingPool?.enabled && wadingPoolBlockCalc && (
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4 p-3 rounded-lg bg-muted/20 border border-border">
+                        <div className="space-y-2">
+                          <Label htmlFor="wp-block-layers" className="text-xs text-muted-foreground">
+                            Warstwy bloczków (brodzik)
+                          </Label>
+                          <div className="flex items-center gap-2">
+                            <Input
+                              id="wp-block-layers"
+                              type="number"
+                              min="1"
+                              max="20"
+                              step="1"
+                              value={wadingPoolBlockCalc.layers}
+                              onChange={(e) => {
+                                const val = parseInt(e.target.value) || 0;
+                                setCustomWadingPoolLayers(val > 0 ? val : undefined);
+                              }}
+                              className="input-field w-20"
+                            />
+                            {customWadingPoolLayers !== undefined && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8"
+                                onClick={() => setCustomWadingPoolLayers(undefined)}
+                                title="Przywróć wartość obliczoną"
+                              >
+                                <RotateCcw className="w-4 h-4" />
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                        
+                        <div className="space-y-2">
+                          <Label className="text-xs text-muted-foreground">
+                            Wysokość ściany brodzika
+                          </Label>
+                          <p className="text-lg font-semibold">
+                            {Math.round(wadingPoolBlockCalc.wallHeight * 100)} cm
+                          </p>
+                        </div>
+                        
+                        <div className="space-y-2">
+                          <Label className="text-xs text-muted-foreground">
+                            Grub. płyty brodzika
+                          </Label>
+                          <p className="text-lg font-semibold">
+                            {Math.round(wadingPoolSlabHeight * 100)} cm
+                          </p>
+                          {wadingPoolBlockCalc.isOptimal && (
+                            <span className="text-xs text-green-600 font-medium">✓ opt.</span>
+                          )}
+                        </div>
+                        
+                        <div className="space-y-2">
+                          <Label className="text-xs text-muted-foreground">
+                            Bloczki w warstwie
+                          </Label>
+                          <p className="text-lg font-semibold">
+                            {Math.ceil(((dimensions.wadingPool.width || 0) + (dimensions.wadingPool.length || 0)) / BLOCK_DIMENSIONS.length)} szt.
+                          </p>
+                        </div>
+                      </div>
+                    )}
                     
                     <div className="flex items-center justify-between p-3 rounded-lg bg-primary/10 border border-primary/20">
                       <div className="flex items-center gap-4">
