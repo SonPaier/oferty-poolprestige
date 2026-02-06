@@ -1,7 +1,7 @@
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
-import { Shovel, Hammer } from 'lucide-react';
+import { Shovel, Hammer, HardHat } from 'lucide-react';
 import { CompanySettings, ConstructionMaterialRates, defaultConstructionMaterialRates } from '@/types/configurator';
 import { ExcavationSettings } from '@/types/offers';
 
@@ -98,6 +98,21 @@ export function DefaultRatesSettings({
               onChange={(e) => onExcavationChange({ 
                 ...excavation, 
                 drainageRate: parseFloat(e.target.value) || 0
+              })}
+              className="input-field"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="rateBackfill">Zakopanie-koparka (PLN/m³)</Label>
+            <Input
+              id="rateBackfill"
+              type="number"
+              min="0"
+              step="1"
+              value={excavation.backfillRate}
+              onChange={(e) => onExcavationChange({ 
+                ...excavation, 
+                backfillRate: Math.round(parseFloat(e.target.value) || 0)
               })}
               className="input-field"
             />
@@ -231,6 +246,54 @@ export function DefaultRatesSettings({
               step="10"
               value={materialRates.pompogruszka}
               onChange={(e) => updateMaterialRate('pompogruszka', parseFloat(e.target.value) || 0)}
+              className="input-field"
+            />
+          </div>
+        </div>
+      </div>
+
+      <Separator />
+
+      {/* Labor Rates */}
+      <div>
+        <h3 className="font-medium flex items-center gap-2 mb-4">
+          <HardHat className="w-4 h-4 text-primary" />
+          Koszt budowy (robocizna)
+        </h3>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <Label htmlFor="rateLaborPool">Prace budowlane – basen (PLN/m²)</Label>
+            <Input
+              id="rateLaborPool"
+              type="number"
+              min="0"
+              step="10"
+              value={materialRates.laborPoolRate}
+              onChange={(e) => updateMaterialRate('laborPoolRate', parseFloat(e.target.value) || 0)}
+              className="input-field"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="rateLaborStairs">Prace budowlane – schody (PLN/m²)</Label>
+            <Input
+              id="rateLaborStairs"
+              type="number"
+              min="0"
+              step="10"
+              value={materialRates.laborStairsRate}
+              onChange={(e) => updateMaterialRate('laborStairsRate', parseFloat(e.target.value) || 0)}
+              className="input-field"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="rateLaborWading">Prace budowlane – brodzik (PLN/m²)</Label>
+            <Input
+              id="rateLaborWading"
+              type="number"
+              min="0"
+              step="10"
+              value={materialRates.laborWadingRate}
+              onChange={(e) => updateMaterialRate('laborWadingRate', parseFloat(e.target.value) || 0)}
               className="input-field"
             />
           </div>

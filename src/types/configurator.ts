@@ -312,6 +312,10 @@ export interface ConstructionMaterialRates {
   pompogruszka: number;    // zł/szt.
   hydropian10cm: number;   // zł/m² (wall insulation)
   purFoam5cm: number;      // zł/m² (PUR foam wall insulation)
+  // Labor rates
+  laborPoolRate: number;   // zł/m² (prace budowlane – basen)
+  laborStairsRate: number; // zł/m² (prace budowlane – schody)
+  laborWadingRate: number; // zł/m² (prace budowlane – brodzik)
 }
 
 export const defaultConstructionMaterialRates: ConstructionMaterialRates = {
@@ -328,6 +332,9 @@ export const defaultConstructionMaterialRates: ConstructionMaterialRates = {
   pompogruszka: 350,
   hydropian10cm: 45,
   purFoam5cm: 60,
+  laborPoolRate: 700,
+  laborStairsRate: 1000,
+  laborWadingRate: 1000,
 };
 
 export interface CompanySettings {
