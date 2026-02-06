@@ -415,6 +415,18 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
     ],
   });
   
+  // Grouped block item (bloczki: basen + brodzik + schody)
+  const [blockGroup, setBlockGroup] = useState<GroupedMaterialItem>({
+    id: 'block_group',
+    groupName: `Bloczek betonowy 38×24×${blockHeight}`,
+    unit: 'szt.',
+    rate: materialRates.bloczek,
+    isExpanded: false,
+    subItems: [
+      { id: 'bloczek_basen', name: 'Basen', quantity: 0, customOverride: false },
+    ],
+  });
+  
   // Reinforcement hook
   const reinforcement = useReinforcement(dimensions, floorSlabThickness, constructionTechnology, materialRates);
   
@@ -436,42 +448,54 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
         if (item.id === 'pompogruszka') {
           return { ...item, quantity: currentPompogruszkaQty, netValue: currentPompogruszkaQty * item.rate };
         }
-        if (item.id === 'bloczek') {
-          const qty = (blockCalculation?.totalBlocks || 0) + wadingPoolBlocks + stairsBlocks;
-          return { ...item, quantity: qty, netValue: qty * item.rate };
-        }
         return item;
       });
       
-      // Add or remove bloczek based on technology
-      const hasBloczek = updated.some(item => item.id === 'bloczek');
-      
-      if (constructionTechnology === 'masonry' && blockCalculation) {
-        // Add bloczek item for masonry if not present
-        if (!hasBloczek) {
-          const bloczekQty = blockCalculation.totalBlocks + wadingPoolBlocks + stairsBlocks;
-          updated.push({
-            id: 'bloczek',
-            name: `Bloczek betonowy 38×24×${blockHeight}`,
-            quantity: bloczekQty,
-            unit: 'szt.',
-            rate: materialRates.bloczek,
-            netValue: bloczekQty * materialRates.bloczek,
-            customOverride: false,
-          });
-        } else {
-          // Update name when block height changes
-          updated = updated.map(item => 
-            item.id === 'bloczek' ? { ...item, name: `Bloczek betonowy 38×24×${blockHeight}` } : item
-          );
-        }
-      } else if (constructionTechnology !== 'masonry') {
-        // Remove masonry-specific items for non-masonry
-        updated = updated.filter(item => item.id !== 'bloczek');
-      }
+      // Remove bloczek from flat list (now handled by blockGroup)
+      updated = updated.filter(item => item.id !== 'bloczek');
       
       return updated;
     });
+    
+    // Update block group sub-items
+    if (constructionTechnology === 'masonry') {
+      setBlockGroup(prev => {
+        const newSubItems: GroupedMaterialItem['subItems'] = [];
+        
+        // Pool blocks (always present for masonry)
+        const existingBasen = prev.subItems.find(s => s.id === 'bloczek_basen');
+        newSubItems.push({
+          id: 'bloczek_basen',
+          name: 'Basen',
+          quantity: existingBasen?.customOverride ? existingBasen.quantity : (blockCalculation?.totalBlocks || 0),
+          customOverride: existingBasen?.customOverride || false,
+        });
+        
+        // Wading pool blocks (when enabled)
+        if (dimensions.wadingPool?.enabled) {
+          const existingWP = prev.subItems.find(s => s.id === 'bloczek_brodzik');
+          newSubItems.push({
+            id: 'bloczek_brodzik',
+            name: 'Brodzik',
+            quantity: existingWP?.customOverride ? existingWP.quantity : wadingPoolBlocks,
+            customOverride: existingWP?.customOverride || false,
+          });
+        }
+        
+        // Stairs blocks (when enabled)
+        if (dimensions.stairs?.enabled) {
+          const existingStairs = prev.subItems.find(s => s.id === 'bloczek_schody');
+          newSubItems.push({
+            id: 'bloczek_schody',
+            name: 'Schody',
+            quantity: existingStairs?.customOverride ? existingStairs.quantity : stairsBlocks,
+            customOverride: existingStairs?.customOverride || false,
+          });
+        }
+        
+        return { ...prev, groupName: `Bloczek betonowy 38×24×${blockHeight}`, subItems: newSubItems };
+      });
+    }
   }, [excavationArea, leanConcreteHeight, dimensions.stairs?.enabled, dimensions.wadingPool?.enabled, constructionTechnology, blockCalculation, blockHeight, wadingPoolBlocks, stairsBlocks]);
   
   // Update podsypka, piasek_zasypka, drenaz, and zakopanie in lineItems when excavation dimensions change
@@ -606,8 +630,7 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
         return excavationArea * leanConcreteHeight;
       case 'pompogruszka':
         return currentPompogruszkaQty;
-      case 'bloczek':
-        return (blockCalculation?.totalBlocks || 0) + wadingPoolBlocks + stairsBlocks;
+      // bloczek is now in blockGroup, not in constructionMaterials
       default:
         return 0;
     }
@@ -648,7 +671,7 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
     switch (id) {
       case 'chudziak': return 'betonB15';
       case 'pompogruszka': return 'pompogruszka';
-      case 'bloczek': return 'bloczek';
+      // bloczek is now in blockGroup with its own rate handling
       default: return null;
     }
   };
@@ -801,6 +824,78 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
   const toggleB25Expand = () => {
     setB25ConcreteGroup(prev => ({ ...prev, isExpanded: !prev.isExpanded }));
   };
+  
+  // Toggle block group expand
+  const toggleBlockGroupExpand = () => {
+    setBlockGroup(prev => ({ ...prev, isExpanded: !prev.isExpanded }));
+  };
+  
+  // Update block group sub-item quantity
+  const updateBlockSubItemQuantity = (subItemId: string, newQuantity: number) => {
+    setBlockGroup(prev => ({
+      ...prev,
+      subItems: prev.subItems.map(item => 
+        item.id === subItemId 
+          ? { ...item, quantity: newQuantity, customOverride: true }
+          : item
+      ),
+    }));
+  };
+  
+  // Reset block sub-item to calculated value
+  const getExpectedBlockSubItemQuantity = useCallback((subItemId: string): number => {
+    switch (subItemId) {
+      case 'bloczek_basen': return blockCalculation?.totalBlocks || 0;
+      case 'bloczek_brodzik': return wadingPoolBlocks;
+      case 'bloczek_schody': return stairsBlocks;
+      default: return 0;
+    }
+  }, [blockCalculation, wadingPoolBlocks, stairsBlocks]);
+  
+  const resetBlockSubItemQuantity = (subItemId: string) => {
+    const expectedQty = getExpectedBlockSubItemQuantity(subItemId);
+    setBlockGroup(prev => ({
+      ...prev,
+      subItems: prev.subItems.map(item => 
+        item.id === subItemId 
+          ? { ...item, quantity: expectedQty, customOverride: false }
+          : item
+      ),
+    }));
+  };
+  
+  // Update block group rate
+  const updateBlockGroupRate = (newRate: number) => {
+    setBlockGroup(prev => ({ ...prev, rate: newRate }));
+    if (newRate !== materialRates.bloczek) {
+      setChangedMaterialRates(prev => ({ ...prev, 'block_group': newRate }));
+    } else {
+      setChangedMaterialRates(prev => {
+        const { 'block_group': _, ...rest } = prev;
+        return rest;
+      });
+    }
+  };
+  
+  // Confirm block group rate change
+  const confirmBlockGroupRateChange = () => {
+    const newRate = changedMaterialRates['block_group'];
+    if (newRate !== undefined) {
+      setPendingRateChange({
+        materialId: 'block_group',
+        materialName: `Bloczek betonowy 38×24×${blockHeight}`,
+        oldRate: materialRates.bloczek,
+        newRate,
+        rateKey: 'bloczek',
+      });
+      setShowMaterialRateDialog(true);
+    }
+  };
+  
+  // Block group totals
+  const blockGroupTotalQuantity = blockGroup.subItems.reduce((sum, item) => sum + item.quantity, 0);
+  const blockGroupTotalRounded = Math.ceil(blockGroupTotalQuantity);
+  const blockGroupTotalNet = blockGroupTotalRounded * blockGroup.rate;
   
   // Helper to get reinforcement rate key from item id
   const getReinforcementRateKey = (itemId: string): keyof ConstructionMaterialRates | null => {
@@ -1043,7 +1138,7 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
     return sum + (roundedQty * item.rate);
   }, 0);
   const laborTotalNet = laborItems.filter(i => !i.hidden).reduce((sum, item) => sum + item.netValue, 0);
-  const constructionTotalNet = materialsTotalNet + b25TotalNet + reinforcement.totalNet + laborTotalNet;
+  const constructionTotalNet = materialsTotalNet + b25TotalNet + (constructionTechnology === 'masonry' ? blockGroupTotalNet : 0) + reinforcement.totalNet + laborTotalNet;
   const constructionVatAmount = constructionTotalNet * (constructionVatRate / 100);
   const constructionTotalGross = constructionTotalNet + constructionVatAmount;
   
@@ -2620,7 +2715,7 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
                         </TableRow>
                       ))}
 
-                      {/* Remaining materials: Pompogruszka, Bloczek */}
+                      {/* Remaining materials: Pompogruszka */}
                       {constructionMaterials.filter(item => item.id !== 'chudziak').map((item) => (
                         <TableRow key={item.id}>
                           <TableCell className="font-medium">
@@ -2634,7 +2729,7 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
                               <Input
                                 type="number"
                                 min="0"
-                                step={['bloczek', 'pompogruszka'].includes(item.id) ? '1' : '0.5'}
+                                step={['pompogruszka'].includes(item.id) ? '1' : '0.5'}
                                 value={formatQuantity(item.id, item.quantity)}
                                 onChange={(e) => updateConstructionMaterial(item.id, 'quantity', parseFloat(e.target.value) || 0)}
                                 className="input-field w-[70px] text-right"
@@ -2683,6 +2778,104 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
                           </TableCell>
                         </TableRow>
                       ))}
+
+                      {/* Block Group (bloczki: basen + brodzik + schody) - only for masonry */}
+                      {constructionTechnology === 'masonry' && (
+                        <>
+                          <TableRow>
+                            <TableCell>
+                              <button
+                                type="button"
+                                className="flex items-center gap-2 font-medium hover:text-primary transition-colors"
+                                onClick={toggleBlockGroupExpand}
+                              >
+                                {blockGroup.isExpanded ? (
+                                  <ChevronDown className="w-4 h-4" />
+                                ) : (
+                                  <ChevronRight className="w-4 h-4" />
+                                )}
+                                {blockGroup.groupName}
+                              </button>
+                            </TableCell>
+                            <TableCell>
+                              <span className="font-medium block text-right pr-2">
+                                {formatQuantity('bloczek', blockGroupTotalQuantity)}
+                              </span>
+                            </TableCell>
+                            <TableCell className="text-muted-foreground">{blockGroup.unit}</TableCell>
+                            <TableCell>
+                              <div className="flex items-center justify-end gap-1">
+                                <Input
+                                  type="number"
+                                  min="0"
+                                  step="0.1"
+                                  value={blockGroup.rate}
+                                  onChange={(e) => updateBlockGroupRate(parseFloat(e.target.value) || 0)}
+                                  className="input-field w-[80px] text-right"
+                                />
+                                {changedMaterialRates['block_group'] !== undefined && (
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8 text-success hover:text-success/80 hover:bg-success/10"
+                                    onClick={confirmBlockGroupRateChange}
+                                    title="Zatwierdź zmianę stawki"
+                                  >
+                                    <Check className="h-4 w-4" />
+                                  </Button>
+                                )}
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-right font-semibold">
+                              {formatPrice(blockGroupTotalNet)}
+                            </TableCell>
+                          </TableRow>
+                          
+                          {/* Block sub-items (when expanded) */}
+                          {blockGroup.isExpanded && blockGroup.subItems.map((subItem) => (
+                            <TableRow key={subItem.id} className="bg-background">
+                              <TableCell className="pl-10 text-muted-foreground">
+                                └ {subItem.name}
+                                {subItem.customOverride && (
+                                  <span className="ml-2 text-xs text-amber-600">(zmieniono)</span>
+                                )}
+                              </TableCell>
+                              <TableCell>
+                                <div className="flex items-center justify-end gap-1">
+                                  <Input
+                                    type="number"
+                                    min="0"
+                                    step="1"
+                                    value={Math.ceil(subItem.quantity)}
+                                    onChange={(e) => updateBlockSubItemQuantity(subItem.id, parseFloat(e.target.value) || 0)}
+                                    className="input-field w-[70px] text-right"
+                                  />
+                                  {subItem.customOverride && (
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-8 w-8"
+                                      onClick={() => resetBlockSubItemQuantity(subItem.id)}
+                                      title={`Przywróć: ${Math.ceil(getExpectedBlockSubItemQuantity(subItem.id))}`}
+                                    >
+                                      <RotateCcw className="h-4 w-4" />
+                                    </Button>
+                                  )}
+                                </div>
+                              </TableCell>
+                              <TableCell className="text-muted-foreground">{blockGroup.unit}</TableCell>
+                              <TableCell className="text-right text-muted-foreground pr-2">
+                                {blockGroup.rate.toFixed(2)}
+                              </TableCell>
+                              <TableCell className="text-right text-muted-foreground">
+                                {formatPrice(Math.ceil(subItem.quantity) * blockGroup.rate)}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </>
+                      )}
 
                       {/* Reinforcement rows */}
                       <ReinforcementTableRows
