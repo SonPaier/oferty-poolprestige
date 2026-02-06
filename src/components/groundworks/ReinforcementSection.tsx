@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { ChevronDown, ChevronRight, Check } from 'lucide-react';
+import { ChevronDown, ChevronRight, Check, RotateCcw } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
@@ -334,6 +334,25 @@ function calculateWadingPoolMesh(
   return mbOneLayer * 2; // Double mesh
 }
 
+// Calculate stirrups (strzemiona) for columns and crown
+function calculateStirrups(
+  length: number,
+  width: number,
+  depth: number,
+  crownHeight: number,
+  columnCount: number
+): { columnsQty: number; crownQty: number; total: number; columnHeight: number; perimeter: number } {
+  const spacing = 0.20; // 20 cm
+  const columnHeight = Math.max(0, depth - crownHeight);
+  const perimeter = 2 * (length + width);
+  
+  const stirrupsPerColumn = Math.ceil(columnHeight / spacing);
+  const columnsQty = stirrupsPerColumn * columnCount;
+  const crownQty = Math.ceil(perimeter / spacing);
+  
+  return { columnsQty, crownQty, total: columnsQty + crownQty, columnHeight, perimeter };
+}
+
 // Calculate stairs reinforcement
 function calculateStairs(stairs: PoolDimensions['stairs']): number {
   if (!stairs?.enabled) return 0;
@@ -370,12 +389,20 @@ export function useReinforcement(
     const wadingPoolMb = calculateWadingPoolMesh(dimensions.wadingPool, meshSize);
     const stairsMb = calculateStairs(dimensions.stairs);
     
+    // Crown height for stirrups
+    const blockCalc = calculateBlockLayers(dimensions.depth);
+    const stirrupData = calculateStirrups(
+      dimensions.length, dimensions.width, dimensions.depth,
+      blockCalc.crownHeight, columnData.count
+    );
+    
     return {
       floor: floorMb,
       columns: columnData,
       ringBeam: ringBeamMb,
       wadingPool: wadingPoolMb,
       stairs: stairsMb,
+      stirrups: stirrupData,
     };
   }, [dimensions, meshSize, floorSlabThickness]);
 
@@ -486,17 +513,36 @@ export function useReinforcement(
       supportsKg: true,
     });
     
-    // Always add stirrups as separate item (visible in both variants)
+    // Stirrups - auto-calculated for masonry, manual for poured
+    const stirrupPositions: ReinforcementPosition[] = constructionTechnology === 'masonry' ? [
+      {
+        id: 'stirrup_columns',
+        name: `Słupy (${calculatedPositions.stirrups.columnHeight.toFixed(2)}m × ${calculatedPositions.columns.count} szt.)`,
+        enabled: true,
+        quantity: calculatedPositions.stirrups.columnsQty,
+        customOverride: false,
+      },
+      {
+        id: 'stirrup_crown',
+        name: `Wieniec (obwód ${calculatedPositions.stirrups.perimeter.toFixed(1)}m)`,
+        enabled: true,
+        quantity: calculatedPositions.stirrups.crownQty,
+        customOverride: false,
+      },
+    ] : [];
+    
+    const stirrupTotal = stirrupPositions.reduce((sum, p) => sum + (p.enabled ? p.quantity : 0), 0);
+    
     newItems.push({
       id: 'strzemiona',
       name: 'Strzemiona 18×18',
       diameter: 6,
       unit: 'szt.',
       rate: materialRates.strzemiona,
-      positions: [],
-      totalQuantity: 0,
-      netValue: 0,
-      isExpanded: false,
+      positions: stirrupPositions,
+      totalQuantity: stirrupTotal,
+      netValue: stirrupTotal * materialRates.strzemiona,
+      isExpanded: constructionTechnology === 'masonry',
       supportsKg: false,
     });
     
@@ -528,16 +574,23 @@ export function useReinforcement(
           case 'stairs':
             newQty = calculatedPositions.stairs;
             break;
+          case 'stirrup_columns':
+            newQty = calculatedPositions.stirrups.columnsQty;
+            break;
+          case 'stirrup_crown':
+            newQty = calculatedPositions.stirrups.crownQty;
+            break;
         }
         return { ...pos, quantity: newQty };
       });
       
-      const totalMb = updatedPositions.reduce((sum, p) => sum + (p.enabled ? p.quantity : 0), 0);
-      const displayQty = unit === 'mb' ? totalMb : mbToKg(totalMb, item.diameter);
+      const totalQty = updatedPositions.reduce((sum, p) => sum + (p.enabled ? p.quantity : 0), 0);
+      // Stirrups are in szt., other items may use mb/kg
+      const displayQty = item.id === 'strzemiona' ? totalQty : (unit === 'mb' ? totalQty : mbToKg(totalQty, item.diameter));
       
       return {
         ...item,
-        unit,
+        unit: item.id === 'strzemiona' ? 'szt.' : unit,
         positions: updatedPositions,
         totalQuantity: displayQty,
         netValue: displayQty * item.rate,
@@ -554,8 +607,39 @@ export function useReinforcement(
         return { ...pos, quantity: newQuantity, customOverride: true };
       });
       
-      const totalMb = updatedPositions.reduce((sum, p) => sum + (p.enabled ? p.quantity : 0), 0);
-      const displayQty = unit === 'mb' ? totalMb : mbToKg(totalMb, item.diameter);
+      const totalQty = updatedPositions.reduce((sum, p) => sum + (p.enabled ? p.quantity : 0), 0);
+      const displayQty = item.id === 'strzemiona' ? totalQty : (unit === 'mb' ? totalQty : mbToKg(totalQty, item.diameter));
+      
+      return {
+        ...item,
+        positions: updatedPositions,
+        totalQuantity: displayQty,
+        netValue: displayQty * item.rate,
+      };
+    }));
+  };
+
+  const resetPositionQuantity = (itemId: string, positionId: string) => {
+    setItems(prev => prev.map(item => {
+      if (item.id !== itemId) return item;
+      
+      const updatedPositions = item.positions.map(pos => {
+        if (pos.id !== positionId) return pos;
+        let resetQty = 0;
+        switch (pos.id) {
+          case 'floor': resetQty = calculatedPositions.floor; break;
+          case 'columns': resetQty = calculatedPositions.columns.mb; break;
+          case 'ringBeam': resetQty = calculatedPositions.ringBeam; break;
+          case 'wadingPool': resetQty = calculatedPositions.wadingPool; break;
+          case 'stairs': resetQty = calculatedPositions.stairs; break;
+          case 'stirrup_columns': resetQty = calculatedPositions.stirrups.columnsQty; break;
+          case 'stirrup_crown': resetQty = calculatedPositions.stirrups.crownQty; break;
+        }
+        return { ...pos, quantity: resetQty, customOverride: false };
+      });
+      
+      const totalQty = updatedPositions.reduce((sum, p) => sum + (p.enabled ? p.quantity : 0), 0);
+      const displayQty = item.id === 'strzemiona' ? totalQty : (unit === 'mb' ? totalQty : mbToKg(totalQty, item.diameter));
       
       return {
         ...item,
@@ -623,6 +707,7 @@ export function useReinforcement(
     items,
     totalNet,
     updatePositionQuantity,
+    resetPositionQuantity,
     updateItemRate,
     updateItemQuantity,
     updateItemUnit,
@@ -684,6 +769,7 @@ interface ReinforcementTableRowsProps {
   items: ReinforcementItem[];
   onToggleExpand: (itemId: string) => void;
   onUpdatePositionQuantity: (itemId: string, positionId: string, qty: number) => void;
+  onResetPositionQuantity: (itemId: string, positionId: string) => void;
   onUpdateItemRate: (itemId: string, rate: number) => void;
   onUpdateItemQuantity: (itemId: string, qty: number) => void;
   onUpdateItemUnit: (itemId: string, unit: ReinforcementUnit) => void;
@@ -701,6 +787,7 @@ export function ReinforcementTableRows({
   items,
   onToggleExpand,
   onUpdatePositionQuantity,
+  onResetPositionQuantity,
   onUpdateItemRate,
   onUpdateItemQuantity,
   onUpdateItemUnit,
@@ -802,10 +889,24 @@ export function ReinforcementTableRows({
         rows.push(
           <TableRow key={`${item.id}-${pos.id}`} className="bg-background">
             <TableCell className="pl-10 text-muted-foreground">
-              └ {pos.name}
-              {pos.customOverride && (
-                <span className="ml-2 text-xs text-accent">(zmieniono)</span>
-              )}
+              <div className="flex items-center gap-2">
+                <span>└ {pos.name}</span>
+                {pos.customOverride && (
+                  <>
+                    <span className="text-xs text-accent">(zmieniono)</span>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6 text-muted-foreground hover:text-foreground"
+                      onClick={() => onResetPositionQuantity(item.id, pos.id)}
+                      title="Przywróć obliczoną wartość"
+                    >
+                      <RotateCcw className="h-3 w-3" />
+                    </Button>
+                  </>
+                )}
+              </div>
             </TableCell>
             <TableCell>
               <Input

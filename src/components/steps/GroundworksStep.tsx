@@ -2303,6 +2303,7 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
                         items={reinforcement.items}
                         onToggleExpand={reinforcement.toggleExpand}
                         onUpdatePositionQuantity={reinforcement.updatePositionQuantity}
+                        onResetPositionQuantity={reinforcement.resetPositionQuantity}
                         onUpdateItemRate={handleReinforcementRateChange}
                         onUpdateItemQuantity={reinforcement.updateItemQuantity}
                         onUpdateItemUnit={reinforcement.updateItemUnit}
