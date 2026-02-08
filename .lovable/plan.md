@@ -1,70 +1,59 @@
 
+# Automatyczne pozycje XPS/PUR w kosztorysie budowlanym
 
-# Dodanie uwag do robót ziemnych + dodatkowe pozycje wyceny w obu tabelach
+## Cel
+Przy wyborze ocieplenia dna lub scian automatycznie dodawana jest odpowiednia pozycja kosztorysowa w tabeli "Koszt budowy" (prace budowlane). Ilosc obliczana na podstawie wymiarow plyt XPS z uwzglednieniem ukladu na mijankę i mozliwosci wykorzystania odpadow.
 
-## 1. Uwagi w robotach ziemnych
+## Dane wejsciowe
 
-Dodanie pola tekstowego "Uwagi" pod tabelą kosztów robót ziemnych, analogicznie do istniejącego pola w pracach budowlanych (linie 3050-3061). Nowy stan `excavationNotes` zapisywany do sekcji `roboty_ziemne`.
+- **Plyta XPS**: 1,25 m x 0,60 m (= 0,75 m2/szt.)
+- **XPS 5cm**: paczka = 6 m2 (= 8 szt.)
+- **XPS 10cm**: paczka = 3 m2 (= 4 szt.)
+- **PUR 5cm**: nakładany natryskiowo -- liczone w m2, nie w paczkach
 
-## 2. Dodatkowe pozycje wyceny (obie tabele)
+## Obliczenia
 
-### Mechanizm
-- W obu tabelach (roboty ziemne i prace budowlane) za ostatnią pozycją pojawi się wiersz "Dodaj pozycję"
-- Po kliknięciu/wypełnieniu wiersza, nowa pozycja zostaje dodana do listy, a wiersz dodawania przesuwa się niżej
-- Kazda dodana pozycja ma przycisk usuwania (ikona kosza)
+### Dno (ocieplenie dna)
+- Powierzchnia = plyta denna = `(length + 0.88) * (width + 0.88)`
+- Uklad na mijankę: pierwszy rzad od dlugosci, drugi przesuniecie o polowe (0.625m). Oblicz ile plyt w osi X i Y, uwzgledniaj ze odpad z jednego rzedu moze dopasowac sie do nastepnego rzedu
+- Wynik: ilosc plyt (szt.), zaokrąglona w gore do pelnych paczek
 
-### Dodawanie pozycji -- dwa tryby
-1. **Wyszukaj z bazy produktów** -- pole tekstowe z wyszukiwaniem (Popover/Command z listy produktów z bazy danych). Po wybraniu produktu nazwa i cena zostają wstawione automatycznie
-2. **Wpisz recznie** -- wpisanie nazwy, ilości, jednostki, stawki recznie
+### Sciany (ocieplenie scian)
+- Obwod zewnetrzny basenu: `2 * ((length + 0.48) + (width + 0.48))` (wymiar wewnetrzny + mury 24cm z kazdej strony)
+- Wysokosc sciany: `depth` (glebokosc basenu)
+- Uklad na mijankę analogicznie: oblicz ilosc plyt na obwod x wysokosc
+- Wynik: ilosc plyt (szt.), zaokrąglona w gore do pelnych paczek
 
-### UI wiersza dodawania
-- Kolumna "Nazwa" -- input z autouzupelnianiem (wyszukiwanie produktów) lub wolny tekst
-- Kolumna "Ilość" -- input numeryczny (domyslnie 1)
-- Kolumna "Jednostka" -- select (szt./m2/m3/mb/kpl/ryczalt)
-- Kolumna "Stawka" -- input numeryczny (auto z produktu lub reczna)
-- Kolumna "Wartość netto" -- obliczana automatycznie
-- Przycisk "+" do zatwierdzenia pozycji
-
-### Stan danych
-- Nowy stan `extraExcavationItems` (tablica dodatkowych pozycji robót ziemnych)
-- Nowy stan `extraConstructionItems` (tablica dodatkowych pozycji prac budowlanych)
-- Kazda pozycja: `{ id, name, quantity, unit, rate, netValue, productId? }`
-- Sumy tabel uwzgledniaja dodatkowe pozycje
+### Algorytm liczenia plyt (dno i sciany)
+1. Oblicz ile plyt miesci sie w jednym rzedzie wzdluz dluzszego boku (ceil)
+2. Oblicz ile rzedow wzdluz krotszego boku (ceil)
+3. Przy ukladzie na mijankę: w rzedach nieparzystych docinamy ostatnia plyte, odpad moze byc uzyty w nastepnym rzedzie (jesli odpad >= potrzebny fragment)
+4. Sumaryczna ilosc plyt -> zaokraglenie w gore do pelnych paczek
+5. Jednostka w kosztorysie: **paczki** (opak.)
 
 ## Zmiany techniczne
 
 ### Plik: `src/components/steps/GroundworksStep.tsx`
 
-1. **Nowe stany**:
-   - `excavationNotes: string` -- uwagi do robót ziemnych
-   - `extraExcavationItems: ExtraLineItem[]` -- dodatkowe pozycje w tabeli robót ziemnych
-   - `extraConstructionItems: ExtraLineItem[]` -- dodatkowe pozycje w tabeli prac budowlanych
-   - `excSearchQuery / constSearchQuery` -- zapytania wyszukiwania produktów
+1. **Nowa funkcja** `calculateXpsPanels(areaLength: number, areaWidth: number)`:
+   - Oblicza ilosc plyt XPS 1.25x0.6m na mijankę z odzyskiem odpadow
+   - Zwraca: `{ panels: number, area: number }`
 
-2. **Nowy interface** `ExtraLineItem`:
-   ```
-   { id: string, name: string, quantity: number, unit: string, rate: number, netValue: number, productId?: string }
-   ```
+2. **Nowa funkcja** `calculateXpsPackages(panels: number, thickness: '5cm' | '10cm')`:
+   - 5cm: ceil(panels / 8) paczek
+   - 10cm: ceil(panels / 4) paczek
 
-3. **Nowy komponent wewnetrzny** `AddItemRow` -- wiersz dodawania pozycji z wyszukiwaniem produktów (Popover + Command z wynikami z bazy)
+3. **Dynamiczne pozycje w `constructionMaterials`**:
+   - Gdy `floorInsulation !== 'none'`: dodaj pozycje "XPS dno 5cm" lub "XPS dno 10cm" z obliczona iloscia paczek i stawka z `materialRates.styrodur5cm` / `materialRates.styrodur10cm`
+   - Gdy `wallInsulation !== 'none'`:
+     - XPS: dodaj pozycje "XPS sciany 5cm" lub "XPS sciany 10cm" z iloscia paczek
+     - PUR: dodaj pozycje "Piana PUR 5cm" z iloscia w m2 i stawka `materialRates.purFoam5cm`
 
-4. **Tabela robót ziemnych** (linie ~1921-1964):
-   - Po ostatnim `TableRow` w `TableBody` (przed `TableFooter`) -- dodanie renderowania `extraExcavationItems` + wiersza `AddItemRow`
-   - Aktualizacja `totalNet` o sume `extraExcavationItems`
+4. **useEffect aktualizujacy constructionMaterials**: rozszerzyc o logike dodawania/usuwania pozycji ocieplenia gdy zmieni sie `floorInsulation` lub `wallInsulation`
 
-5. **Tabela prac budowlanych** (linie ~3004-3006):
-   - Po ostatnim wierszu labor (przed `TableFooter`) -- dodanie renderowania `extraConstructionItems` + wiersza `AddItemRow`
-   - Aktualizacja `constructionTotalNet` o sume `extraConstructionItems`
+5. **Pozycje ocieplenia w tabeli**: renderowane pomiedzy istniejacymi materialami a zbrojeniem, z mozliwoscia edycji ilosci i stawki (tak jak inne pozycje)
 
-6. **Pole uwag robót ziemnych**:
-   - Pod tabelą kosztów (po zamknieciu `</Table>`, przed zamknieciem glass-card) -- Textarea analogicznie do linii 3050-3061
+6. **Aktualizacja sumy**: pozycje ocieplenia wliczone do `materialsTotalNet` automatycznie (bo sa w `constructionMaterials`)
 
-7. **Zapis do sekcji**:
-   - `roboty_ziemne` -- dodanie `notes: excavationNotes`, `extraItems: extraExcavationItems`
-   - `prace_budowlane` -- dodanie `extraItems: extraConstructionItems`
-
-### Wyszukiwanie produktów
-- Wykorzystanie istniejacego hooka `useProducts` z `src/hooks/useProducts.ts` do wyszukiwania
-- Popover z listą wyników (nazwa, symbol, cena) -- uzytkownik klika aby wstawic
-- Jesli brak wyników lub uzytkownik wpisze tekst bez wyboru -- traktowane jako pozycja reczna
-
+### Plik: `src/types/configurator.ts`
+- Stawki `styrodur5cm` i `styrodur10cm` juz istnieja (dla dna). Stawki `xpsWall5cm`, `xpsWall10cm` i `purFoam5cm` tez juz istnieja. Brak zmian.
