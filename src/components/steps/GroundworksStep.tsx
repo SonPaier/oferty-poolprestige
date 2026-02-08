@@ -330,8 +330,8 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
   const excavationArea = excLength * excWidth;
   const excavationVolume = excLength * excWidth * excDepth;
   
-  // Calculate floor slab area: pool dimensions + 24cm on each side
-  const floorSlabArea = (dimensions.length + 0.48) * (dimensions.width + 0.48);
+   // Calculate floor slab area: external dimensions (pool + 0.48m) + 20cm on each side = pool + 0.88m
+   const floorSlabArea = (dimensions.length + 0.88) * (dimensions.width + 0.88);
   
   // Calculate backfill (zasypka) volume:
   // Zasypka = Excavation Volume - Sand Bedding - Construction Volume (external with insulation)
