@@ -473,10 +473,10 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
       if (floorInsulation !== 'none') {
         const thickness = floorInsulation === 'xps-5cm' ? '5cm' : '10cm';
         const xpsResult = calculateFloorXps(dimensions.length, dimensions.width, thickness);
-        const rate = thickness === '5cm' ? materialRates.styrodur5cm : materialRates.styrodur10cm;
+        const rate = thickness === '5cm' ? materialRates.xpsFloor5cm : materialRates.xpsFloor10cm;
         updated.push({
           id: 'xps_floor',
-          name: `XPS dno ${thickness}`,
+          name: `XPS 500 dno ${thickness}`,
           quantity: xpsResult.packages,
           unit: 'opak.',
           rate,
@@ -492,7 +492,7 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
         const rate = thickness === '5cm' ? materialRates.xpsWall5cm : materialRates.xpsWall10cm;
         updated.push({
           id: 'xps_wall',
-          name: `XPS ściany ${thickness}`,
+          name: `XPS 300 ściany ${thickness}`,
           quantity: xpsResult.packages,
           unit: 'opak.',
           rate,
@@ -758,7 +758,7 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
     switch (id) {
       case 'chudziak': return 'betonB15';
       case 'pompogruszka': return 'pompogruszka';
-      case 'xps_floor': return floorInsulation === 'xps-5cm' ? 'styrodur5cm' : 'styrodur10cm';
+      case 'xps_floor': return floorInsulation === 'xps-5cm' ? 'xpsFloor5cm' : 'xpsFloor10cm';
       case 'xps_wall': return wallInsulation === 'xps-5cm-wall' ? 'xpsWall5cm' : 'xpsWall10cm';
       case 'pur_wall': return 'purFoam5cm';
       default: return null;

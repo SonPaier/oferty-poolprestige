@@ -307,12 +307,12 @@ export interface ConstructionMaterialRates {
   zbrojenie12mm: number;   // zł/kg
   zbrojenie6mm: number;    // zł/kg
   strzemiona: number;      // zł/szt.
-  styrodur5cm: number;     // zł/m² (XPS 5cm)
-  styrodur10cm: number;    // zł/m² (XPS 10cm)
+  xpsFloor5cm: number;     // zł/opak. (XPS 500 dno 5cm)
+  xpsFloor10cm: number;    // zł/opak. (XPS 500 dno 10cm)
   zbrojenieKompozytowe: number; // zł/mb
   pompogruszka: number;    // zł/szt.
-  xpsWall5cm: number;     // zł/m² (XPS wall insulation 5cm)
-  xpsWall10cm: number;    // zł/m² (XPS wall insulation 10cm)
+  xpsWall5cm: number;     // zł/opak. (XPS 300 ściany 5cm)
+  xpsWall10cm: number;    // zł/opak. (XPS 300 ściany 10cm)
   purFoam5cm: number;      // zł/m² (PUR foam wall insulation)
   // Labor rates
   laborPoolRate: number;   // zł/m² (prace budowlane – basen)
@@ -328,12 +328,12 @@ export const defaultConstructionMaterialRates: ConstructionMaterialRates = {
   zbrojenie12mm: 7.00,
   zbrojenie6mm: 6.00,
   strzemiona: 2.10,
-  styrodur5cm: 20,
-  styrodur10cm: 40,
+  xpsFloor5cm: 150,
+  xpsFloor10cm: 150,
   zbrojenieKompozytowe: 3.00,
   pompogruszka: 350,
-  xpsWall5cm: 20,
-  xpsWall10cm: 40,
+  xpsWall5cm: 105,
+  xpsWall10cm: 105,
   purFoam5cm: 60,
   laborPoolRate: 700,
   laborStairsRate: 1000,
