@@ -479,10 +479,26 @@ export function useReinforcement(
       return positions;
     };
 
+    // Add 10% reserve (50mb per 500mb) to reinforcement positions
+    const addReservePosition = (positions: ReinforcementPosition[]): ReinforcementPosition[] => {
+      const totalMb = positions.reduce((sum, p) => sum + (p.enabled ? p.quantity : 0), 0);
+      const reserve = Math.ceil(totalMb / 500) * 50;
+      if (reserve > 0) {
+        positions.push({
+          id: 'reserve',
+          name: 'Zapas (50mb/500mb)',
+          enabled: true,
+          quantity: reserve,
+          customOverride: false,
+        });
+      }
+      return positions;
+    };
+
     const newItems: ReinforcementItem[] = [];
     
     if (reinforcementType === 'traditional') {
-      const positions12 = createPositions();
+      const positions12 = addReservePosition(createPositions());
       const total12 = positions12.reduce((sum, p) => sum + (p.enabled ? p.quantity : 0), 0);
       
       newItems.push({
@@ -499,7 +515,7 @@ export function useReinforcement(
       });
     } else {
       // Composite reinforcement - always in mb, no kg conversion
-      const positions8 = createPositions();
+      const positions8 = addReservePosition(createPositions());
       const total8 = positions8.reduce((sum, p) => sum + (p.enabled ? p.quantity : 0), 0);
       
       newItems.push({
@@ -597,9 +613,24 @@ export function useReinforcement(
           case 'stirrup_crown':
             newQty = calculatedPositions.stirrups.crownQty;
             break;
+          case 'reserve':
+            // Will be recalculated below
+            return pos;
         }
         return { ...pos, quantity: newQty };
       });
+      
+      // Recalculate reserve based on other positions
+      const nonReserveTotal = updatedPositions
+        .filter(p => p.id !== 'reserve' && p.enabled)
+        .reduce((sum, p) => sum + p.quantity, 0);
+      const reserveIdx = updatedPositions.findIndex(p => p.id === 'reserve');
+      if (reserveIdx >= 0 && !updatedPositions[reserveIdx].customOverride) {
+        updatedPositions[reserveIdx] = {
+          ...updatedPositions[reserveIdx],
+          quantity: Math.ceil(nonReserveTotal / 500) * 50,
+        };
+      }
       
       const totalQty = updatedPositions.reduce((sum, p) => sum + (p.enabled ? p.quantity : 0), 0);
       // Stirrups are in szt., other items may use mb/kg
