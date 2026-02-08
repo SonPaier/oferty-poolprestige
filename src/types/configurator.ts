@@ -325,8 +325,8 @@ export const defaultConstructionMaterialRates: ConstructionMaterialRates = {
   betonB15: 350,
   betonB25: 450,
   bloczek: 6.80,
-  zbrojenie12mm: 7.00,
-  zbrojenie6mm: 6.00,
+  zbrojenie12mm: 3.50,   // zł/kg (3500 zł/t)
+  zbrojenie6mm: 3.50,    // zł/kg (3500 zł/t)
   strzemiona: 2.10,
   xpsFloor5cm: 150,
   xpsFloor10cm: 150,

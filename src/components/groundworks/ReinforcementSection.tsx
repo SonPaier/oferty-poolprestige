@@ -265,11 +265,20 @@ export function calculateTotalBlocks(
 // REINFORCEMENT CALCULATION
 // =====================================================
 
+// Price per tonne for steel reinforcement
+const STEEL_PRICE_PER_TONNE = 3500;
+const STEEL_PRICE_PER_KG = STEEL_PRICE_PER_TONNE / 1000; // 3.50 zł/kg
+
 // Weight per meter (kg/mb) - only for traditional steel reinforcement
 const KG_PER_MB: Record<number, number> = {
   6: 0.222,
   12: 0.888,
 };
+
+// Rate per mb derived from kg price
+function ratePerMb(diameter: number): number {
+  return STEEL_PRICE_PER_KG * (KG_PER_MB[diameter] || 0);
+}
 
 // Check if item supports kg unit (only traditional steel, not composite)
 function supportsKgUnit(itemId: string): boolean {
@@ -479,69 +488,64 @@ export function useReinforcement(
       return positions;
     };
 
-    // Add 10% reserve (50mb per 500mb) to reinforcement positions
-    const addReservePosition = (positions: ReinforcementPosition[]): ReinforcementPosition[] => {
-      const totalMb = positions.reduce((sum, p) => sum + (p.enabled ? p.quantity : 0), 0);
-      const reserve = Math.ceil(totalMb / 500) * 50;
-      if (reserve > 0) {
-        positions.push({
-          id: 'reserve',
-          name: 'Zapas (50mb/500mb)',
-          enabled: true,
-          quantity: reserve,
-          customOverride: false,
-        });
-      }
-      return positions;
-    };
-
     const newItems: ReinforcementItem[] = [];
     
+    // Calculate main reinforcement positions (no reserve)
+    const mainPositions = createPositions();
+    const mainTotalMb = mainPositions.reduce((sum, p) => sum + (p.enabled ? p.quantity : 0), 0);
+    
     if (reinforcementType === 'traditional') {
-      const positions12 = addReservePosition(createPositions());
-      const total12 = positions12.reduce((sum, p) => sum + (p.enabled ? p.quantity : 0), 0);
+      const rate12 = unit === 'mb' ? ratePerMb(12) : STEEL_PRICE_PER_KG;
+      const total12 = unit === 'mb' ? mainTotalMb : mbToKg(mainTotalMb, 12);
       
       newItems.push({
         id: 'rebar_12mm',
         name: 'Zbrojenie 12mm',
         diameter: 12,
         unit,
-        rate: materialRates.zbrojenie12mm,
-        positions: positions12,
-        totalQuantity: unit === 'mb' ? total12 : mbToKg(total12, 12),
-        netValue: (unit === 'mb' ? total12 : mbToKg(total12, 12)) * materialRates.zbrojenie12mm,
+        rate: rate12,
+        positions: mainPositions,
+        totalQuantity: total12,
+        netValue: total12 * rate12,
         isExpanded: false,
         supportsKg: true,
       });
     } else {
-      // Composite reinforcement - always in mb, no kg conversion
-      const positions8 = addReservePosition(createPositions());
-      const total8 = positions8.reduce((sum, p) => sum + (p.enabled ? p.quantity : 0), 0);
-      
+      // Composite reinforcement - always in mb
       newItems.push({
         id: 'composite_8mm',
         name: 'Zbrojenie kompozytowe 8mm',
         diameter: 8,
-        unit: 'mb', // Always mb for composite
+        unit: 'mb',
         rate: materialRates.zbrojenieKompozytowe,
-        positions: positions8,
-        totalQuantity: total8, // No kg conversion for composite
-        netValue: total8 * materialRates.zbrojenieKompozytowe,
+        positions: mainPositions,
+        totalQuantity: mainTotalMb,
+        netValue: mainTotalMb * materialRates.zbrojenieKompozytowe,
         isExpanded: false,
         supportsKg: false,
       });
     }
     
-    // Always add 6mm rebar (visible in both variants) - supports kg
+    // Auto-calculate 6mm rebar: 50mb per every 500mb of main reinforcement
+    const rebar6mbAuto = Math.ceil(mainTotalMb / 500) * 50;
+    const rate6 = unit === 'mb' ? ratePerMb(6) : STEEL_PRICE_PER_KG;
+    const total6 = unit === 'mb' ? rebar6mbAuto : mbToKg(rebar6mbAuto, 6);
+    
     newItems.push({
       id: 'rebar_6mm',
       name: 'Zbrojenie 6mm',
       diameter: 6,
       unit,
-      rate: materialRates.zbrojenie6mm,
-      positions: [],
-      totalQuantity: 0,
-      netValue: 0,
+      rate: rate6,
+      positions: [{
+        id: 'auto_reserve',
+        name: `Zapas (50mb / 500mb zbrojenia)`,
+        enabled: true,
+        quantity: rebar6mbAuto,
+        customOverride: false,
+      }],
+      totalQuantity: total6,
+      netValue: total6 * rate6,
       isExpanded: false,
       supportsKg: true,
     });
@@ -584,66 +588,82 @@ export function useReinforcement(
 
   // Recalculate when mesh size or unit changes
   useEffect(() => {
-    setItems(prev => prev.map(item => {
-      if (item.positions.length === 0) return item;
-      
-      const updatedPositions = item.positions.map(pos => {
-        if (pos.customOverride) return pos;
+    setItems(prev => {
+      // First pass: update positions for main rebar items
+      const updated = prev.map(item => {
+        if (item.id === 'rebar_6mm') return item; // handle separately below
+        if (item.positions.length === 0) return item;
         
-        let newQty = 0;
-        switch (pos.id) {
-          case 'floor':
-            newQty = calculatedPositions.floor;
-            break;
-          case 'columns':
-            newQty = calculatedPositions.columns.mb;
-            break;
-          case 'ringBeam':
-            newQty = calculatedPositions.ringBeam;
-            break;
-          case 'wadingPool':
-            newQty = calculatedPositions.wadingPool;
-            break;
-          case 'stairs':
-            newQty = calculatedPositions.stairs;
-            break;
-          case 'stirrup_columns':
-            newQty = calculatedPositions.stirrups.columnsQty;
-            break;
-          case 'stirrup_crown':
-            newQty = calculatedPositions.stirrups.crownQty;
-            break;
-          case 'reserve':
-            // Will be recalculated below
-            return pos;
+        const updatedPositions = item.positions.map(pos => {
+          if (pos.customOverride) return pos;
+          
+          let newQty = 0;
+          switch (pos.id) {
+            case 'floor': newQty = calculatedPositions.floor; break;
+            case 'columns': newQty = calculatedPositions.columns.mb; break;
+            case 'ringBeam': newQty = calculatedPositions.ringBeam; break;
+            case 'wadingPool': newQty = calculatedPositions.wadingPool; break;
+            case 'stairs': newQty = calculatedPositions.stairs; break;
+            case 'stirrup_columns': newQty = calculatedPositions.stirrups.columnsQty; break;
+            case 'stirrup_crown': newQty = calculatedPositions.stirrups.crownQty; break;
+          }
+          return { ...pos, quantity: newQty };
+        });
+        
+        const totalMb = updatedPositions.reduce((sum, p) => sum + (p.enabled ? p.quantity : 0), 0);
+        
+        // For stirrups: always szt., no conversion
+        if (item.id === 'strzemiona') {
+          return { ...item, positions: updatedPositions, totalQuantity: totalMb, netValue: totalMb * item.rate };
         }
-        return { ...pos, quantity: newQty };
+        
+        // For main rebar: convert based on unit and recalc rate
+        const isComposite = item.id === 'composite_8mm';
+        const displayQty = isComposite ? totalMb : (unit === 'mb' ? totalMb : mbToKg(totalMb, item.diameter));
+        const rate = isComposite ? item.rate : (unit === 'mb' ? ratePerMb(item.diameter) : STEEL_PRICE_PER_KG);
+        
+        return {
+          ...item,
+          unit: isComposite ? 'mb' : unit,
+          rate,
+          positions: updatedPositions,
+          totalQuantity: displayQty,
+          netValue: displayQty * rate,
+        };
       });
       
-      // Recalculate reserve based on other positions
-      const nonReserveTotal = updatedPositions
-        .filter(p => p.id !== 'reserve' && p.enabled)
-        .reduce((sum, p) => sum + p.quantity, 0);
-      const reserveIdx = updatedPositions.findIndex(p => p.id === 'reserve');
-      if (reserveIdx >= 0 && !updatedPositions[reserveIdx].customOverride) {
-        updatedPositions[reserveIdx] = {
-          ...updatedPositions[reserveIdx],
-          quantity: Math.ceil(nonReserveTotal / 500) * 50,
+      // Second pass: recalculate 6mm based on main rebar total mb
+      const mainItem = updated.find(i => i.id === 'rebar_12mm' || i.id === 'composite_8mm');
+      const mainTotalMb = mainItem?.positions.reduce((sum, p) => sum + (p.enabled ? p.quantity : 0), 0) || 0;
+      const rebar6mbAuto = Math.ceil(mainTotalMb / 500) * 50;
+      
+      return updated.map(item => {
+        if (item.id !== 'rebar_6mm') return item;
+        
+        const autoPos = item.positions.find(p => p.id === 'auto_reserve');
+        const currentQtyMb = (autoPos && !autoPos.customOverride) ? rebar6mbAuto : (autoPos?.quantity || rebar6mbAuto);
+        
+        const updatedPositions = item.positions.map(pos => {
+          if (pos.id === 'auto_reserve' && !pos.customOverride) {
+            return { ...pos, quantity: rebar6mbAuto };
+          }
+          return pos;
+        });
+        
+        const totalMb = updatedPositions.reduce((sum, p) => sum + (p.enabled ? p.quantity : 0), 0);
+        const displayQty = unit === 'mb' ? totalMb : mbToKg(totalMb, 6);
+        const rate = unit === 'mb' ? ratePerMb(6) : STEEL_PRICE_PER_KG;
+        
+        return {
+          ...item,
+          unit,
+          rate,
+          positions: updatedPositions,
+          totalQuantity: displayQty,
+          netValue: displayQty * rate,
         };
-      }
-      
-      const totalQty = updatedPositions.reduce((sum, p) => sum + (p.enabled ? p.quantity : 0), 0);
-      // Stirrups are in szt., other items may use mb/kg
-      const displayQty = item.id === 'strzemiona' ? totalQty : (unit === 'mb' ? totalQty : mbToKg(totalQty, item.diameter));
-      
-      return {
-        ...item,
-        unit: item.id === 'strzemiona' ? 'szt.' : unit,
-        positions: updatedPositions,
-        totalQuantity: displayQty,
-        netValue: displayQty * item.rate,
-      };
-    }));
+      });
+    });
   }, [meshSize, unit, calculatedPositions]);
 
   const updatePositionQuantity = (itemId: string, positionId: string, newQuantity: number) => {
