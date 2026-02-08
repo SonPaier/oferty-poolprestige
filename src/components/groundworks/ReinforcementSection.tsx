@@ -736,18 +736,22 @@ export function useReinforcement(
     setItems(prev => prev.map(item => {
       if (item.id !== itemId || !item.supportsKg) return item;
       
-      // Recalculate quantity based on new unit
+      // Recalculate quantity and rate based on new unit
       let newQuantity = item.totalQuantity;
       if (item.positions.length > 0) {
         const totalMb = item.positions.reduce((sum, p) => sum + (p.enabled ? p.quantity : 0), 0);
         newQuantity = newUnit === 'mb' ? totalMb : mbToKg(totalMb, item.diameter);
       }
       
+      // Recalculate rate: mb → price per meter, kg → price per kg
+      const newRate = newUnit === 'mb' ? ratePerMb(item.diameter) : STEEL_PRICE_PER_KG;
+      
       return { 
         ...item, 
         unit: newUnit, 
+        rate: newRate,
         totalQuantity: newQuantity,
-        netValue: newQuantity * item.rate 
+        netValue: newQuantity * newRate 
       };
     }));
   };
