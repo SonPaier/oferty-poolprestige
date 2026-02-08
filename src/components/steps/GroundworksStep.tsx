@@ -51,6 +51,7 @@ import {
 import Pool2DPreview, { CustomColumnCounts, calculateDefaultColumnCounts, getTotalColumnCount } from '@/components/Pool2DPreview';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { defaultConstructionMaterialRates, ConstructionMaterialRates } from '@/types/configurator';
+import { calculateFloorXps, calculateWallXps, calculateWallPurArea } from '@/lib/xpsCalculator';
 
 // Helper function to round quantities based on material type
 function roundQuantity(id: string, quantity: number): number {
@@ -58,9 +59,13 @@ function roundQuantity(id: string, quantity: number): number {
   if (['podsypka', 'chudziak', 'plyta_denna', 'beton_wieniec', 'beton_brodzik', 'beton_schody'].includes(id)) {
     return Math.ceil(quantity * 2) / 2;
   }
-  // Bloczki, pompogruszka, zbrojenie, strzemiona - zaokrąglaj do jedności
-  if (['bloczek', 'pompogruszka'].includes(id)) {
+  // Bloczki, pompogruszka, zbrojenie, strzemiona, XPS packages - zaokrąglaj do jedności
+  if (['bloczek', 'pompogruszka', 'xps_floor', 'xps_wall'].includes(id)) {
     return Math.ceil(quantity);
+  }
+  // PUR foam - round to 0.5 m²
+  if (id === 'pur_wall') {
+    return Math.ceil(quantity * 2) / 2;
   }
   return quantity;
 }
@@ -460,6 +465,71 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
       // Remove bloczek from flat list (now handled by blockGroup)
       updated = updated.filter(item => item.id !== 'bloczek');
       
+      // ---- Insulation items (XPS floor, XPS/PUR wall) ----
+      // Remove old insulation items (will re-add if needed)
+      updated = updated.filter(item => !['xps_floor', 'xps_wall', 'pur_wall'].includes(item.id));
+      
+      // Floor insulation
+      if (floorInsulation !== 'none') {
+        const thickness = floorInsulation === 'xps-5cm' ? '5cm' : '10cm';
+        const xpsResult = calculateFloorXps(dimensions.length, dimensions.width, thickness);
+        const rate = thickness === '5cm' ? materialRates.styrodur5cm : materialRates.styrodur10cm;
+        updated.push({
+          id: 'xps_floor',
+          name: `XPS dno ${thickness}`,
+          quantity: xpsResult.packages,
+          unit: 'opak.',
+          rate,
+          netValue: xpsResult.packages * rate,
+          customOverride: false,
+        });
+      }
+      
+      // Wall insulation
+      if (wallInsulation === 'xps-5cm-wall' || wallInsulation === 'xps-10cm-wall') {
+        const thickness = wallInsulation === 'xps-5cm-wall' ? '5cm' : '10cm';
+        const xpsResult = calculateWallXps(dimensions.length, dimensions.width, dimensions.depth, thickness);
+        const rate = thickness === '5cm' ? materialRates.xpsWall5cm : materialRates.xpsWall10cm;
+        updated.push({
+          id: 'xps_wall',
+          name: `XPS ściany ${thickness}`,
+          quantity: xpsResult.packages,
+          unit: 'opak.',
+          rate,
+          netValue: xpsResult.packages * rate,
+          customOverride: false,
+        });
+      } else if (wallInsulation === 'pur-5cm') {
+        const purArea = calculateWallPurArea(dimensions.length, dimensions.width, dimensions.depth);
+        const rate = materialRates.purFoam5cm;
+        updated.push({
+          id: 'pur_wall',
+          name: 'Piana PUR ściany 5cm',
+          quantity: purArea,
+          unit: 'm²',
+          rate,
+          netValue: purArea * rate,
+          customOverride: false,
+        });
+      }
+
+      // Preserve user overrides for insulation items
+      const prevFloor = prev.find(i => i.id === 'xps_floor');
+      const prevWall = prev.find(i => i.id === 'xps_wall');
+      const prevPur = prev.find(i => i.id === 'pur_wall');
+      if (prevFloor?.customOverride) {
+        const idx = updated.findIndex(i => i.id === 'xps_floor');
+        if (idx >= 0) updated[idx] = { ...updated[idx], quantity: prevFloor.quantity, customOverride: true, netValue: prevFloor.quantity * updated[idx].rate };
+      }
+      if (prevWall?.customOverride) {
+        const idx = updated.findIndex(i => i.id === 'xps_wall');
+        if (idx >= 0) updated[idx] = { ...updated[idx], quantity: prevWall.quantity, customOverride: true, netValue: prevWall.quantity * updated[idx].rate };
+      }
+      if (prevPur?.customOverride) {
+        const idx = updated.findIndex(i => i.id === 'pur_wall');
+        if (idx >= 0) updated[idx] = { ...updated[idx], quantity: prevPur.quantity, customOverride: true, netValue: prevPur.quantity * updated[idx].rate };
+      }
+      
       return updated;
     });
     
@@ -502,7 +572,7 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
         return { ...prev, groupName: `Bloczek betonowy 38×24×${blockHeight}`, subItems: newSubItems };
       });
     }
-  }, [excavationArea, leanConcreteHeight, dimensions.stairs?.enabled, dimensions.wadingPool?.enabled, constructionTechnology, blockCalculation, blockHeight, wadingPoolBlocks, stairsBlocks]);
+  }, [excavationArea, leanConcreteHeight, dimensions.stairs?.enabled, dimensions.wadingPool?.enabled, dimensions.length, dimensions.width, dimensions.depth, constructionTechnology, blockCalculation, blockHeight, wadingPoolBlocks, stairsBlocks, floorInsulation, wallInsulation, materialRates]);
   
   // Update podsypka, piasek_zasypka, drenaz, and zakopanie in lineItems when excavation dimensions change
   useEffect(() => {
@@ -636,11 +706,22 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
         return excavationArea * leanConcreteHeight;
       case 'pompogruszka':
         return currentPompogruszkaQty;
-      // bloczek is now in blockGroup, not in constructionMaterials
+      case 'xps_floor': {
+        if (floorInsulation === 'none') return 0;
+        const thickness = floorInsulation === 'xps-5cm' ? '5cm' as const : '10cm' as const;
+        return calculateFloorXps(dimensions.length, dimensions.width, thickness).packages;
+      }
+      case 'xps_wall': {
+        if (wallInsulation !== 'xps-5cm-wall' && wallInsulation !== 'xps-10cm-wall') return 0;
+        const thickness = wallInsulation === 'xps-5cm-wall' ? '5cm' as const : '10cm' as const;
+        return calculateWallXps(dimensions.length, dimensions.width, dimensions.depth, thickness).packages;
+      }
+      case 'pur_wall':
+        return wallInsulation === 'pur-5cm' ? calculateWallPurArea(dimensions.length, dimensions.width, dimensions.depth) : 0;
       default:
         return 0;
     }
-  }, [excavationArea, sandBeddingHeight, leanConcreteHeight, dimensions.stairs?.enabled, dimensions.wadingPool?.enabled, blockCalculation, wadingPoolBlocks, stairsBlocks]);
+  }, [excavationArea, sandBeddingHeight, leanConcreteHeight, dimensions.stairs?.enabled, dimensions.wadingPool?.enabled, dimensions.length, dimensions.width, dimensions.depth, blockCalculation, wadingPoolBlocks, stairsBlocks, floorInsulation, wallInsulation]);
 
   const getExpectedB25SubItemQuantity = useCallback((subItemId: string): number => {
     const crownConcreteVolume = blockCalculation 
@@ -677,7 +758,9 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
     switch (id) {
       case 'chudziak': return 'betonB15';
       case 'pompogruszka': return 'pompogruszka';
-      // bloczek is now in blockGroup with its own rate handling
+      case 'xps_floor': return floorInsulation === 'xps-5cm' ? 'styrodur5cm' : 'styrodur10cm';
+      case 'xps_wall': return wallInsulation === 'xps-5cm-wall' ? 'xpsWall5cm' : 'xpsWall10cm';
+      case 'pur_wall': return 'purFoam5cm';
       default: return null;
     }
   };
@@ -2775,7 +2858,7 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
                       ))}
 
                       {/* Remaining materials: Pompogruszka */}
-                      {constructionMaterials.filter(item => item.id !== 'chudziak').map((item) => (
+                      {constructionMaterials.filter(item => item.id !== 'chudziak' && !['xps_floor', 'xps_wall', 'pur_wall'].includes(item.id)).map((item) => (
                         <TableRow key={item.id}>
                           <TableCell className="font-medium">
                             {item.name}
@@ -2935,6 +3018,73 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
                           ))}
                         </>
                       )}
+
+                      {/* Insulation items (XPS floor, XPS/PUR wall) */}
+                      {constructionMaterials.filter(item => ['xps_floor', 'xps_wall', 'pur_wall'].includes(item.id)).map((item) => (
+                        <TableRow key={item.id} className="bg-accent/5">
+                          <TableCell className="font-medium">
+                            <div className="flex items-center gap-2">
+                              <Thermometer className="w-4 h-4 text-muted-foreground" />
+                              {item.name}
+                            </div>
+                            {item.customOverride && (
+                              <span className="ml-6 text-xs text-amber-600">(zmieniono)</span>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center justify-end gap-1">
+                              <Input
+                                type="number"
+                                min="0"
+                                step={item.id === 'pur_wall' ? '0.5' : '1'}
+                                value={formatQuantity(item.id, item.quantity)}
+                                onChange={(e) => updateConstructionMaterial(item.id, 'quantity', parseFloat(e.target.value) || 0)}
+                                className="input-field w-[70px] text-right"
+                              />
+                              {item.customOverride && (
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8"
+                                  onClick={() => resetConstructionMaterialQuantity(item.id)}
+                                  title={`Przywróć: ${formatQuantity(item.id, getExpectedMaterialQuantity(item.id))}`}
+                                >
+                                  <RotateCcw className="h-4 w-4" />
+                                </Button>
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-muted-foreground">{item.unit}</TableCell>
+                          <TableCell>
+                            <div className="flex items-center justify-end gap-1">
+                              <Input
+                                type="number"
+                                min="0"
+                                step="10"
+                                value={item.rate}
+                                onChange={(e) => updateConstructionMaterial(item.id, 'rate', parseFloat(e.target.value) || 0)}
+                                className="input-field w-[80px] text-right"
+                              />
+                              {changedMaterialRates[item.id] !== undefined && (
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8 text-success hover:text-success/80 hover:bg-success/10"
+                                  onClick={() => confirmMaterialRateChange(item.id, item.name)}
+                                  title="Zatwierdź zmianę stawki"
+                                >
+                                  <Check className="h-4 w-4" />
+                                </Button>
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-right font-semibold">
+                            {formatPrice(roundQuantity(item.id, item.quantity) * item.rate)}
+                          </TableCell>
+                        </TableRow>
+                      ))}
 
                       {/* Reinforcement rows */}
                       <ReinforcementTableRows
