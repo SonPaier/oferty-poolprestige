@@ -8,7 +8,7 @@ export type OfferStatus = 'queue' | 'draft' | 'sent';
 export type FloorInsulationType = 'none' | 'xps-5cm' | 'xps-10cm';
 
 // Wall insulation types  
-export type WallInsulationType = 'none' | 'hydropian-10cm' | 'styrodur-10cm' | 'pur-5cm';
+export type WallInsulationType = 'none' | 'xps-5cm-wall' | 'xps-10cm-wall' | 'pur-5cm';
 
 // Insulation labels for UI
 export const floorInsulationLabels: Record<FloorInsulationType, string> = {
@@ -19,8 +19,8 @@ export const floorInsulationLabels: Record<FloorInsulationType, string> = {
 
 export const wallInsulationLabels: Record<WallInsulationType, string> = {
   'none': 'Brak',
-  'hydropian-10cm': 'Hydropian 10cm',
-  'styrodur-10cm': 'Styrodur 10cm',
+  'xps-5cm-wall': 'XPS 5cm',
+  'xps-10cm-wall': 'XPS 10cm',
   'pur-5cm': 'Piana PUR 5cm',
 };
 
@@ -33,8 +33,8 @@ export const floorInsulationThickness: Record<FloorInsulationType, number> = {
 
 export const wallInsulationThickness: Record<WallInsulationType, number> = {
   'none': 0,
-  'hydropian-10cm': 0.10,
-  'styrodur-10cm': 0.10,
+  'xps-5cm-wall': 0.05,
+  'xps-10cm-wall': 0.10,
   'pur-5cm': 0.05,
 };
 
