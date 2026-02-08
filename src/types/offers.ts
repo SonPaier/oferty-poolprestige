@@ -13,14 +13,14 @@ export type WallInsulationType = 'none' | 'xps-5cm-wall' | 'xps-10cm-wall' | 'pu
 // Insulation labels for UI
 export const floorInsulationLabels: Record<FloorInsulationType, string> = {
   'none': 'Brak',
-  'xps-5cm': 'XPS fundamentowy 5cm',
-  'xps-10cm': 'XPS fundamentowy 10cm',
+  'xps-5cm': 'XPS 500 dno 5cm',
+  'xps-10cm': 'XPS 500 dno 10cm',
 };
 
 export const wallInsulationLabels: Record<WallInsulationType, string> = {
   'none': 'Brak',
-  'xps-5cm-wall': 'XPS 5cm',
-  'xps-10cm-wall': 'XPS 10cm',
+  'xps-5cm-wall': 'XPS 300 ściany 5cm',
+  'xps-10cm-wall': 'XPS 300 ściany 10cm',
   'pur-5cm': 'Piana PUR 5cm',
 };
 

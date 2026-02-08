@@ -202,26 +202,62 @@ export function DefaultRatesSettings({
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="rateStyrodur5">Styrodur 5cm (PLN/m²)</Label>
+            <Label htmlFor="rateXpsFloor5">XPS 500 dno 5cm (PLN/opak.)</Label>
             <Input
-              id="rateStyrodur5"
+              id="rateXpsFloor5"
               type="number"
               min="0"
               step="1"
-              value={materialRates.styrodur5cm}
-              onChange={(e) => updateMaterialRate('styrodur5cm', parseFloat(e.target.value) || 0)}
+              value={materialRates.xpsFloor5cm}
+              onChange={(e) => updateMaterialRate('xpsFloor5cm', parseFloat(e.target.value) || 0)}
               className="input-field"
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="rateStyrodur10">Styrodur 10cm (PLN/m²)</Label>
+            <Label htmlFor="rateXpsFloor10">XPS 500 dno 10cm (PLN/opak.)</Label>
             <Input
-              id="rateStyrodur10"
+              id="rateXpsFloor10"
               type="number"
               min="0"
               step="1"
-              value={materialRates.styrodur10cm}
-              onChange={(e) => updateMaterialRate('styrodur10cm', parseFloat(e.target.value) || 0)}
+              value={materialRates.xpsFloor10cm}
+              onChange={(e) => updateMaterialRate('xpsFloor10cm', parseFloat(e.target.value) || 0)}
+              className="input-field"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="rateXpsWall5">XPS 300 ściany 5cm (PLN/opak.)</Label>
+            <Input
+              id="rateXpsWall5"
+              type="number"
+              min="0"
+              step="1"
+              value={materialRates.xpsWall5cm}
+              onChange={(e) => updateMaterialRate('xpsWall5cm', parseFloat(e.target.value) || 0)}
+              className="input-field"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="rateXpsWall10">XPS 300 ściany 10cm (PLN/opak.)</Label>
+            <Input
+              id="rateXpsWall10"
+              type="number"
+              min="0"
+              step="1"
+              value={materialRates.xpsWall10cm}
+              onChange={(e) => updateMaterialRate('xpsWall10cm', parseFloat(e.target.value) || 0)}
+              className="input-field"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="ratePurFoam">Piana PUR 5cm ściany (PLN/m²)</Label>
+            <Input
+              id="ratePurFoam"
+              type="number"
+              min="0"
+              step="1"
+              value={materialRates.purFoam5cm}
+              onChange={(e) => updateMaterialRate('purFoam5cm', parseFloat(e.target.value) || 0)}
               className="input-field"
             />
           </div>
