@@ -311,7 +311,8 @@ export interface ConstructionMaterialRates {
   styrodur10cm: number;    // zł/m² (XPS 10cm)
   zbrojenieKompozytowe: number; // zł/mb
   pompogruszka: number;    // zł/szt.
-  hydropian10cm: number;   // zł/m² (wall insulation)
+  xpsWall5cm: number;     // zł/m² (XPS wall insulation 5cm)
+  xpsWall10cm: number;    // zł/m² (XPS wall insulation 10cm)
   purFoam5cm: number;      // zł/m² (PUR foam wall insulation)
   // Labor rates
   laborPoolRate: number;   // zł/m² (prace budowlane – basen)
@@ -331,7 +332,8 @@ export const defaultConstructionMaterialRates: ConstructionMaterialRates = {
   styrodur10cm: 40,
   zbrojenieKompozytowe: 3.00,
   pompogruszka: 350,
-  hydropian10cm: 45,
+  xpsWall5cm: 20,
+  xpsWall10cm: 40,
   purFoam5cm: 60,
   laborPoolRate: 700,
   laborStairsRate: 1000,
