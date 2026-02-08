@@ -334,7 +334,7 @@ export const defaultConstructionMaterialRates: ConstructionMaterialRates = {
   pompogruszka: 350,
   xpsWall5cm: 105,
   xpsWall10cm: 105,
-  purFoam5cm: 60,
+  purFoam5cm: 150,
   laborPoolRate: 700,
   laborStairsRate: 1000,
   laborWadingRate: 1000,
