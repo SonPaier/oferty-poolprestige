@@ -289,8 +289,8 @@ function calculateFloorMesh(
   width: number, 
   meshSize: MeshSize
 ): number {
-  const slabLength = length + 0.48; // +24cm each side
-  const slabWidth = width + 0.48;
+   const slabLength = length + 0.88; // external (pool+0.48) + 20cm each side
+   const slabWidth = width + 0.88;
   const mesh = MESH_SIZE_M[meshSize];
   
   // Grid cells
