@@ -496,7 +496,7 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
   // 2. Masa uszczelniająca Remmers MB 2K: 25kg packages, 5.2kg/m²
   const calculateMasaMb2k = useCallback(() => {
     if (!verticalInsulationEnabled) return 0;
-    const kg = verticalWallArea * 5.2;
+    const kg = verticalWallArea * 4.4;
     return Math.ceil(kg / 25);
   }, [verticalWallArea, verticalInsulationEnabled]);
 
@@ -3556,7 +3556,7 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
                                  {item.id === 'primer_kiesol' 
                                    ? 'opak. 10L, zużycie 0,2L/m²'
                                    : item.id === 'masa_mb2k'
-                                   ? 'opak. 25kg, zużycie 5,2kg/m²'
+                                   ? 'opak. 25kg, zużycie 4,4kg/m²'
                                    : item.id === 'mapegrout_430'
                                    ? 'worek 25kg, faseta 3kg/mb + ściana 2kg/m²'
                                    : item.id === 'folia_kubelkowa'
