@@ -61,7 +61,7 @@ function roundQuantity(id: string, quantity: number): number {
   }
   // Bloczki, pompogruszka, zbrojenie, strzemiona, XPS packages, vertical insulation - zaokrąglaj do jedności
   if (['bloczek', 'pompogruszka', 'xps_floor', 'xps_wall', 'pianoklej', 'papa_sbs', 'papa_sbs_obwod', 'grunt_primer',
-       'primer_kiesol', 'masa_mb2k', 'mapegrout_430', 'folia_kubelkowa', 'listwa_montazowa', 'zaprawa_murarska'].includes(id)) {
+       'primer_kiesol', 'masa_mb2k', 'mapegrout_430', 'folia_kubelkowa', 'listwa_montazowa', 'zaprawa_murarska', 'klej_cementowy'].includes(id)) {
     return Math.ceil(quantity);
   }
   // PUR foam - round to 0.5 m²
@@ -573,7 +573,7 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
       // ---- Insulation items (XPS floor, XPS/PUR wall, vertical insulation) ----
       // Remove old insulation items (will re-add if needed)
       updated = updated.filter(item => !['xps_floor', 'xps_wall', 'pur_wall', 'pianoklej', 'papa_sbs', 'papa_sbs_obwod', 'grunt_primer',
-        'primer_kiesol', 'masa_mb2k', 'mapegrout_430', 'folia_kubelkowa', 'listwa_montazowa', 'zaprawa_murarska'].includes(item.id));
+        'primer_kiesol', 'masa_mb2k', 'mapegrout_430', 'folia_kubelkowa', 'listwa_montazowa', 'zaprawa_murarska', 'klej_cementowy', 'folia_budowlana'].includes(item.id));
       
       // Floor insulation
       if (floorInsulation !== 'none') {
@@ -715,13 +715,32 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
           id: 'zaprawa_murarska', name: 'Zaprawa murarska', quantity: mortarBags, unit: 'worek',
           rate: mortarRate, netValue: mortarBags * mortarRate, customOverride: false,
         });
+
+        // Klej cienkowarstwowy-cementowy: 3.5kg per block, 25kg bags
+        // All blocks EXCEPT those counted for mortar (first layer pool & wading pool)
+        const totalAllBlocks = (blockCalculation?.totalBlocks || 0) + wadingPoolBlocks + stairsBlocks;
+        const glueBlocks = totalAllBlocks - mortarBlocks;
+        const glueBags = glueBlocks > 0 ? Math.ceil((glueBlocks * 3.5) / 25) : 0;
+        const glueRate = materialRates.klejCementowy ?? 30;
+        updated.push({
+          id: 'klej_cementowy', name: 'Klej cienkowarstwowy-cementowy (M10/M15)', quantity: glueBags, unit: 'worek',
+          rate: glueRate, netValue: glueBags * glueRate, customOverride: false,
+        });
+
+        // Folia budowlana: area of base slab + 50cm on each side
+        const foliaArea = (dimensions.length + 1) * (dimensions.width + 1);
+        const foliaRate = materialRates.foliaBudowlana ?? 1;
+        updated.push({
+          id: 'folia_budowlana', name: 'Folia budowlana', quantity: Math.ceil(foliaArea), unit: 'm²',
+          rate: foliaRate, netValue: Math.ceil(foliaArea) * foliaRate, customOverride: false,
+        });
       }
 
       // Preserve user overrides for insulation items
       const vertInsIds = ['primer_kiesol', 'masa_mb2k', 'mapegrout_430', 'folia_kubelkowa', 'listwa_montazowa'];
       const horizInsIds = ['papa_sbs', 'papa_sbs_obwod', 'grunt_primer'];
       const thermalInsIds = ['xps_floor', 'xps_wall', 'pur_wall', 'pianoklej'];
-      const otherIds = ['zaprawa_murarska'];
+      const otherIds = ['zaprawa_murarska', 'klej_cementowy', 'folia_budowlana'];
       const allInsIds = [...thermalInsIds, ...horizInsIds, ...vertInsIds, ...otherIds];
       
       for (const insId of allInsIds) {
@@ -991,6 +1010,8 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
       case 'folia_kubelkowa': return 'foliaKubelkowa';
       case 'listwa_montazowa': return 'listwaMontazowa';
       case 'zaprawa_murarska': return 'zaprawaMurarska';
+      case 'klej_cementowy': return 'klejCementowy';
+      case 'folia_budowlana': return 'foliaBudowlana';
       default: return null;
     }
   };
