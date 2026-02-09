@@ -317,6 +317,12 @@ export interface ConstructionMaterialRates {
   pianoklej: number;       // zł/szt. (puszka piankokleju, 1 szt. na 8m² XPS)
   papaSbs4mm: number;      // zł/rolka (Papa SBS 4mm, rolka 1×7.5m)
   gruntPrimer: number;     // zł/opak. (Grunt Siplast Primer 10L)
+  // Vertical insulation rates
+  primerKiesol: number;    // zł/opak. (Kiesol MB 10L)
+  masaMb2k: number;        // zł/opak. (Remmers MB 2K 25kg)
+  mapegrout430: number;    // zł/worek (Mapegrout 430 / Planitop 400 25kg)
+  foliaKubelkowa: number;  // zł/rolka (1.5m × 20m)
+  listwaMontazowa: number; // zł/szt. (listwa 2m)
   // Labor rates
   laborPoolRate: number;   // zł/m² (prace budowlane – basen)
   laborStairsRate: number; // zł/m² (prace budowlane – schody)
@@ -341,6 +347,12 @@ export const defaultConstructionMaterialRates: ConstructionMaterialRates = {
   pianoklej: 30,           // 30 zł/puszka
   papaSbs4mm: 300,       // 7.5m² × 40 zł/m²
   gruntPrimer: 250,      // 10L × 25 zł/L
+  // Vertical insulation defaults
+  primerKiesol: 400,     // 400 zł/opak. 10L
+  masaMb2k: 650,         // 650 zł/opak. 25kg
+  mapegrout430: 70,      // 70 zł/worek 25kg
+  foliaKubelkowa: 250,   // 250 zł/rolka 1.5×20m
+  listwaMontazowa: 10,   // 10 zł/szt. (2m)
   laborPoolRate: 700,
   laborStairsRate: 1000,
   laborWadingRate: 1000,
