@@ -3807,6 +3807,38 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
                         rate: m.rate,
                         total: roundQuantity(m.id, m.quantity) * m.rate,
                       })),
+                      // B25 concrete group
+                      ...(b25ConcreteGroup.subItems.length > 0 ? [{
+                        name: b25ConcreteGroup.groupName,
+                        quantity: b25TotalRounded,
+                        unit: b25ConcreteGroup.unit,
+                        rate: b25ConcreteGroup.rate,
+                        total: b25TotalNet,
+                      }] : []),
+                      // Block group (masonry only)
+                      ...(constructionTechnology === 'masonry' && blockGroup.subItems.length > 0 ? [{
+                        name: blockGroup.groupName,
+                        quantity: blockGroupTotalRounded,
+                        unit: blockGroup.unit,
+                        rate: blockGroup.rate,
+                        total: blockGroupTotalNet,
+                      }] : []),
+                      // Reinforcement items
+                      ...reinforcement.items.map(item => ({
+                        name: item.name,
+                        quantity: item.totalQuantity,
+                        unit: item.unit,
+                        rate: item.rate,
+                        total: item.netValue,
+                      })),
+                      // Labor items
+                      ...laborItems.filter(i => !i.hidden).map(item => ({
+                        name: item.name,
+                        quantity: item.quantity,
+                        unit: item.unit,
+                        rate: item.rate,
+                        total: item.netValue,
+                      })),
                       ...extraConstructionItems.map(e => ({
                         name: e.name,
                         quantity: e.quantity,
