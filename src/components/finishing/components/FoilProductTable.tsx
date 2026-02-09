@@ -1,14 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
 import { Input } from '@/components/ui/input';
 import {
   Select,
@@ -19,7 +11,8 @@ import {
 } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Search, X } from 'lucide-react';
+import { Card, CardContent } from '@/components/ui/card';
+import { Search, X, ImageOff } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { formatPrice } from '@/lib/calculations';
 import { FoilSubtype, SUBTYPE_TO_FOIL_CATEGORY } from '@/lib/finishingMaterials';
@@ -34,6 +27,7 @@ interface FoilProduct {
   extracted_hex: string | null;
   foil_width: number | null;
   price: number;
+  thumbnail_url?: string | null;
 }
 
 interface FoilProductTableProps {
@@ -51,20 +45,12 @@ export function FoilProductTable({
   const [manufacturerFilter, setManufacturerFilter] = useState<string>('all');
   const [shadeFilter, setShadeFilter] = useState<string>('all');
 
-  // Fetch foil products for this subtype
-  // Currently products may not have foil_category set, so we search by name patterns
   const { data: products = [], isLoading } = useQuery({
     queryKey: ['foil-products', subtype],
     queryFn: async () => {
-      // Try to find by foil_category first
       const foilCategory = SUBTYPE_TO_FOIL_CATEGORY[subtype];
-      let query = supabase
-        .from('products')
-        .select('id, symbol, name, manufacturer, series, shade, extracted_hex, foil_width, price')
-        .order('name');
 
-      // If foil_category exists, filter by it. Otherwise search by name pattern
-      // For now, search for foils by name containing "Folia Alkorplan" or "Folia ELBE"
+      // Check if foil_category exists
       const { data: byCategory } = await supabase
         .from('products')
         .select('id')
@@ -72,8 +58,9 @@ export function FoilProductTable({
         .eq('foil_category', foilCategory)
         .limit(1);
 
+      let rawProducts: FoilProduct[];
+
       if (byCategory && byCategory.length > 0) {
-        // Use category-based filtering
         const { data, error } = await supabase
           .from('products')
           .select('id, symbol, name, manufacturer, series, shade, extracted_hex, foil_width, price')
@@ -81,33 +68,51 @@ export function FoilProductTable({
           .eq('foil_category', foilCategory)
           .order('name');
         if (error) throw error;
-        return data as FoilProduct[];
+        rawProducts = data as FoilProduct[];
       } else {
-        // Fallback: search by name pattern for foils
-        // Filter by subtype based on name patterns
         let nameFilter = '';
-        if (subtype === 'jednokolorowa') {
-          nameFilter = 'Alkorplan 2000';
-        } else if (subtype === 'nadruk') {
-          nameFilter = 'Alkorplan 3000';
-        } else {
-          nameFilter = 'Relief';
-        }
-        
+        if (subtype === 'jednokolorowa') nameFilter = 'Alkorplan 2000';
+        else if (subtype === 'nadruk') nameFilter = 'Alkorplan 3000';
+        else nameFilter = 'Relief';
+
         const { data, error } = await supabase
           .from('products')
           .select('id, symbol, name, manufacturer, series, shade, extracted_hex, foil_width, price')
           .or(`name.ilike.%Folia%,name.ilike.%Alkorplan%,name.ilike.%ELBE%`)
           .ilike('name', `%${nameFilter}%`)
           .order('name');
-        
         if (error) throw error;
-        return data as FoilProduct[];
+        rawProducts = data as FoilProduct[];
       }
+
+      // Fetch thumbnails
+      if (rawProducts.length > 0) {
+        const productIds = rawProducts.map(p => p.id);
+        const { data: images } = await supabase
+          .from('product_images')
+          .select('product_id, image_url, sort_order')
+          .in('product_id', productIds)
+          .order('sort_order', { ascending: true });
+
+        const thumbnailMap: Record<string, string> = {};
+        const seen = new Set<string>();
+        (images || []).forEach(img => {
+          if (!seen.has(img.product_id)) {
+            thumbnailMap[img.product_id] = img.image_url;
+            seen.add(img.product_id);
+          }
+        });
+
+        rawProducts = rawProducts.map(p => ({
+          ...p,
+          thumbnail_url: thumbnailMap[p.id] || null,
+        }));
+      }
+
+      return rawProducts;
     },
   });
 
-  // Get unique manufacturers and shades for filters
   const manufacturers = useMemo(() => {
     const unique = new Set(products.map((p) => p.manufacturer).filter(Boolean));
     return Array.from(unique).sort();
@@ -118,10 +123,8 @@ export function FoilProductTable({
     return Array.from(unique).sort();
   }, [products]);
 
-  // Filter products
   const filteredProducts = useMemo(() => {
     return products.filter((product) => {
-      // Search query filter
       if (searchQuery) {
         const query = searchQuery.toLowerCase();
         const matchesSearch =
@@ -131,24 +134,14 @@ export function FoilProductTable({
           product.series?.toLowerCase().includes(query);
         if (!matchesSearch) return false;
       }
-
-      // Manufacturer filter
-      if (manufacturerFilter !== 'all' && product.manufacturer !== manufacturerFilter) {
-        return false;
-      }
-
-      // Shade filter
-      if (shadeFilter !== 'all' && product.shade !== shadeFilter) {
-        return false;
-      }
-
+      if (manufacturerFilter !== 'all' && product.manufacturer !== manufacturerFilter) return false;
+      if (shadeFilter !== 'all' && product.shade !== shadeFilter) return false;
       return true;
     });
   }, [products, searchQuery, manufacturerFilter, shadeFilter]);
 
-  const handleRowClick = (product: FoilProduct) => {
+  const handleCardClick = (product: FoilProduct) => {
     if (selectedProductId === product.id) {
-      // Deselect
       onSelectProduct(null, null);
     } else {
       onSelectProduct(product.id, product.name);
@@ -184,9 +177,7 @@ export function FoilProductTable({
           <SelectContent>
             <SelectItem value="all">Wszyscy producenci</SelectItem>
             {manufacturers.map((m) => (
-              <SelectItem key={m} value={m!}>
-                {m}
-              </SelectItem>
+              <SelectItem key={m} value={m!}>{m}</SelectItem>
             ))}
           </SelectContent>
         </Select>
@@ -198,9 +189,7 @@ export function FoilProductTable({
           <SelectContent>
             <SelectItem value="all">Wszystkie kolory</SelectItem>
             {shades.map((s) => (
-              <SelectItem key={s} value={s!}>
-                {s}
-              </SelectItem>
+              <SelectItem key={s} value={s!}>{s}</SelectItem>
             ))}
           </SelectContent>
         </Select>
@@ -213,7 +202,7 @@ export function FoilProductTable({
         )}
       </div>
 
-      {/* Info about no selection */}
+      {/* No selection info */}
       {!selectedProductId && (
         <div className="p-3 bg-muted/50 rounded-lg">
           <p className="text-sm text-muted-foreground">
@@ -222,72 +211,80 @@ export function FoilProductTable({
         </div>
       )}
 
-      {/* Table */}
-      <div className="border rounded-lg overflow-hidden">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="w-[120px]">Symbol</TableHead>
-              <TableHead>Nazwa</TableHead>
-              <TableHead className="w-[120px]">Producent</TableHead>
-              <TableHead className="w-[100px]">Seria</TableHead>
-              <TableHead className="w-[120px]">Kolor</TableHead>
-              <TableHead className="w-[80px] text-right">Szer.</TableHead>
-              <TableHead className="w-[100px] text-right">Cena/m²</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {isLoading ? (
-              <TableRow>
-                <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
-                  Ładowanie...
-                </TableCell>
-              </TableRow>
-            ) : filteredProducts.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
-                  Nie znaleziono produktów
-                </TableCell>
-              </TableRow>
-            ) : (
-              filteredProducts.map((product) => (
-                <TableRow
-                  key={product.id}
-                  className={cn(
-                    'cursor-pointer transition-colors',
-                    selectedProductId === product.id
-                      ? 'bg-primary/10 hover:bg-primary/15'
-                      : 'hover:bg-muted/50'
+      {/* Product grid */}
+      {isLoading ? (
+        <div className="text-center py-8 text-muted-foreground">Ładowanie...</div>
+      ) : filteredProducts.length === 0 ? (
+        <div className="text-center py-8 text-muted-foreground">Nie znaleziono produktów</div>
+      ) : (
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
+          {filteredProducts.map((product) => (
+            <Card
+              key={product.id}
+              className={cn(
+                'cursor-pointer transition-all hover:shadow-md overflow-hidden',
+                selectedProductId === product.id && 'ring-2 ring-primary border-primary'
+              )}
+              onClick={() => handleCardClick(product)}
+            >
+              {/* Thumbnail */}
+              <div className="aspect-square bg-muted relative overflow-hidden">
+                {product.thumbnail_url ? (
+                  <img
+                    src={product.thumbnail_url}
+                    alt={product.name}
+                    className="w-full h-full object-cover"
+                  />
+                ) : product.extracted_hex ? (
+                  <div
+                    className="w-full h-full"
+                    style={{ backgroundColor: product.extracted_hex }}
+                  />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center text-muted-foreground">
+                    <ImageOff className="w-8 h-8" />
+                  </div>
+                )}
+              </div>
+
+              <CardContent className="p-2.5">
+                {/* Name */}
+                <p className="text-xs font-medium line-clamp-2 min-h-[2rem] mb-1">
+                  {product.name}
+                </p>
+
+                {/* Series */}
+                {product.series && (
+                  <p className="text-[10px] text-muted-foreground mb-1">{product.series}</p>
+                )}
+
+                {/* Color */}
+                <div className="flex items-center gap-1.5 mb-1.5">
+                  {product.extracted_hex && (
+                    <span
+                      className="w-3 h-3 rounded-full border shrink-0"
+                      style={{ backgroundColor: product.extracted_hex }}
+                    />
                   )}
-                  onClick={() => handleRowClick(product)}
-                >
-                  <TableCell className="font-mono text-sm">{product.symbol}</TableCell>
-                  <TableCell className="font-medium">{product.name}</TableCell>
-                  <TableCell>{product.manufacturer || '-'}</TableCell>
-                  <TableCell>{product.series || '-'}</TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-2">
-                      {product.extracted_hex && (
-                        <span
-                          className="w-4 h-4 rounded-full border"
-                          style={{ backgroundColor: product.extracted_hex }}
-                        />
-                      )}
-                      <span>{product.shade || '-'}</span>
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-right">
-                    {product.foil_width ? `${product.foil_width} m` : '-'}
-                  </TableCell>
-                  <TableCell className="text-right font-medium">
-                    {formatPrice(product.price)} zł
-                  </TableCell>
-                </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
-      </div>
+                  <span className="text-[10px] text-muted-foreground truncate">
+                    {product.shade || '-'}
+                  </span>
+                </div>
+
+                {/* Price */}
+                <p className="text-sm font-bold text-primary">
+                  {formatPrice(product.price)} zł/m²
+                </p>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      {/* Count */}
+      <p className="text-xs text-muted-foreground text-right">
+        {filteredProducts.length} z {products.length} produktów
+      </p>
 
       {/* Selected product indicator */}
       {selectedProductId && (
@@ -295,14 +292,10 @@ export function FoilProductTable({
           <div className="flex items-center gap-2">
             <Badge variant="default">Wybrany produkt</Badge>
             <span className="font-medium">
-              {filteredProducts.find((p) => p.id === selectedProductId)?.name}
+              {products.find((p) => p.id === selectedProductId)?.name}
             </span>
           </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => onSelectProduct(null, null)}
-          >
+          <Button variant="ghost" size="sm" onClick={() => onSelectProduct(null, null)}>
             <X className="w-4 h-4 mr-1" />
             Odznacz
           </Button>
