@@ -11,6 +11,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { toast } from 'sonner';
 import jsPDF from 'jspdf';
+import * as XLSX from 'xlsx';
 
 interface MaterialRow {
   name: string;
@@ -42,7 +43,6 @@ function exportToPDF(materials: MaterialRow[], title: string, includePrice: bool
   doc.text(`Eksport: ${new Date().toLocaleDateString('pl-PL')}`, margin, y);
   y += 8;
 
-  // Header
   doc.setFontSize(9);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(0, 0, 0);
@@ -59,13 +59,11 @@ function exportToPDF(materials: MaterialRow[], title: string, includePrice: bool
   doc.line(margin, y, pw - margin, y);
   y += 5;
 
-  // Rows
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(9);
   materials.forEach((m, i) => {
     if (y > 275) { doc.addPage(); y = 20; }
     doc.text(`${i + 1}.`, margin, y);
-    const maxNameWidth = includePrice ? 80 : 110;
     const name = m.name.length > 50 ? m.name.substring(0, 47) + '...' : m.name;
     doc.text(name, margin + 12, y);
     doc.text(m.quantity.toString(), pw - margin - (includePrice ? 70 : 20), y, { align: 'right' });
@@ -91,34 +89,31 @@ function exportToPDF(materials: MaterialRow[], title: string, includePrice: bool
   toast.success('Wyeksportowano do PDF');
 }
 
-function exportToXML(materials: MaterialRow[], title: string, includePrice: boolean) {
-  let xml = '<?xml version="1.0" encoding="UTF-8"?>\n';
-  xml += `<materialy title="${escapeXml(title)}" data="${new Date().toISOString().split('T')[0]}">\n`;
-  materials.forEach(m => {
-    xml += '  <material>\n';
-    xml += `    <nazwa>${escapeXml(m.name)}</nazwa>\n`;
-    xml += `    <ilosc>${m.quantity}</ilosc>\n`;
-    xml += `    <jednostka>${escapeXml(m.unit)}</jednostka>\n`;
-    if (includePrice && m.rate !== undefined) {
-      xml += `    <cena_jednostkowa>${m.rate.toFixed(2)}</cena_jednostkowa>\n`;
-      xml += `    <razem>${(m.total ?? 0).toFixed(2)}</razem>\n`;
+function exportToXLSX(materials: MaterialRow[], title: string, includePrice: boolean) {
+  const rows = materials.map((m, i) => {
+    const row: Record<string, string | number> = {
+      'Lp.': i + 1,
+      'Materiał': m.name,
+      'Ilość': m.quantity,
+      'Jednostka': m.unit,
+    };
+    if (includePrice) {
+      row['Cena/jed. (zł)'] = m.rate ?? 0;
+      row['Razem (zł)'] = m.total ?? 0;
     }
-    xml += '  </material>\n';
+    return row;
   });
-  xml += '</materialy>';
 
-  const blob = new Blob([xml], { type: 'application/xml' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `${title.replace(/\s+/g, '_')}.xml`;
-  a.click();
-  URL.revokeObjectURL(url);
-  toast.success('Wyeksportowano do XML');
-}
+  if (includePrice) {
+    const total = materials.reduce((s, m) => s + (m.total ?? 0), 0);
+    rows.push({ 'Lp.': '', 'Materiał': 'RAZEM NETTO', 'Ilość': '', 'Jednostka': '', 'Cena/jed. (zł)': '', 'Razem (zł)': total } as any);
+  }
 
-function escapeXml(str: string) {
-  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const ws = XLSX.utils.json_to_sheet(rows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Materiały');
+  XLSX.writeFile(wb, `${title.replace(/\s+/g, '_')}.xlsx`);
+  toast.success('Wyeksportowano do Excel');
 }
 
 export function MaterialsExportButton({ materials, title }: MaterialsExportButtonProps) {
@@ -141,11 +136,11 @@ export function MaterialsExportButton({ materials, title }: MaterialsExportButto
           Ilości i ceny
         </DropdownMenuItem>
         <DropdownMenuSeparator />
-        <DropdownMenuLabel>XML</DropdownMenuLabel>
-        <DropdownMenuItem onClick={() => exportToXML(materials, title, false)}>
+        <DropdownMenuLabel>Excel (XLSX)</DropdownMenuLabel>
+        <DropdownMenuItem onClick={() => exportToXLSX(materials, title, false)}>
           Tylko ilości
         </DropdownMenuItem>
-        <DropdownMenuItem onClick={() => exportToXML(materials, title, true)}>
+        <DropdownMenuItem onClick={() => exportToXLSX(materials, title, true)}>
           Ilości i ceny
         </DropdownMenuItem>
       </DropdownMenuContent>
