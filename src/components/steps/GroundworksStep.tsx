@@ -703,9 +703,13 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
       }
 
       // Zaprawa murarska (masonry mortar): 3.5kg per block, 25kg bags - only for masonry
+      // Only first layer of pool & wading pool + all stair blocks
       if (constructionTechnology === 'masonry') {
-        const totalBlocks = (blockCalculation?.totalBlocks || 0) + wadingPoolBlocks + stairsBlocks;
-        const mortarBags = totalBlocks > 0 ? Math.ceil((totalBlocks * 3.5) / 25) : 0;
+        const poolFirstLayer = blockCalculation?.blocksPerLayer || 0;
+        const wpPerimeter = dimensions.wadingPool?.enabled ? ((dimensions.wadingPool.width || 0) + (dimensions.wadingPool.length || 0)) : 0;
+        const wadingPoolFirstLayer = wpPerimeter > 0 ? Math.ceil(wpPerimeter / 0.38) : 0;
+        const mortarBlocks = poolFirstLayer + wadingPoolFirstLayer + stairsBlocks;
+        const mortarBags = mortarBlocks > 0 ? Math.ceil((mortarBlocks * 3.5) / 25) : 0;
         const mortarRate = materialRates.zaprawaMurarska ?? 30;
         updated.push({
           id: 'zaprawa_murarska', name: 'Zaprawa murarska', quantity: mortarBags, unit: 'worek',
