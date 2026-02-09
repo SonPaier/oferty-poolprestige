@@ -60,7 +60,7 @@ function roundQuantity(id: string, quantity: number): number {
     return Math.ceil(quantity * 2) / 2;
   }
   // Bloczki, pompogruszka, zbrojenie, strzemiona, XPS packages - zaokrąglaj do jedności
-  if (['bloczek', 'pompogruszka', 'xps_floor', 'xps_wall'].includes(id)) {
+  if (['bloczek', 'pompogruszka', 'xps_floor', 'xps_wall', 'papa_sbs', 'grunt_primer'].includes(id)) {
     return Math.ceil(quantity);
   }
   // PUR foam - round to 0.5 m²
@@ -414,6 +414,29 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
     return baseItems;
   });
   
+  // Horizontal insulation expand toggle
+  const [izolacjaPoziomExpanded, setIzolacjaPoziomExpanded] = useState(false);
+  
+  // Papa SBS calculation helper
+  const calculatePapaRolls = useCallback(() => {
+    // Papa covers floor slab + 50cm overhang on each side
+    const papaLength = dimensions.length + 0.88 + 1.0; // slab + 2×0.5m
+    const papaWidth = dimensions.width + 0.88 + 1.0;
+    // Strips 1m wide with 10cm overlap → effective width 0.9m
+    const stripsPerLayer = Math.ceil(papaWidth / 0.9);
+    // 2 layers
+    const totalLinearMeters = 2 * stripsPerLayer * papaLength;
+    return Math.ceil(totalLinearMeters / 7.5); // 7.5m per roll
+  }, [dimensions.length, dimensions.width]);
+  
+  const calculateGruntPackages = useCallback(() => {
+    // Grunt applied to area before papa (once)
+    const papaLength = dimensions.length + 0.88 + 1.0;
+    const papaWidth = dimensions.width + 0.88 + 1.0;
+    const liters = papaLength * papaWidth * 0.25; // 0.25L/m²
+    return Math.ceil(liters / 10); // 10L packages
+  }, [dimensions.length, dimensions.width]);
+  
   // Grouped B25 concrete (plyta denna + wieniec + slupy for masonry)
   const [b25ConcreteGroup, setB25ConcreteGroup] = useState<GroupedMaterialItem>({
     id: 'beton_b25_group',
@@ -467,7 +490,7 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
       
       // ---- Insulation items (XPS floor, XPS/PUR wall) ----
       // Remove old insulation items (will re-add if needed)
-      updated = updated.filter(item => !['xps_floor', 'xps_wall', 'pur_wall'].includes(item.id));
+      updated = updated.filter(item => !['xps_floor', 'xps_wall', 'pur_wall', 'papa_sbs', 'grunt_primer'].includes(item.id));
       
       // Floor insulation
       if (floorInsulation !== 'none') {
@@ -513,10 +536,37 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
         });
       }
 
+      // Horizontal insulation: Papa SBS 4mm + Grunt Siplast Primer
+      const papaRolls = calculatePapaRolls();
+      const papaRate = materialRates.papaSbs4mm ?? 300;
+      updated.push({
+        id: 'papa_sbs',
+        name: 'Papa SBS 4mm',
+        quantity: papaRolls,
+        unit: 'rolki',
+        rate: papaRate,
+        netValue: papaRolls * papaRate,
+        customOverride: false,
+      });
+      
+      const gruntPkgs = calculateGruntPackages();
+      const gruntRate = materialRates.gruntPrimer ?? 250;
+      updated.push({
+        id: 'grunt_primer',
+        name: 'Grunt Siplast Primer',
+        quantity: gruntPkgs,
+        unit: 'opak.',
+        rate: gruntRate,
+        netValue: gruntPkgs * gruntRate,
+        customOverride: false,
+      });
+
       // Preserve user overrides for insulation items
       const prevFloor = prev.find(i => i.id === 'xps_floor');
       const prevWall = prev.find(i => i.id === 'xps_wall');
       const prevPur = prev.find(i => i.id === 'pur_wall');
+      const prevPapa = prev.find(i => i.id === 'papa_sbs');
+      const prevGrunt = prev.find(i => i.id === 'grunt_primer');
       if (prevFloor?.customOverride) {
         const idx = updated.findIndex(i => i.id === 'xps_floor');
         if (idx >= 0) updated[idx] = { ...updated[idx], quantity: prevFloor.quantity, customOverride: true, netValue: prevFloor.quantity * updated[idx].rate };
@@ -528,6 +578,14 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
       if (prevPur?.customOverride) {
         const idx = updated.findIndex(i => i.id === 'pur_wall');
         if (idx >= 0) updated[idx] = { ...updated[idx], quantity: prevPur.quantity, customOverride: true, netValue: prevPur.quantity * updated[idx].rate };
+      }
+      if (prevPapa?.customOverride) {
+        const idx = updated.findIndex(i => i.id === 'papa_sbs');
+        if (idx >= 0) updated[idx] = { ...updated[idx], quantity: prevPapa.quantity, customOverride: true, netValue: prevPapa.quantity * updated[idx].rate };
+      }
+      if (prevGrunt?.customOverride) {
+        const idx = updated.findIndex(i => i.id === 'grunt_primer');
+        if (idx >= 0) updated[idx] = { ...updated[idx], quantity: prevGrunt.quantity, customOverride: true, netValue: prevGrunt.quantity * updated[idx].rate };
       }
       
       return updated;
@@ -572,7 +630,7 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
         return { ...prev, groupName: `Bloczek betonowy 38×24×${blockHeight}`, subItems: newSubItems };
       });
     }
-  }, [excavationArea, leanConcreteHeight, dimensions.stairs?.enabled, dimensions.wadingPool?.enabled, dimensions.length, dimensions.width, dimensions.depth, constructionTechnology, blockCalculation, blockHeight, wadingPoolBlocks, stairsBlocks, floorInsulation, wallInsulation, materialRates]);
+  }, [excavationArea, leanConcreteHeight, dimensions.stairs?.enabled, dimensions.wadingPool?.enabled, dimensions.length, dimensions.width, dimensions.depth, constructionTechnology, blockCalculation, blockHeight, wadingPoolBlocks, stairsBlocks, floorInsulation, wallInsulation, materialRates, calculatePapaRolls, calculateGruntPackages]);
   
   // Update podsypka, piasek_zasypka, drenaz, and zakopanie in lineItems when excavation dimensions change
   useEffect(() => {
@@ -718,10 +776,14 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
       }
       case 'pur_wall':
         return wallInsulation === 'pur-5cm' ? calculateWallPurArea(dimensions.length, dimensions.width, dimensions.depth) : 0;
+      case 'papa_sbs':
+        return calculatePapaRolls();
+      case 'grunt_primer':
+        return calculateGruntPackages();
       default:
         return 0;
     }
-  }, [excavationArea, sandBeddingHeight, leanConcreteHeight, dimensions.stairs?.enabled, dimensions.wadingPool?.enabled, dimensions.length, dimensions.width, dimensions.depth, blockCalculation, wadingPoolBlocks, stairsBlocks, floorInsulation, wallInsulation]);
+  }, [excavationArea, sandBeddingHeight, leanConcreteHeight, dimensions.stairs?.enabled, dimensions.wadingPool?.enabled, dimensions.length, dimensions.width, dimensions.depth, blockCalculation, wadingPoolBlocks, stairsBlocks, floorInsulation, wallInsulation, calculatePapaRolls, calculateGruntPackages]);
 
   const getExpectedB25SubItemQuantity = useCallback((subItemId: string): number => {
     const crownConcreteVolume = blockCalculation 
@@ -761,6 +823,8 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
       case 'xps_floor': return floorInsulation === 'xps-5cm' ? 'xpsFloor5cm' : 'xpsFloor10cm';
       case 'xps_wall': return wallInsulation === 'xps-5cm-wall' ? 'xpsWall5cm' : 'xpsWall10cm';
       case 'pur_wall': return 'purFoam5cm';
+      case 'papa_sbs': return 'papaSbs4mm';
+      case 'grunt_primer': return 'gruntPrimer';
       default: return null;
     }
   };
@@ -2858,7 +2922,7 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
                       ))}
 
                       {/* Remaining materials: Pompogruszka */}
-                      {constructionMaterials.filter(item => item.id !== 'chudziak' && !['xps_floor', 'xps_wall', 'pur_wall'].includes(item.id)).map((item) => (
+                      {constructionMaterials.filter(item => item.id !== 'chudziak' && !['xps_floor', 'xps_wall', 'pur_wall', 'papa_sbs', 'grunt_primer'].includes(item.id)).map((item) => (
                         <TableRow key={item.id}>
                           <TableCell className="font-medium">
                             {item.name}
@@ -3085,6 +3149,105 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
                           </TableCell>
                         </TableRow>
                       ))}
+
+                      {/* Horizontal insulation group (Papa SBS + Grunt) */}
+                      {constructionMaterials.some(item => item.id === 'papa_sbs') && (
+                        <>
+                          <TableRow className="bg-accent/5">
+                            <TableCell colSpan={5}>
+                              <button
+                                type="button"
+                                className="flex items-center gap-2 font-medium hover:text-primary transition-colors"
+                                onClick={() => setIzolacjaPoziomExpanded(!izolacjaPoziomExpanded)}
+                              >
+                                {izolacjaPoziomExpanded ? (
+                                  <ChevronDown className="w-4 h-4" />
+                                ) : (
+                                  <ChevronRight className="w-4 h-4" />
+                                )}
+                                <Droplets className="w-4 h-4 text-muted-foreground" />
+                                Izolacja pozioma
+                                <span className="text-sm text-muted-foreground font-normal ml-2">
+                                  ({formatPrice(
+                                    constructionMaterials
+                                      .filter(i => ['papa_sbs', 'grunt_primer'].includes(i.id))
+                                      .reduce((sum, i) => sum + roundQuantity(i.id, i.quantity) * i.rate, 0)
+                                  )})
+                                </span>
+                              </button>
+                            </TableCell>
+                          </TableRow>
+                          {izolacjaPoziomExpanded && constructionMaterials
+                            .filter(item => ['papa_sbs', 'grunt_primer'].includes(item.id))
+                            .map((item) => (
+                              <TableRow key={item.id} className="bg-background">
+                                <TableCell className="pl-10 text-muted-foreground">
+                                  └ {item.name}
+                                  {item.customOverride && (
+                                    <span className="ml-2 text-xs text-amber-600">(zmieniono)</span>
+                                  )}
+                                  <span className="block text-xs">
+                                    {item.id === 'papa_sbs' 
+                                      ? '2 warstwy, rolka 1×7,5m, zakład 10cm, wystaje 50cm' 
+                                      : 'opak. 10L, zużycie 0,25L/m²'}
+                                  </span>
+                                </TableCell>
+                                <TableCell>
+                                  <div className="flex items-center justify-end gap-1">
+                                    <Input
+                                      type="number"
+                                      min="0"
+                                      step="1"
+                                      value={formatQuantity(item.id, item.quantity)}
+                                      onChange={(e) => updateConstructionMaterial(item.id, 'quantity', parseFloat(e.target.value) || 0)}
+                                      className="input-field w-[70px] text-right"
+                                    />
+                                    {item.customOverride && (
+                                      <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-8 w-8"
+                                        onClick={() => resetConstructionMaterialQuantity(item.id)}
+                                        title={`Przywróć: ${formatQuantity(item.id, getExpectedMaterialQuantity(item.id))}`}
+                                      >
+                                        <RotateCcw className="h-4 w-4" />
+                                      </Button>
+                                    )}
+                                  </div>
+                                </TableCell>
+                                <TableCell className="text-muted-foreground">{item.unit}</TableCell>
+                                <TableCell>
+                                  <div className="flex items-center justify-end gap-1">
+                                    <Input
+                                      type="number"
+                                      min="0"
+                                      step="10"
+                                      value={item.rate}
+                                      onChange={(e) => updateConstructionMaterial(item.id, 'rate', parseFloat(e.target.value) || 0)}
+                                      className="input-field w-[80px] text-right"
+                                    />
+                                    {changedMaterialRates[item.id] !== undefined && (
+                                      <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-8 w-8 text-success hover:text-success/80 hover:bg-success/10"
+                                        onClick={() => confirmMaterialRateChange(item.id, item.name)}
+                                        title="Zatwierdź zmianę stawki"
+                                      >
+                                        <Check className="h-4 w-4" />
+                                      </Button>
+                                    )}
+                                  </div>
+                                </TableCell>
+                                <TableCell className="text-right font-semibold">
+                                  {formatPrice(roundQuantity(item.id, item.quantity) * item.rate)}
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                        </>
+                      )}
 
                       {/* Reinforcement rows */}
                       <ReinforcementTableRows
