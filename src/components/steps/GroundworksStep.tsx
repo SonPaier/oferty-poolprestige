@@ -493,7 +493,7 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
     return Math.ceil(liters / 10);
   }, [verticalWallArea, verticalInsulationEnabled]);
 
-  // 2. Masa uszczelniająca Remmers MB 2K: 25kg packages, 5.2kg/m²
+  // 2. Masa uszczelniająca Remmers MB 2K: 25kg packages, 4.4kg/m²
   const calculateMasaMb2k = useCallback(() => {
     if (!verticalInsulationEnabled) return 0;
     const kg = verticalWallArea * 4.4;
