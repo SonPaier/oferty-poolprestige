@@ -314,6 +314,8 @@ export interface ConstructionMaterialRates {
   xpsWall5cm: number;     // zł/opak. (XPS 300 ściany 5cm)
   xpsWall10cm: number;    // zł/opak. (XPS 300 ściany 10cm)
   purFoam5cm: number;      // zł/m² (PUR foam wall insulation)
+  papaSbs4mm: number;      // zł/rolka (Papa SBS 4mm, rolka 1×7.5m)
+  gruntPrimer: number;     // zł/opak. (Grunt Siplast Primer 10L)
   // Labor rates
   laborPoolRate: number;   // zł/m² (prace budowlane – basen)
   laborStairsRate: number; // zł/m² (prace budowlane – schody)
@@ -335,6 +337,8 @@ export const defaultConstructionMaterialRates: ConstructionMaterialRates = {
   xpsWall5cm: 105,
   xpsWall10cm: 105,
   purFoam5cm: 150,
+  papaSbs4mm: 300,       // 7.5m² × 40 zł/m²
+  gruntPrimer: 250,      // 10L × 25 zł/L
   laborPoolRate: 700,
   laborStairsRate: 1000,
   laborWadingRate: 1000,
