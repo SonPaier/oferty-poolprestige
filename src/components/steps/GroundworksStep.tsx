@@ -720,7 +720,7 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
         // All blocks EXCEPT those counted for mortar (first layer pool & wading pool)
         const totalAllBlocks = (blockCalculation?.totalBlocks || 0) + wadingPoolBlocks + stairsBlocks;
         const glueBlocks = totalAllBlocks - mortarBlocks;
-        const glueBags = glueBlocks > 0 ? Math.ceil((glueBlocks * 3.5) / 25) : 0;
+        const glueBags = glueBlocks > 0 ? Math.ceil((glueBlocks * 0.35) / 25) : 0;
         const glueRate = materialRates.klejCementowy ?? 30;
         updated.push({
           id: 'klej_cementowy', name: 'Klej cienkowarstwowy-cementowy (M10/M15)', quantity: glueBags, unit: 'worek',
