@@ -52,6 +52,7 @@ import Pool2DPreview, { CustomColumnCounts, calculateDefaultColumnCounts, getTot
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { defaultConstructionMaterialRates, ConstructionMaterialRates } from '@/types/configurator';
 import { calculateFloorXps, calculateWallXps, calculateWallPurArea } from '@/lib/xpsCalculator';
+import { MaterialsExportButton } from '@/components/groundworks/MaterialsExportButton';
 
 // Helper function to round quantities based on material type
 function roundQuantity(id: string, quantity: number): number {
@@ -2324,6 +2325,27 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
                     rows={3}
                   />
                 </div>
+                <div className="mt-4">
+                  <MaterialsExportButton
+                    title="Roboty ziemne"
+                    materials={[
+                      ...lineItems.filter(i => !i.hidden).map(i => ({
+                        name: i.name,
+                        quantity: roundQuantity(i.id, i.quantity),
+                        unit: i.unit as string,
+                        rate: i.rate,
+                        total: roundQuantity(i.id, i.quantity) * i.rate,
+                      })),
+                      ...extraExcavationItems.map(e => ({
+                        name: e.name,
+                        quantity: e.quantity,
+                        unit: e.unit,
+                        rate: e.rate,
+                        total: e.quantity * e.rate,
+                      })),
+                    ]}
+                  />
+                </div>
               </div>
             </div>
           )}
@@ -3772,6 +3794,27 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
                     placeholder="Dodatkowe uwagi dotyczące prac budowlanych..."
                     className="mt-2"
                     rows={3}
+                  />
+                </div>
+                <div className="mt-4">
+                  <MaterialsExportButton
+                    title="Prace budowlane - materiały"
+                    materials={[
+                      ...constructionMaterials.map(m => ({
+                        name: m.name,
+                        quantity: roundQuantity(m.id, m.quantity),
+                        unit: m.unit,
+                        rate: m.rate,
+                        total: roundQuantity(m.id, m.quantity) * m.rate,
+                      })),
+                      ...extraConstructionItems.map(e => ({
+                        name: e.name,
+                        quantity: e.quantity,
+                        unit: e.unit,
+                        rate: e.rate,
+                        total: e.quantity * e.rate,
+                      })),
+                    ]}
                   />
                 </div>
               </div>
