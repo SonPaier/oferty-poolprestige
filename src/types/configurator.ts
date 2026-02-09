@@ -323,6 +323,7 @@ export interface ConstructionMaterialRates {
   mapegrout430: number;    // zł/worek (Mapegrout 430 / Planitop 400 25kg)
   foliaKubelkowa: number;  // zł/rolka (1.5m × 20m)
   listwaMontazowa: number; // zł/szt. (listwa 2m)
+  zaprawaMurarska: number; // zł/worek (zaprawa murarska 25kg)
   // Labor rates
   laborPoolRate: number;   // zł/m² (prace budowlane – basen)
   laborStairsRate: number; // zł/m² (prace budowlane – schody)
@@ -353,6 +354,7 @@ export const defaultConstructionMaterialRates: ConstructionMaterialRates = {
   mapegrout430: 70,      // 70 zł/worek 25kg
   foliaKubelkowa: 250,   // 250 zł/rolka 1.5×20m
   listwaMontazowa: 10,   // 10 zł/szt. (2m)
+  zaprawaMurarska: 30,   // 30 zł/worek 25kg
   laborPoolRate: 700,
   laborStairsRate: 1000,
   laborWadingRate: 1000,

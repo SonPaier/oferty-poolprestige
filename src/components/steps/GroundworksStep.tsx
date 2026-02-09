@@ -61,7 +61,7 @@ function roundQuantity(id: string, quantity: number): number {
   }
   // Bloczki, pompogruszka, zbrojenie, strzemiona, XPS packages, vertical insulation - zaokrąglaj do jedności
   if (['bloczek', 'pompogruszka', 'xps_floor', 'xps_wall', 'pianoklej', 'papa_sbs', 'papa_sbs_obwod', 'grunt_primer',
-       'primer_kiesol', 'masa_mb2k', 'mapegrout_430', 'folia_kubelkowa', 'listwa_montazowa'].includes(id)) {
+       'primer_kiesol', 'masa_mb2k', 'mapegrout_430', 'folia_kubelkowa', 'listwa_montazowa', 'zaprawa_murarska'].includes(id)) {
     return Math.ceil(quantity);
   }
   // PUR foam - round to 0.5 m²
@@ -573,7 +573,7 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
       // ---- Insulation items (XPS floor, XPS/PUR wall, vertical insulation) ----
       // Remove old insulation items (will re-add if needed)
       updated = updated.filter(item => !['xps_floor', 'xps_wall', 'pur_wall', 'pianoklej', 'papa_sbs', 'papa_sbs_obwod', 'grunt_primer',
-        'primer_kiesol', 'masa_mb2k', 'mapegrout_430', 'folia_kubelkowa', 'listwa_montazowa'].includes(item.id));
+        'primer_kiesol', 'masa_mb2k', 'mapegrout_430', 'folia_kubelkowa', 'listwa_montazowa', 'zaprawa_murarska'].includes(item.id));
       
       // Floor insulation
       if (floorInsulation !== 'none') {
@@ -702,11 +702,23 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
         });
       }
 
+      // Zaprawa murarska (masonry mortar): 3.5kg per block, 25kg bags - only for masonry
+      if (constructionTechnology === 'masonry') {
+        const totalBlocks = (blockCalculation?.totalBlocks || 0) + wadingPoolBlocks + stairsBlocks;
+        const mortarBags = totalBlocks > 0 ? Math.ceil((totalBlocks * 3.5) / 25) : 0;
+        const mortarRate = materialRates.zaprawaMurarska ?? 30;
+        updated.push({
+          id: 'zaprawa_murarska', name: 'Zaprawa murarska', quantity: mortarBags, unit: 'worek',
+          rate: mortarRate, netValue: mortarBags * mortarRate, customOverride: false,
+        });
+      }
+
       // Preserve user overrides for insulation items
       const vertInsIds = ['primer_kiesol', 'masa_mb2k', 'mapegrout_430', 'folia_kubelkowa', 'listwa_montazowa'];
       const horizInsIds = ['papa_sbs', 'papa_sbs_obwod', 'grunt_primer'];
       const thermalInsIds = ['xps_floor', 'xps_wall', 'pur_wall', 'pianoklej'];
-      const allInsIds = [...thermalInsIds, ...horizInsIds, ...vertInsIds];
+      const otherIds = ['zaprawa_murarska'];
+      const allInsIds = [...thermalInsIds, ...horizInsIds, ...vertInsIds, ...otherIds];
       
       for (const insId of allInsIds) {
         const prevItem = prev.find(i => i.id === insId);
@@ -974,6 +986,7 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
       case 'mapegrout_430': return 'mapegrout430';
       case 'folia_kubelkowa': return 'foliaKubelkowa';
       case 'listwa_montazowa': return 'listwaMontazowa';
+      case 'zaprawa_murarska': return 'zaprawaMurarska';
       default: return null;
     }
   };
