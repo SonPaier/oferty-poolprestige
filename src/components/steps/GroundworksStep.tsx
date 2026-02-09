@@ -414,39 +414,45 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
     return baseItems;
   });
   
-  // Insulation group expand toggles
-  const [izolacjaPoziomExpanded, setIzolacjaPoziomExpanded] = useState(false);
-  const [ociepleniaExpanded, setOciepleniaExpanded] = useState(false);
+   // Insulation group expand toggles
+   const [izolacjaPoziomExpanded, setIzolacjaPoziomExpanded] = useState(false);
+   const [ociepleniaExpanded, setOciepleniaExpanded] = useState(false);
+   
+   // Horizontal insulation controls
+   const [horizontalInsulationEnabled, setHorizontalInsulationEnabled] = useState(true);
+   const [papaLayers, setPapaLayers] = useState<1 | 2>(2);
   
-  // Papa SBS calculation helper
-  const calculatePapaRolls = useCallback(() => {
-    // Papa covers floor slab + 50cm overhang on each side
-    const papaLength = dimensions.length + 0.88 + 1.0; // slab + 2×0.5m
-    const papaWidth = dimensions.width + 0.88 + 1.0;
-    // Strips 1m wide with 10cm overlap → effective width 0.9m
-    const stripsPerLayer = Math.ceil(papaWidth / 0.9);
-    // 2 layers
-    const totalLinearMeters = 2 * stripsPerLayer * papaLength;
-    return Math.ceil(totalLinearMeters / 7.5); // 7.5m per roll
-  }, [dimensions.length, dimensions.width]);
+   // Papa SBS calculation helper
+   const calculatePapaRolls = useCallback(() => {
+     if (!horizontalInsulationEnabled) return 0;
+     // Papa covers floor slab + 50cm overhang on each side
+     const papaLength = dimensions.length + 0.88 + 1.0; // slab + 2×0.5m
+     const papaWidth = dimensions.width + 0.88 + 1.0;
+     // Strips 1m wide with 10cm overlap → effective width 0.9m
+     const stripsPerLayer = Math.ceil(papaWidth / 0.9);
+     const totalLinearMeters = papaLayers * stripsPerLayer * papaLength;
+     return Math.ceil(totalLinearMeters / 7.5); // 7.5m per roll
+   }, [dimensions.length, dimensions.width, papaLayers, horizontalInsulationEnabled]);
   
-  const calculateGruntPackages = useCallback(() => {
-    // Grunt applied to area before papa (once)
-    const papaLength = dimensions.length + 0.88 + 1.0;
-    const papaWidth = dimensions.width + 0.88 + 1.0;
-    const liters = papaLength * papaWidth * 0.25; // 0.25L/m²
-    return Math.ceil(liters / 10); // 10L packages
-  }, [dimensions.length, dimensions.width]);
+   const calculateGruntPackages = useCallback(() => {
+     if (!horizontalInsulationEnabled) return 0;
+     // Grunt applied to area before papa (once)
+     const papaLength = dimensions.length + 0.88 + 1.0;
+     const papaWidth = dimensions.width + 0.88 + 1.0;
+     const liters = papaLength * papaWidth * 0.25; // 0.25L/m²
+     return Math.ceil(liters / 10); // 10L packages
+   }, [dimensions.length, dimensions.width, horizontalInsulationEnabled]);
 
-  // Papa SBS for slab overhang perimeter (50cm strips cut from 1m roll)
-  const calculatePapaObwodRolls = useCallback(() => {
-    // Outer perimeter of the floor slab (pool + wall thickness 0.88m)
-    const slabLength = dimensions.length + 0.88;
-    const slabWidth = dimensions.width + 0.88;
-    const perimeter = 2 * (slabLength + slabWidth);
-    // Roll 7.5m cut in half → 15m of 50cm strips per roll
-    return Math.ceil(perimeter / 15);
-  }, [dimensions.length, dimensions.width]);
+   // Papa SBS for slab overhang perimeter (50cm strips cut from 1m roll)
+   const calculatePapaObwodRolls = useCallback(() => {
+     if (!horizontalInsulationEnabled) return 0;
+     // Outer perimeter of the floor slab (pool + wall thickness 0.88m)
+     const slabLength = dimensions.length + 0.88;
+     const slabWidth = dimensions.width + 0.88;
+     const perimeter = 2 * (slabLength + slabWidth);
+     // Roll 7.5m cut in half → 15m of 50cm strips per roll
+     return Math.ceil(perimeter / 15);
+   }, [dimensions.length, dimensions.width, horizontalInsulationEnabled]);
 
   // Pianoklej calculation: 1 can per 8m² of XPS (floor + wall), not used with PUR
   const calculatePianoklejCans = useCallback(() => {
@@ -578,42 +584,44 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
         });
       }
 
-      // Horizontal insulation: Papa SBS 4mm + Grunt Siplast Primer
-      const papaRolls = calculatePapaRolls();
-      const papaRate = materialRates.papaSbs4mm ?? 300;
-      updated.push({
-        id: 'papa_sbs',
-        name: 'Papa SBS 4mm',
-        quantity: papaRolls,
-        unit: 'rolki',
-        rate: papaRate,
-        netValue: papaRolls * papaRate,
-        customOverride: false,
-      });
-      
-      // Papa SBS for slab overhang perimeter (50cm strips)
-      const papaObwodRolls = calculatePapaObwodRolls();
-      updated.push({
-        id: 'papa_sbs_obwod',
-        name: 'Papa SBS 4mm (obwód płyty)',
-        quantity: papaObwodRolls,
-        unit: 'rolki',
-        rate: papaRate,
-        netValue: papaObwodRolls * papaRate,
-        customOverride: false,
-      });
+      // Horizontal insulation: Papa SBS 4mm + Grunt Siplast Primer (only if enabled)
+      if (horizontalInsulationEnabled) {
+        const papaRolls = calculatePapaRolls();
+        const papaRate = materialRates.papaSbs4mm ?? 300;
+        updated.push({
+          id: 'papa_sbs',
+          name: `Papa SBS 4mm`,
+          quantity: papaRolls,
+          unit: 'rolki',
+          rate: papaRate,
+          netValue: papaRolls * papaRate,
+          customOverride: false,
+        });
+        
+        // Papa SBS for slab overhang perimeter (50cm strips)
+        const papaObwodRolls = calculatePapaObwodRolls();
+        updated.push({
+          id: 'papa_sbs_obwod',
+          name: 'Papa SBS 4mm (obwód płyty)',
+          quantity: papaObwodRolls,
+          unit: 'rolki',
+          rate: papaRate,
+          netValue: papaObwodRolls * papaRate,
+          customOverride: false,
+        });
 
-      const gruntPkgs = calculateGruntPackages();
-      const gruntRate = materialRates.gruntPrimer ?? 250;
-      updated.push({
-        id: 'grunt_primer',
-        name: 'Grunt Siplast Primer',
-        quantity: gruntPkgs,
-        unit: 'opak.',
-        rate: gruntRate,
-        netValue: gruntPkgs * gruntRate,
-        customOverride: false,
-      });
+        const gruntPkgs = calculateGruntPackages();
+        const gruntRate = materialRates.gruntPrimer ?? 250;
+        updated.push({
+          id: 'grunt_primer',
+          name: 'Grunt Siplast Primer',
+          quantity: gruntPkgs,
+          unit: 'opak.',
+          rate: gruntRate,
+          netValue: gruntPkgs * gruntRate,
+          customOverride: false,
+        });
+      }
 
       // Preserve user overrides for insulation items
       const prevFloor = prev.find(i => i.id === 'xps_floor');
@@ -694,7 +702,7 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
         return { ...prev, groupName: `Bloczek betonowy 38×24×${blockHeight}`, subItems: newSubItems };
       });
     }
-  }, [excavationArea, leanConcreteHeight, dimensions.stairs?.enabled, dimensions.wadingPool?.enabled, dimensions.length, dimensions.width, dimensions.depth, constructionTechnology, blockCalculation, blockHeight, wadingPoolBlocks, stairsBlocks, floorInsulation, wallInsulation, materialRates, calculatePapaRolls, calculateGruntPackages]);
+  }, [excavationArea, leanConcreteHeight, dimensions.stairs?.enabled, dimensions.wadingPool?.enabled, dimensions.length, dimensions.width, dimensions.depth, constructionTechnology, blockCalculation, blockHeight, wadingPoolBlocks, stairsBlocks, floorInsulation, wallInsulation, materialRates, calculatePapaRolls, calculateGruntPackages, calculatePapaObwodRolls, horizontalInsulationEnabled, papaLayers]);
   
   // Update podsypka, piasek_zasypka, drenaz, and zakopanie in lineItems when excavation dimensions change
   useEffect(() => {
@@ -3256,50 +3264,71 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
                         </>
                       )}
 
-                      {/* Horizontal insulation group (Papa SBS + Grunt) */}
-                      {constructionMaterials.some(item => item.id === 'papa_sbs') && (
-                        <>
-                          <TableRow className="bg-accent/5">
-                            <TableCell colSpan={5}>
-                              <button
-                                type="button"
-                                className="flex items-center gap-2 font-medium hover:text-primary transition-colors"
-                                onClick={() => setIzolacjaPoziomExpanded(!izolacjaPoziomExpanded)}
-                              >
-                                {izolacjaPoziomExpanded ? (
-                                  <ChevronDown className="w-4 h-4" />
-                                ) : (
-                                  <ChevronRight className="w-4 h-4" />
-                                )}
-                                <Droplets className="w-4 h-4 text-muted-foreground" />
-                                Izolacja pozioma
-                                <span className="text-sm text-muted-foreground font-normal ml-2">
-                                  ({formatPrice(
-                                    constructionMaterials
-                                      .filter(i => ['papa_sbs', 'papa_sbs_obwod', 'grunt_primer'].includes(i.id))
-                                      .reduce((sum, i) => sum + roundQuantity(i.id, i.quantity) * i.rate, 0)
-                                  )})
-                                </span>
-                              </button>
-                            </TableCell>
-                          </TableRow>
-                          {izolacjaPoziomExpanded && constructionMaterials
-                            .filter(item => ['papa_sbs', 'papa_sbs_obwod', 'grunt_primer'].includes(item.id))
-                            .map((item) => (
-                              <TableRow key={item.id} className="bg-background">
-                                <TableCell className="pl-10 text-muted-foreground">
-                                  └ {item.name}
-                                  {item.customOverride && (
-                                    <span className="ml-2 text-xs text-amber-600">(zmieniono)</span>
-                                  )}
-                                  <span className="block text-xs">
-                                    {item.id === 'papa_sbs' 
-                                      ? '2 warstwy, rolka 1×7,5m, zakład 10cm' 
-                                      : item.id === 'papa_sbs_obwod'
-                                      ? 'obwód płyty, rolka cięta na pół (50cm)'
-                                      : 'opak. 10L, zużycie 0,25L/m²'}
-                                  </span>
-                                </TableCell>
+                       {/* Horizontal insulation group (Papa SBS + Grunt) */}
+                       <TableRow className="bg-accent/5">
+                         <TableCell colSpan={5}>
+                           <div className="flex items-center gap-3">
+                             <Checkbox
+                               id="horizontal-insulation-toggle"
+                               checked={horizontalInsulationEnabled}
+                               onCheckedChange={(checked) => setHorizontalInsulationEnabled(!!checked)}
+                             />
+                             <button
+                               type="button"
+                               className="flex items-center gap-2 font-medium hover:text-primary transition-colors"
+                               onClick={() => horizontalInsulationEnabled && setIzolacjaPoziomExpanded(!izolacjaPoziomExpanded)}
+                             >
+                               {horizontalInsulationEnabled && (izolacjaPoziomExpanded ? (
+                                 <ChevronDown className="w-4 h-4" />
+                               ) : (
+                                 <ChevronRight className="w-4 h-4" />
+                               ))}
+                               <Droplets className="w-4 h-4 text-muted-foreground" />
+                               Izolacja pozioma
+                               {horizontalInsulationEnabled && (
+                                 <span className="text-sm text-muted-foreground font-normal ml-2">
+                                   ({formatPrice(
+                                     constructionMaterials
+                                       .filter(i => ['papa_sbs', 'papa_sbs_obwod', 'grunt_primer'].includes(i.id))
+                                       .reduce((sum, i) => sum + roundQuantity(i.id, i.quantity) * i.rate, 0)
+                                   )})
+                                 </span>
+                               )}
+                               {!horizontalInsulationEnabled && (
+                                 <span className="text-sm text-muted-foreground font-normal ml-2">(wyłączona)</span>
+                               )}
+                             </button>
+                             {horizontalInsulationEnabled && (
+                               <Select value={String(papaLayers)} onValueChange={(v) => setPapaLayers(Number(v) as 1 | 2)}>
+                                 <SelectTrigger className="w-[140px] h-8 text-xs">
+                                   <SelectValue />
+                                 </SelectTrigger>
+                                 <SelectContent>
+                                   <SelectItem value="1">1 warstwa papy</SelectItem>
+                                   <SelectItem value="2">2 warstwy papy</SelectItem>
+                                 </SelectContent>
+                               </Select>
+                             )}
+                           </div>
+                         </TableCell>
+                       </TableRow>
+                       {horizontalInsulationEnabled && izolacjaPoziomExpanded && constructionMaterials
+                         .filter(item => ['papa_sbs', 'papa_sbs_obwod', 'grunt_primer'].includes(item.id))
+                         .map((item) => (
+                           <TableRow key={item.id} className="bg-background">
+                             <TableCell className="pl-10 text-muted-foreground">
+                               └ {item.name}
+                               {item.customOverride && (
+                                 <span className="ml-2 text-xs text-amber-600">(zmieniono)</span>
+                               )}
+                               <span className="block text-xs">
+                                 {item.id === 'papa_sbs' 
+                                   ? `${papaLayers} ${papaLayers === 1 ? 'warstwa' : 'warstwy'}, rolka 1×7,5m, zakład 10cm` 
+                                   : item.id === 'papa_sbs_obwod'
+                                   ? 'obwód płyty, rolka cięta na pół (50cm)'
+                                   : 'opak. 10L, zużycie 0,25L/m²'}
+                               </span>
+                             </TableCell>
                                 <TableCell>
                                   <div className="flex items-center justify-end gap-1">
                                     <Input
@@ -3353,9 +3382,7 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
                                   {formatPrice(roundQuantity(item.id, item.quantity) * item.rate)}
                                 </TableCell>
                               </TableRow>
-                            ))}
-                        </>
-                      )}
+                         ))}
 
                       {/* Reinforcement rows */}
                       <ReinforcementTableRows
