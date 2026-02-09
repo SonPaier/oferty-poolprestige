@@ -60,7 +60,7 @@ function roundQuantity(id: string, quantity: number): number {
     return Math.ceil(quantity * 2) / 2;
   }
   // Bloczki, pompogruszka, zbrojenie, strzemiona, XPS packages - zaokrąglaj do jedności
-  if (['bloczek', 'pompogruszka', 'xps_floor', 'xps_wall', 'papa_sbs', 'grunt_primer'].includes(id)) {
+  if (['bloczek', 'pompogruszka', 'xps_floor', 'xps_wall', 'papa_sbs', 'papa_sbs_obwod', 'grunt_primer'].includes(id)) {
     return Math.ceil(quantity);
   }
   // PUR foam - round to 0.5 m²
@@ -436,6 +436,16 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
     const liters = papaLength * papaWidth * 0.25; // 0.25L/m²
     return Math.ceil(liters / 10); // 10L packages
   }, [dimensions.length, dimensions.width]);
+
+  // Papa SBS for slab overhang perimeter (50cm strips cut from 1m roll)
+  const calculatePapaObwodRolls = useCallback(() => {
+    // Outer perimeter of the floor slab (pool + wall thickness 0.88m)
+    const slabLength = dimensions.length + 0.88;
+    const slabWidth = dimensions.width + 0.88;
+    const perimeter = 2 * (slabLength + slabWidth);
+    // Roll 7.5m cut in half → 15m of 50cm strips per roll
+    return Math.ceil(perimeter / 15);
+  }, [dimensions.length, dimensions.width]);
   
   // Grouped B25 concrete (plyta denna + wieniec + slupy for masonry)
   const [b25ConcreteGroup, setB25ConcreteGroup] = useState<GroupedMaterialItem>({
@@ -490,7 +500,7 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
       
       // ---- Insulation items (XPS floor, XPS/PUR wall) ----
       // Remove old insulation items (will re-add if needed)
-      updated = updated.filter(item => !['xps_floor', 'xps_wall', 'pur_wall', 'papa_sbs', 'grunt_primer'].includes(item.id));
+      updated = updated.filter(item => !['xps_floor', 'xps_wall', 'pur_wall', 'papa_sbs', 'papa_sbs_obwod', 'grunt_primer'].includes(item.id));
       
       // Floor insulation
       if (floorInsulation !== 'none') {
@@ -549,6 +559,18 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
         customOverride: false,
       });
       
+      // Papa SBS for slab overhang perimeter (50cm strips)
+      const papaObwodRolls = calculatePapaObwodRolls();
+      updated.push({
+        id: 'papa_sbs_obwod',
+        name: 'Papa SBS 4mm (obwód płyty)',
+        quantity: papaObwodRolls,
+        unit: 'rolki',
+        rate: papaRate,
+        netValue: papaObwodRolls * papaRate,
+        customOverride: false,
+      });
+
       const gruntPkgs = calculateGruntPackages();
       const gruntRate = materialRates.gruntPrimer ?? 250;
       updated.push({
@@ -566,6 +588,7 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
       const prevWall = prev.find(i => i.id === 'xps_wall');
       const prevPur = prev.find(i => i.id === 'pur_wall');
       const prevPapa = prev.find(i => i.id === 'papa_sbs');
+      const prevPapaObwod = prev.find(i => i.id === 'papa_sbs_obwod');
       const prevGrunt = prev.find(i => i.id === 'grunt_primer');
       if (prevFloor?.customOverride) {
         const idx = updated.findIndex(i => i.id === 'xps_floor');
@@ -582,6 +605,10 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
       if (prevPapa?.customOverride) {
         const idx = updated.findIndex(i => i.id === 'papa_sbs');
         if (idx >= 0) updated[idx] = { ...updated[idx], quantity: prevPapa.quantity, customOverride: true, netValue: prevPapa.quantity * updated[idx].rate };
+      }
+      if (prevPapaObwod?.customOverride) {
+        const idx = updated.findIndex(i => i.id === 'papa_sbs_obwod');
+        if (idx >= 0) updated[idx] = { ...updated[idx], quantity: prevPapaObwod.quantity, customOverride: true, netValue: prevPapaObwod.quantity * updated[idx].rate };
       }
       if (prevGrunt?.customOverride) {
         const idx = updated.findIndex(i => i.id === 'grunt_primer');
@@ -778,12 +805,14 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
         return wallInsulation === 'pur-5cm' ? calculateWallPurArea(dimensions.length, dimensions.width, dimensions.depth) : 0;
       case 'papa_sbs':
         return calculatePapaRolls();
+      case 'papa_sbs_obwod':
+        return calculatePapaObwodRolls();
       case 'grunt_primer':
         return calculateGruntPackages();
       default:
         return 0;
     }
-  }, [excavationArea, sandBeddingHeight, leanConcreteHeight, dimensions.stairs?.enabled, dimensions.wadingPool?.enabled, dimensions.length, dimensions.width, dimensions.depth, blockCalculation, wadingPoolBlocks, stairsBlocks, floorInsulation, wallInsulation, calculatePapaRolls, calculateGruntPackages]);
+  }, [excavationArea, sandBeddingHeight, leanConcreteHeight, dimensions.stairs?.enabled, dimensions.wadingPool?.enabled, dimensions.length, dimensions.width, dimensions.depth, blockCalculation, wadingPoolBlocks, stairsBlocks, floorInsulation, wallInsulation, calculatePapaRolls, calculatePapaObwodRolls, calculateGruntPackages]);
 
   const getExpectedB25SubItemQuantity = useCallback((subItemId: string): number => {
     const crownConcreteVolume = blockCalculation 
@@ -824,6 +853,7 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
       case 'xps_wall': return wallInsulation === 'xps-5cm-wall' ? 'xpsWall5cm' : 'xpsWall10cm';
       case 'pur_wall': return 'purFoam5cm';
       case 'papa_sbs': return 'papaSbs4mm';
+      case 'papa_sbs_obwod': return 'papaSbs4mm';
       case 'grunt_primer': return 'gruntPrimer';
       default: return null;
     }
@@ -2922,7 +2952,7 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
                       ))}
 
                       {/* Remaining materials: Pompogruszka */}
-                      {constructionMaterials.filter(item => item.id !== 'chudziak' && !['xps_floor', 'xps_wall', 'pur_wall', 'papa_sbs', 'grunt_primer'].includes(item.id)).map((item) => (
+                      {constructionMaterials.filter(item => item.id !== 'chudziak' && !['xps_floor', 'xps_wall', 'pur_wall', 'papa_sbs', 'papa_sbs_obwod', 'grunt_primer'].includes(item.id)).map((item) => (
                         <TableRow key={item.id}>
                           <TableCell className="font-medium">
                             {item.name}
@@ -3170,7 +3200,7 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
                                 <span className="text-sm text-muted-foreground font-normal ml-2">
                                   ({formatPrice(
                                     constructionMaterials
-                                      .filter(i => ['papa_sbs', 'grunt_primer'].includes(i.id))
+                                      .filter(i => ['papa_sbs', 'papa_sbs_obwod', 'grunt_primer'].includes(i.id))
                                       .reduce((sum, i) => sum + roundQuantity(i.id, i.quantity) * i.rate, 0)
                                   )})
                                 </span>
@@ -3178,7 +3208,7 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
                             </TableCell>
                           </TableRow>
                           {izolacjaPoziomExpanded && constructionMaterials
-                            .filter(item => ['papa_sbs', 'grunt_primer'].includes(item.id))
+                            .filter(item => ['papa_sbs', 'papa_sbs_obwod', 'grunt_primer'].includes(item.id))
                             .map((item) => (
                               <TableRow key={item.id} className="bg-background">
                                 <TableCell className="pl-10 text-muted-foreground">
@@ -3188,7 +3218,9 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
                                   )}
                                   <span className="block text-xs">
                                     {item.id === 'papa_sbs' 
-                                      ? '2 warstwy, rolka 1×7,5m, zakład 10cm, wystaje 50cm' 
+                                      ? '2 warstwy, rolka 1×7,5m, zakład 10cm' 
+                                      : item.id === 'papa_sbs_obwod'
+                                      ? 'obwód płyty, rolka cięta na pół (50cm)'
                                       : 'opak. 10L, zużycie 0,25L/m²'}
                                   </span>
                                 </TableCell>
