@@ -9,10 +9,18 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { Search, X, ImageOff } from 'lucide-react';
+import { Search, X, ImageOff, LayoutGrid, List, ChevronDown, ChevronUp } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { formatPrice } from '@/lib/calculations';
 import { FoilSubtype, SUBTYPE_TO_FOIL_CATEGORY } from '@/lib/finishingMaterials';
@@ -36,6 +44,8 @@ interface FoilProductTableProps {
   onSelectProduct: (productId: string | null, productName: string | null) => void;
 }
 
+const INITIAL_VISIBLE = 6;
+
 export function FoilProductTable({
   subtype,
   selectedProductId,
@@ -44,13 +54,14 @@ export function FoilProductTable({
   const [searchQuery, setSearchQuery] = useState('');
   const [manufacturerFilter, setManufacturerFilter] = useState<string>('all');
   const [shadeFilter, setShadeFilter] = useState<string>('all');
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  const [expanded, setExpanded] = useState(false);
 
   const { data: products = [], isLoading } = useQuery({
     queryKey: ['foil-products', subtype],
     queryFn: async () => {
       const foilCategory = SUBTYPE_TO_FOIL_CATEGORY[subtype];
 
-      // Check if foil_category exists
       const { data: byCategory } = await supabase
         .from('products')
         .select('id')
@@ -140,7 +151,10 @@ export function FoilProductTable({
     });
   }, [products, searchQuery, manufacturerFilter, shadeFilter]);
 
-  const handleCardClick = (product: FoilProduct) => {
+  const visibleProducts = expanded ? filteredProducts : filteredProducts.slice(0, INITIAL_VISIBLE);
+  const hasMore = filteredProducts.length > INITIAL_VISIBLE;
+
+  const handleClick = (product: FoilProduct) => {
     if (selectedProductId === product.id) {
       onSelectProduct(null, null);
     } else {
@@ -158,7 +172,7 @@ export function FoilProductTable({
 
   return (
     <div className="space-y-4">
-      {/* Filters */}
+      {/* Filters + view toggle */}
       <div className="flex flex-wrap gap-3 items-center">
         <div className="relative flex-1 min-w-[200px]">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -200,6 +214,26 @@ export function FoilProductTable({
             Wyczyść
           </Button>
         )}
+
+        {/* View toggle */}
+        <div className="flex border rounded-md overflow-hidden">
+          <Button
+            variant={viewMode === 'grid' ? 'default' : 'ghost'}
+            size="icon"
+            className="rounded-none h-9 w-9"
+            onClick={() => setViewMode('grid')}
+          >
+            <LayoutGrid className="w-4 h-4" />
+          </Button>
+          <Button
+            variant={viewMode === 'list' ? 'default' : 'ghost'}
+            size="icon"
+            className="rounded-none h-9 w-9"
+            onClick={() => setViewMode('list')}
+          >
+            <List className="w-4 h-4" />
+          </Button>
+        </div>
       </div>
 
       {/* No selection info */}
@@ -211,73 +245,158 @@ export function FoilProductTable({
         </div>
       )}
 
-      {/* Product grid */}
+      {/* Content */}
       {isLoading ? (
         <div className="text-center py-8 text-muted-foreground">Ładowanie...</div>
       ) : filteredProducts.length === 0 ? (
         <div className="text-center py-8 text-muted-foreground">Nie znaleziono produktów</div>
-      ) : (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
-          {filteredProducts.map((product) => (
-            <Card
-              key={product.id}
-              className={cn(
-                'cursor-pointer transition-all hover:shadow-md overflow-hidden',
-                selectedProductId === product.id && 'ring-2 ring-primary border-primary'
-              )}
-              onClick={() => handleCardClick(product)}
-            >
-              {/* Thumbnail */}
-              <div className="aspect-square bg-muted relative overflow-hidden">
-                {product.thumbnail_url ? (
-                  <img
-                    src={product.thumbnail_url}
-                    alt={product.name}
-                    className="w-full h-full object-cover"
-                  />
-                ) : product.extracted_hex ? (
-                  <div
-                    className="w-full h-full"
-                    style={{ backgroundColor: product.extracted_hex }}
-                  />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center text-muted-foreground">
-                    <ImageOff className="w-8 h-8" />
-                  </div>
+      ) : viewMode === 'grid' ? (
+        /* ===== GRID VIEW ===== */
+        <>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
+            {visibleProducts.map((product) => (
+              <Card
+                key={product.id}
+                className={cn(
+                  'cursor-pointer transition-all hover:shadow-md overflow-hidden',
+                  selectedProductId === product.id && 'ring-2 ring-primary border-primary'
                 )}
-              </div>
-
-              <CardContent className="p-2.5">
-                {/* Name */}
-                <p className="text-xs font-medium line-clamp-2 min-h-[2rem] mb-1">
-                  {product.name}
-                </p>
-
-                {/* Series */}
-                {product.series && (
-                  <p className="text-[10px] text-muted-foreground mb-1">{product.series}</p>
-                )}
-
-                {/* Color */}
-                <div className="flex items-center gap-1.5 mb-1.5">
-                  {product.extracted_hex && (
-                    <span
-                      className="w-3 h-3 rounded-full border shrink-0"
-                      style={{ backgroundColor: product.extracted_hex }}
+                onClick={() => handleClick(product)}
+              >
+                <div className="aspect-square bg-muted relative overflow-hidden">
+                  {product.thumbnail_url ? (
+                    <img
+                      src={product.thumbnail_url}
+                      alt={product.name}
+                      className="w-full h-full object-cover"
                     />
+                  ) : product.extracted_hex ? (
+                    <div className="w-full h-full" style={{ backgroundColor: product.extracted_hex }} />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center text-muted-foreground">
+                      <ImageOff className="w-8 h-8" />
+                    </div>
                   )}
-                  <span className="text-[10px] text-muted-foreground truncate">
-                    {product.shade || '-'}
-                  </span>
                 </div>
+                <CardContent className="p-2.5">
+                  <p className="text-xs font-medium line-clamp-2 min-h-[2rem] mb-1">{product.name}</p>
+                  {product.series && (
+                    <p className="text-[10px] text-muted-foreground mb-1">{product.series}</p>
+                  )}
+                  <div className="flex items-center gap-1.5 mb-1.5">
+                    {product.extracted_hex && (
+                      <span
+                        className="w-3 h-3 rounded-full border shrink-0"
+                        style={{ backgroundColor: product.extracted_hex }}
+                      />
+                    )}
+                    <span className="text-[10px] text-muted-foreground truncate">
+                      {product.shade || '-'}
+                    </span>
+                  </div>
+                  <p className="text-sm font-bold text-primary">{formatPrice(product.price)} zł/m²</p>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
 
-                {/* Price */}
-                <p className="text-sm font-bold text-primary">
-                  {formatPrice(product.price)} zł/m²
-                </p>
-              </CardContent>
-            </Card>
-          ))}
+          {/* Expand / Collapse */}
+          {hasMore && (
+            <div className="flex justify-center">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setExpanded(!expanded)}
+              >
+                {expanded ? (
+                  <>
+                    <ChevronUp className="w-4 h-4 mr-1" />
+                    Zwiń ({filteredProducts.length - INITIAL_VISIBLE} ukrytych)
+                  </>
+                ) : (
+                  <>
+                    <ChevronDown className="w-4 h-4 mr-1" />
+                    Pokaż wszystkie ({filteredProducts.length - INITIAL_VISIBLE} więcej)
+                  </>
+                )}
+              </Button>
+            </div>
+          )}
+        </>
+      ) : (
+        /* ===== LIST VIEW ===== */
+        <div className="border rounded-lg overflow-hidden">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-[50px]"></TableHead>
+                <TableHead>Nazwa</TableHead>
+                <TableHead className="w-[100px]">Seria</TableHead>
+                <TableHead className="w-[120px]">Kolor</TableHead>
+                <TableHead className="w-[80px] text-right">Szer.</TableHead>
+                <TableHead className="w-[100px] text-right">Cena/m²</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {visibleProducts.map((product) => (
+                <TableRow
+                  key={product.id}
+                  className={cn(
+                    'cursor-pointer transition-colors',
+                    selectedProductId === product.id
+                      ? 'bg-primary/10 hover:bg-primary/15'
+                      : 'hover:bg-muted/50'
+                  )}
+                  onClick={() => handleClick(product)}
+                >
+                  <TableCell className="p-1">
+                    <div className="w-10 h-10 rounded overflow-hidden bg-muted">
+                      {product.thumbnail_url ? (
+                        <img src={product.thumbnail_url} alt="" className="w-full h-full object-cover" />
+                      ) : product.extracted_hex ? (
+                        <div className="w-full h-full" style={{ backgroundColor: product.extracted_hex }} />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-muted-foreground">
+                          <ImageOff className="w-4 h-4" />
+                        </div>
+                      )}
+                    </div>
+                  </TableCell>
+                  <TableCell className="font-medium text-sm">{product.name}</TableCell>
+                  <TableCell className="text-sm">{product.series || '-'}</TableCell>
+                  <TableCell>
+                    <div className="flex items-center gap-1.5">
+                      {product.extracted_hex && (
+                        <span className="w-3 h-3 rounded-full border shrink-0" style={{ backgroundColor: product.extracted_hex }} />
+                      )}
+                      <span className="text-sm">{product.shade || '-'}</span>
+                    </div>
+                  </TableCell>
+                  <TableCell className="text-right text-sm">{product.foil_width ? `${product.foil_width} m` : '-'}</TableCell>
+                  <TableCell className="text-right font-medium text-sm">{formatPrice(product.price)} zł</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+
+          {/* Expand / Collapse for list */}
+          {hasMore && (
+            <div className="flex justify-center py-2 border-t">
+              <Button variant="ghost" size="sm" onClick={() => setExpanded(!expanded)}>
+                {expanded ? (
+                  <>
+                    <ChevronUp className="w-4 h-4 mr-1" />
+                    Zwiń
+                  </>
+                ) : (
+                  <>
+                    <ChevronDown className="w-4 h-4 mr-1" />
+                    Pokaż wszystkie ({filteredProducts.length - INITIAL_VISIBLE} więcej)
+                  </>
+                )}
+              </Button>
+            </div>
+          )}
         </div>
       )}
 
