@@ -324,6 +324,8 @@ export interface ConstructionMaterialRates {
   foliaKubelkowa: number;  // zł/rolka (1.5m × 20m)
   listwaMontazowa: number; // zł/szt. (listwa 2m)
   zaprawaMurarska: number; // zł/worek (zaprawa murarska 25kg)
+  klejCementowy: number;   // zł/worek (klej cienkowarstwowy-cementowy 25kg)
+  foliaBudowlana: number;  // zł/m² (folia budowlana)
   // Labor rates
   laborPoolRate: number;   // zł/m² (prace budowlane – basen)
   laborStairsRate: number; // zł/m² (prace budowlane – schody)
@@ -355,6 +357,8 @@ export const defaultConstructionMaterialRates: ConstructionMaterialRates = {
   foliaKubelkowa: 250,   // 250 zł/rolka 1.5×20m
   listwaMontazowa: 10,   // 10 zł/szt. (2m)
   zaprawaMurarska: 30,   // 30 zł/worek 25kg
+  klejCementowy: 30,     // 30 zł/worek 25kg
+  foliaBudowlana: 1,     // 1 zł/m²
   laborPoolRate: 700,
   laborStairsRate: 1000,
   laborWadingRate: 1000,
