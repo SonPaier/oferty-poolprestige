@@ -60,7 +60,7 @@ function roundQuantity(id: string, quantity: number): number {
     return Math.ceil(quantity * 2) / 2;
   }
   // Bloczki, pompogruszka, zbrojenie, strzemiona, XPS packages - zaokrąglaj do jedności
-  if (['bloczek', 'pompogruszka', 'xps_floor', 'xps_wall', 'papa_sbs', 'papa_sbs_obwod', 'grunt_primer'].includes(id)) {
+  if (['bloczek', 'pompogruszka', 'xps_floor', 'xps_wall', 'pianoklej', 'papa_sbs', 'papa_sbs_obwod', 'grunt_primer'].includes(id)) {
     return Math.ceil(quantity);
   }
   // PUR foam - round to 0.5 m²
@@ -414,8 +414,9 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
     return baseItems;
   });
   
-  // Horizontal insulation expand toggle
+  // Insulation group expand toggles
   const [izolacjaPoziomExpanded, setIzolacjaPoziomExpanded] = useState(false);
+  const [ociepleniaExpanded, setOciepleniaExpanded] = useState(false);
   
   // Papa SBS calculation helper
   const calculatePapaRolls = useCallback(() => {
@@ -446,7 +447,23 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
     // Roll 7.5m cut in half → 15m of 50cm strips per roll
     return Math.ceil(perimeter / 15);
   }, [dimensions.length, dimensions.width]);
-  
+
+  // Pianoklej calculation: 1 can per 8m² of XPS (floor + wall), not used with PUR
+  const calculatePianoklejCans = useCallback(() => {
+    let totalXpsArea = 0;
+    // Floor XPS area (if enabled)
+    if (floorInsulation !== 'none') {
+      totalXpsArea += (dimensions.length + 0.88) * (dimensions.width + 0.88);
+    }
+    // Wall XPS area (only if XPS, not PUR)
+    if (wallInsulation === 'xps-5cm-wall' || wallInsulation === 'xps-10cm-wall') {
+      const perimeter = 2 * ((dimensions.length + 0.48) + (dimensions.width + 0.48));
+      totalXpsArea += perimeter * dimensions.depth;
+    }
+    if (totalXpsArea === 0) return 0;
+    return Math.ceil(totalXpsArea / 8);
+  }, [dimensions.length, dimensions.width, dimensions.depth, floorInsulation, wallInsulation]);
+
   // Grouped B25 concrete (plyta denna + wieniec + slupy for masonry)
   const [b25ConcreteGroup, setB25ConcreteGroup] = useState<GroupedMaterialItem>({
     id: 'beton_b25_group',
@@ -500,7 +517,7 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
       
       // ---- Insulation items (XPS floor, XPS/PUR wall) ----
       // Remove old insulation items (will re-add if needed)
-      updated = updated.filter(item => !['xps_floor', 'xps_wall', 'pur_wall', 'papa_sbs', 'papa_sbs_obwod', 'grunt_primer'].includes(item.id));
+      updated = updated.filter(item => !['xps_floor', 'xps_wall', 'pur_wall', 'pianoklej', 'papa_sbs', 'papa_sbs_obwod', 'grunt_primer'].includes(item.id));
       
       // Floor insulation
       if (floorInsulation !== 'none') {
@@ -546,6 +563,21 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
         });
       }
 
+      // Pianoklej (1 can per 8m² of XPS, not used with PUR)
+      const pianoklejCans = calculatePianoklejCans();
+      if (pianoklejCans > 0) {
+        const pianoklejRate = materialRates.pianoklej ?? 30;
+        updated.push({
+          id: 'pianoklej',
+          name: 'Pianoklej',
+          quantity: pianoklejCans,
+          unit: 'szt.',
+          rate: pianoklejRate,
+          netValue: pianoklejCans * pianoklejRate,
+          customOverride: false,
+        });
+      }
+
       // Horizontal insulation: Papa SBS 4mm + Grunt Siplast Primer
       const papaRolls = calculatePapaRolls();
       const papaRate = materialRates.papaSbs4mm ?? 300;
@@ -587,6 +619,7 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
       const prevFloor = prev.find(i => i.id === 'xps_floor');
       const prevWall = prev.find(i => i.id === 'xps_wall');
       const prevPur = prev.find(i => i.id === 'pur_wall');
+      const prevPianoklej = prev.find(i => i.id === 'pianoklej');
       const prevPapa = prev.find(i => i.id === 'papa_sbs');
       const prevPapaObwod = prev.find(i => i.id === 'papa_sbs_obwod');
       const prevGrunt = prev.find(i => i.id === 'grunt_primer');
@@ -601,6 +634,10 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
       if (prevPur?.customOverride) {
         const idx = updated.findIndex(i => i.id === 'pur_wall');
         if (idx >= 0) updated[idx] = { ...updated[idx], quantity: prevPur.quantity, customOverride: true, netValue: prevPur.quantity * updated[idx].rate };
+      }
+      if (prevPianoklej?.customOverride) {
+        const idx = updated.findIndex(i => i.id === 'pianoklej');
+        if (idx >= 0) updated[idx] = { ...updated[idx], quantity: prevPianoklej.quantity, customOverride: true, netValue: prevPianoklej.quantity * updated[idx].rate };
       }
       if (prevPapa?.customOverride) {
         const idx = updated.findIndex(i => i.id === 'papa_sbs');
@@ -803,6 +840,8 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
       }
       case 'pur_wall':
         return wallInsulation === 'pur-5cm' ? calculateWallPurArea(dimensions.length, dimensions.width, dimensions.depth) : 0;
+      case 'pianoklej':
+        return calculatePianoklejCans();
       case 'papa_sbs':
         return calculatePapaRolls();
       case 'papa_sbs_obwod':
@@ -812,7 +851,7 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
       default:
         return 0;
     }
-  }, [excavationArea, sandBeddingHeight, leanConcreteHeight, dimensions.stairs?.enabled, dimensions.wadingPool?.enabled, dimensions.length, dimensions.width, dimensions.depth, blockCalculation, wadingPoolBlocks, stairsBlocks, floorInsulation, wallInsulation, calculatePapaRolls, calculatePapaObwodRolls, calculateGruntPackages]);
+  }, [excavationArea, sandBeddingHeight, leanConcreteHeight, dimensions.stairs?.enabled, dimensions.wadingPool?.enabled, dimensions.length, dimensions.width, dimensions.depth, blockCalculation, wadingPoolBlocks, stairsBlocks, floorInsulation, wallInsulation, calculatePapaRolls, calculatePapaObwodRolls, calculatePianoklejCans, calculateGruntPackages]);
 
   const getExpectedB25SubItemQuantity = useCallback((subItemId: string): number => {
     const crownConcreteVolume = blockCalculation 
@@ -852,6 +891,7 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
       case 'xps_floor': return floorInsulation === 'xps-5cm' ? 'xpsFloor5cm' : 'xpsFloor10cm';
       case 'xps_wall': return wallInsulation === 'xps-5cm-wall' ? 'xpsWall5cm' : 'xpsWall10cm';
       case 'pur_wall': return 'purFoam5cm';
+      case 'pianoklej': return 'pianoklej';
       case 'papa_sbs': return 'papaSbs4mm';
       case 'papa_sbs_obwod': return 'papaSbs4mm';
       case 'grunt_primer': return 'gruntPrimer';
@@ -2952,7 +2992,7 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
                       ))}
 
                       {/* Remaining materials: Pompogruszka */}
-                      {constructionMaterials.filter(item => item.id !== 'chudziak' && !['xps_floor', 'xps_wall', 'pur_wall', 'papa_sbs', 'papa_sbs_obwod', 'grunt_primer'].includes(item.id)).map((item) => (
+                      {constructionMaterials.filter(item => item.id !== 'chudziak' && !['xps_floor', 'xps_wall', 'pur_wall', 'pianoklej', 'papa_sbs', 'papa_sbs_obwod', 'grunt_primer'].includes(item.id)).map((item) => (
                         <TableRow key={item.id}>
                           <TableCell className="font-medium">
                             {item.name}
@@ -3113,72 +3153,108 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
                         </>
                       )}
 
-                      {/* Insulation items (XPS floor, XPS/PUR wall) */}
-                      {constructionMaterials.filter(item => ['xps_floor', 'xps_wall', 'pur_wall'].includes(item.id)).map((item) => (
-                        <TableRow key={item.id} className="bg-accent/5">
-                          <TableCell className="font-medium">
-                            <div className="flex items-center gap-2">
-                              <Thermometer className="w-4 h-4 text-muted-foreground" />
-                              {item.name}
-                            </div>
-                            {item.customOverride && (
-                              <span className="ml-6 text-xs text-amber-600">(zmieniono)</span>
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex items-center justify-end gap-1">
-                              <Input
-                                type="number"
-                                min="0"
-                                step={item.id === 'pur_wall' ? '0.5' : '1'}
-                                value={formatQuantity(item.id, item.quantity)}
-                                onChange={(e) => updateConstructionMaterial(item.id, 'quantity', parseFloat(e.target.value) || 0)}
-                                className="input-field w-[70px] text-right"
-                              />
-                              {item.customOverride && (
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-8 w-8"
-                                  onClick={() => resetConstructionMaterialQuantity(item.id)}
-                                  title={`Przywróć: ${formatQuantity(item.id, getExpectedMaterialQuantity(item.id))}`}
-                                >
-                                  <RotateCcw className="h-4 w-4" />
-                                </Button>
-                              )}
-                            </div>
-                          </TableCell>
-                          <TableCell className="text-muted-foreground">{item.unit}</TableCell>
-                          <TableCell>
-                            <div className="flex items-center justify-end gap-1">
-                              <Input
-                                type="number"
-                                min="0"
-                                step="10"
-                                value={item.rate}
-                                onChange={(e) => updateConstructionMaterial(item.id, 'rate', parseFloat(e.target.value) || 0)}
-                                className="input-field w-[80px] text-right"
-                              />
-                              {changedMaterialRates[item.id] !== undefined && (
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-8 w-8 text-success hover:text-success/80 hover:bg-success/10"
-                                  onClick={() => confirmMaterialRateChange(item.id, item.name)}
-                                  title="Zatwierdź zmianę stawki"
-                                >
-                                  <Check className="h-4 w-4" />
-                                </Button>
-                              )}
-                            </div>
-                          </TableCell>
-                          <TableCell className="text-right font-semibold">
-                            {formatPrice(roundQuantity(item.id, item.quantity) * item.rate)}
-                          </TableCell>
-                        </TableRow>
-                      ))}
+                      {/* Ocieplenie group (XPS floor, XPS/PUR wall, Pianoklej) */}
+                      {constructionMaterials.some(item => ['xps_floor', 'xps_wall', 'pur_wall', 'pianoklej'].includes(item.id)) && (
+                        <>
+                          <TableRow className="bg-accent/5">
+                            <TableCell colSpan={5}>
+                              <button
+                                type="button"
+                                className="flex items-center gap-2 font-medium hover:text-primary transition-colors"
+                                onClick={() => setOciepleniaExpanded(!ociepleniaExpanded)}
+                              >
+                                {ociepleniaExpanded ? (
+                                  <ChevronDown className="w-4 h-4" />
+                                ) : (
+                                  <ChevronRight className="w-4 h-4" />
+                                )}
+                                <Thermometer className="w-4 h-4 text-muted-foreground" />
+                                Ocieplenie
+                                <span className="text-sm text-muted-foreground font-normal ml-2">
+                                  ({formatPrice(
+                                    constructionMaterials
+                                      .filter(i => ['xps_floor', 'xps_wall', 'pur_wall', 'pianoklej'].includes(i.id))
+                                      .reduce((sum, i) => sum + roundQuantity(i.id, i.quantity) * i.rate, 0)
+                                  )})
+                                </span>
+                              </button>
+                            </TableCell>
+                          </TableRow>
+                          {ociepleniaExpanded && constructionMaterials
+                            .filter(item => ['xps_floor', 'xps_wall', 'pur_wall', 'pianoklej'].includes(item.id))
+                            .map((item) => (
+                              <TableRow key={item.id} className="bg-background">
+                                <TableCell className="pl-10 text-muted-foreground">
+                                  └ {item.name}
+                                  {item.customOverride && (
+                                    <span className="ml-2 text-xs text-amber-600">(zmieniono)</span>
+                                  )}
+                                  <span className="block text-xs">
+                                    {item.id === 'pianoklej' 
+                                      ? '1 puszka na 8m² XPS'
+                                      : item.id === 'pur_wall'
+                                      ? 'piana natryskowa na ściany'
+                                      : item.id === 'xps_floor'
+                                      ? 'płyty XPS 500 na dno'
+                                      : 'płyty XPS 300 na ściany'}
+                                  </span>
+                                </TableCell>
+                                <TableCell>
+                                  <div className="flex items-center justify-end gap-1">
+                                    <Input
+                                      type="number"
+                                      min="0"
+                                      step={item.id === 'pur_wall' ? '0.5' : '1'}
+                                      value={formatQuantity(item.id, item.quantity)}
+                                      onChange={(e) => updateConstructionMaterial(item.id, 'quantity', parseFloat(e.target.value) || 0)}
+                                      className="input-field w-[70px] text-right"
+                                    />
+                                    {item.customOverride && (
+                                      <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-8 w-8"
+                                        onClick={() => resetConstructionMaterialQuantity(item.id)}
+                                        title={`Przywróć: ${formatQuantity(item.id, getExpectedMaterialQuantity(item.id))}`}
+                                      >
+                                        <RotateCcw className="h-4 w-4" />
+                                      </Button>
+                                    )}
+                                  </div>
+                                </TableCell>
+                                <TableCell className="text-muted-foreground">{item.unit}</TableCell>
+                                <TableCell>
+                                  <div className="flex items-center justify-end gap-1">
+                                    <Input
+                                      type="number"
+                                      min="0"
+                                      step="10"
+                                      value={item.rate}
+                                      onChange={(e) => updateConstructionMaterial(item.id, 'rate', parseFloat(e.target.value) || 0)}
+                                      className="input-field w-[80px] text-right"
+                                    />
+                                    {changedMaterialRates[item.id] !== undefined && (
+                                      <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-8 w-8 text-success hover:text-success/80 hover:bg-success/10"
+                                        onClick={() => confirmMaterialRateChange(item.id, item.name)}
+                                        title="Zatwierdź zmianę stawki"
+                                      >
+                                        <Check className="h-4 w-4" />
+                                      </Button>
+                                    )}
+                                  </div>
+                                </TableCell>
+                                <TableCell className="text-right font-semibold">
+                                  {formatPrice(roundQuantity(item.id, item.quantity) * item.rate)}
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                        </>
+                      )}
 
                       {/* Horizontal insulation group (Papa SBS + Grunt) */}
                       {constructionMaterials.some(item => item.id === 'papa_sbs') && (
