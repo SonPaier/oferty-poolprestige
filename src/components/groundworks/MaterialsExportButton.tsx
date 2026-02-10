@@ -78,19 +78,28 @@ function stripPolish(str: string): string {
   return str.replace(/[ąćęłńóśźżĄĆĘŁŃÓŚŹŻ]/g, ch => polishMap[ch] || ch);
 }
 
+function uint8ToBase64(bytes: Uint8Array): string {
+  let binary = '';
+  const chunkSize = 8192;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+  }
+  return btoa(binary);
+}
+
 async function loadNotoSansFont(doc: jsPDF) {
   try {
     const regularResponse = await fetch('/supabase/functions/generate-pdf/NotoSans-Regular.ttf');
     if (regularResponse.ok) {
       const buffer = await regularResponse.arrayBuffer();
-      const base64 = btoa(String.fromCharCode(...new Uint8Array(buffer)));
+      const base64 = uint8ToBase64(new Uint8Array(buffer));
       doc.addFileToVFS('NotoSans-Regular.ttf', base64);
       doc.addFont('NotoSans-Regular.ttf', 'NotoSans', 'normal');
 
       const boldResponse = await fetch('/supabase/functions/generate-pdf/NotoSans-Bold.ttf');
       if (boldResponse.ok) {
         const boldBuffer = await boldResponse.arrayBuffer();
-        const boldBase64 = btoa(String.fromCharCode(...new Uint8Array(boldBuffer)));
+        const boldBase64 = uint8ToBase64(new Uint8Array(boldBuffer));
         doc.addFileToVFS('NotoSans-Bold.ttf', boldBase64);
         doc.addFont('NotoSans-Bold.ttf', 'NotoSans', 'bold');
       }
@@ -107,8 +116,7 @@ async function loadLogo(): Promise<string | null> {
     const response = await fetch('/logo.png');
     if (response.ok) {
       const buffer = await response.arrayBuffer();
-      const base64 = 'data:image/png;base64,' + btoa(String.fromCharCode(...new Uint8Array(buffer)));
-      return base64;
+      return 'data:image/png;base64,' + uint8ToBase64(new Uint8Array(buffer));
     }
   } catch { /* ignore */ }
   return null;
