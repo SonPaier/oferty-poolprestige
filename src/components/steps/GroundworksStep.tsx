@@ -2335,6 +2335,7 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
                       poolWidth: dimensions.width,
                       poolDepth: dimensions.depth,
                       sandBeddingHeight, leanConcreteHeight, floorSlabThickness,
+                      reusePercent,
                     }}
                     customer={state.customerData ? {
                       companyName: state.customerData.companyName,
@@ -3824,6 +3825,7 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
                       poolWidth: dimensions.width,
                       poolDepth: dimensions.depth,
                       sandBeddingHeight, leanConcreteHeight, floorSlabThickness,
+                      reusePercent,
                     }}
                     customer={state.customerData ? {
                       companyName: state.customerData.companyName,

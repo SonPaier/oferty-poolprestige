@@ -34,6 +34,7 @@ export interface ExcavationParams {
   sandBeddingHeight: number;
   leanConcreteHeight: number;
   floorSlabThickness: number;
+  reusePercent?: number;
 }
 
 export interface CustomerInfo {
@@ -55,7 +56,18 @@ interface MaterialsExportButtonProps {
   customer?: CustomerInfo;
 }
 
-// Polish character mapping for Helvetica (which doesn't support them)
+// Round quantity to 2 decimal places for export
+function roundForExport(qty: number): number {
+  return Math.round(qty * 100) / 100;
+}
+
+function formatQty(qty: number): string {
+  const r = roundForExport(qty);
+  if (Number.isInteger(r)) return r.toString();
+  return r.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
+}
+
+// Polish character mapping for Helvetica fallback
 const polishMap: Record<string, string> = {
   'ą': 'a', 'ć': 'c', 'ę': 'e', 'ł': 'l', 'ń': 'n', 'ó': 'o', 'ś': 's', 'ź': 'z', 'ż': 'z',
   'Ą': 'A', 'Ć': 'C', 'Ę': 'E', 'Ł': 'L', 'Ń': 'N', 'Ó': 'O', 'Ś': 'S', 'Ź': 'Z', 'Ż': 'Z',
@@ -89,6 +101,18 @@ async function loadNotoSansFont(doc: jsPDF) {
   return null;
 }
 
+async function loadLogo(): Promise<string | null> {
+  try {
+    const response = await fetch('/logo.png');
+    if (response.ok) {
+      const buffer = await response.arrayBuffer();
+      const base64 = 'data:image/png;base64,' + btoa(String.fromCharCode(...new Uint8Array(buffer)));
+      return base64;
+    }
+  } catch { /* ignore */ }
+  return null;
+}
+
 interface ExportOptions {
   includeQuantity: boolean;
   includePrice: boolean;
@@ -96,6 +120,16 @@ interface ExportOptions {
   includeExcavationParams: boolean;
   includeCustomer: boolean;
 }
+
+// Brand colors (aqua teal theme)
+const BRAND = {
+  primary: [0, 139, 160] as [number, number, number],     // hsl(190,80%,42%) approx
+  primaryLight: [230, 247, 250] as [number, number, number],
+  dark: [30, 42, 56] as [number, number, number],
+  gray: [120, 130, 140] as [number, number, number],
+  lightGray: [235, 240, 245] as [number, number, number],
+  white: [255, 255, 255] as [number, number, number],
+};
 
 async function exportToPDF(
   materials: MaterialRow[],
@@ -106,123 +140,205 @@ async function exportToPDF(
   customer?: CustomerInfo,
 ) {
   const doc = new jsPDF();
-  const margin = 20;
-  let y = 20;
+  const margin = 18;
+  let y = 16;
   const pw = doc.internal.pageSize.getWidth();
+  const contentW = pw - margin * 2;
 
   const fontName = await loadNotoSansFont(doc);
   const usePolishFont = !!fontName;
   const font = fontName || 'helvetica';
   const t = (s: string) => usePolishFont ? s : stripPolish(s);
 
-  doc.setFontSize(14);
+  const logo = await loadLogo();
+
+  // ── Header bar ──
+  doc.setFillColor(...BRAND.primary);
+  doc.rect(0, 0, pw, 28, 'F');
+
+  if (logo) {
+    doc.addImage(logo, 'PNG', margin, 4, 20, 20);
+  }
+
+  doc.setFontSize(16);
   doc.setFont(font, 'bold');
-  doc.text(t(title), margin, y);
-  y += 10;
+  doc.setTextColor(...BRAND.white);
+  doc.text(t(title), logo ? margin + 24 : margin, 16);
 
   doc.setFontSize(8);
   doc.setFont(font, 'normal');
-  doc.setTextColor(120, 120, 120);
-  doc.text(`Eksport: ${new Date().toLocaleDateString('pl-PL')}`, margin, y);
-  y += 8;
-  doc.setTextColor(0, 0, 0);
+  doc.text(`Eksport: ${new Date().toLocaleDateString('pl-PL')}`, pw - margin, 16, { align: 'right' });
+  y = 36;
+  doc.setTextColor(...BRAND.dark);
 
-  // Customer section
+  // ── Customer section ──
   if (options.includeCustomer && customer) {
+    doc.setFillColor(...BRAND.primaryLight);
+    doc.roundedRect(margin, y, contentW, 32, 2, 2, 'F');
+
     doc.setFontSize(10);
     doc.setFont(font, 'bold');
-    doc.text(t('Klient'), margin, y);
-    y += 5;
-    doc.setFontSize(9);
+    doc.setTextColor(...BRAND.primary);
+    doc.text(t('Klient'), margin + 4, y + 6);
     doc.setFont(font, 'normal');
-    if (customer.companyName) { doc.text(t(customer.companyName), margin, y); y += 4.5; }
-    if (customer.contactPerson) { doc.text(t(customer.contactPerson), margin, y); y += 4.5; }
-    if (customer.email) { doc.text(customer.email, margin, y); y += 4.5; }
-    if (customer.phone) { doc.text(customer.phone, margin, y); y += 4.5; }
+    doc.setTextColor(...BRAND.dark);
+    doc.setFontSize(8.5);
+
+    let cy = y + 12;
+    const leftCol = margin + 4;
+    const rightCol = margin + contentW / 2;
+
+    if (customer.companyName) { doc.text(t(customer.companyName), leftCol, cy); }
+    if (customer.contactPerson) { doc.text(t(customer.contactPerson), leftCol, cy + 4.5); }
+    if (customer.email) { doc.text(customer.email, rightCol, cy); }
+    if (customer.phone) { doc.text(customer.phone, rightCol, cy + 4.5); }
     const addr = [customer.address, customer.postalCode, customer.city].filter(Boolean).join(', ');
-    if (addr) { doc.text(t(addr), margin, y); y += 4.5; }
-    if (customer.nip) { doc.text(`NIP: ${customer.nip}`, margin, y); y += 4.5; }
-    y += 4;
+    if (addr) { doc.text(t(addr), leftCol, cy + 9); }
+    if (customer.nip) { doc.text(`NIP: ${customer.nip}`, rightCol, cy + 9); }
+
+    y += 36;
   }
 
-  // Excavation params section
+  // ── Excavation params section ──
   if (options.includeExcavationParams && excavationParams) {
-    doc.setFontSize(10);
-    doc.setFont(font, 'bold');
-    doc.text(t('Parametry wykopu'), margin, y);
-    y += 5;
+    doc.setFillColor(...BRAND.lightGray);
+    doc.roundedRect(margin, y, contentW, 26, 2, 2, 'F');
+
     doc.setFontSize(9);
+    doc.setFont(font, 'bold');
+    doc.setTextColor(...BRAND.primary);
+    doc.text(t('Parametry wykopu'), margin + 4, y + 6);
+
     doc.setFont(font, 'normal');
+    doc.setTextColor(...BRAND.dark);
+    doc.setFontSize(8);
+
     const ep = excavationParams;
-    const params = [
-      `Basen: ${ep.poolLength} x ${ep.poolWidth} x ${ep.poolDepth} m`,
-      `Wykop: ${ep.excLength.toFixed(2)} x ${ep.excWidth.toFixed(2)} x ${ep.excDepth.toFixed(2)} m`,
-      `${t('Podsypka')}: ${ep.sandBeddingHeight * 100} cm`,
-      `Chudziak: ${ep.leanConcreteHeight * 100} cm`,
-      `${t('Płyta denna')}: ${ep.floorSlabThickness * 100} cm`,
-    ];
-    params.forEach(p => { doc.text(t(p), margin, y); y += 4.5; });
-    y += 4;
+    const col1 = margin + 4;
+    const col2 = margin + contentW / 2;
+    let py = y + 12;
+
+    doc.text(`Basen: ${ep.poolLength} x ${ep.poolWidth} x ${ep.poolDepth} m`, col1, py);
+    doc.text(`Wykop: ${ep.excLength.toFixed(2)} x ${ep.excWidth.toFixed(2)} x ${ep.excDepth.toFixed(2)} m`, col2, py);
+    py += 4.5;
+    doc.text(`${t('Podsypka')}: ${ep.sandBeddingHeight * 100} cm`, col1, py);
+    doc.text(`Chudziak: ${ep.leanConcreteHeight * 100} cm`, col2, py);
+    py += 4.5;
+    doc.text(`${t('Płyta denna')}: ${ep.floorSlabThickness * 100} cm`, col1, py);
+    if (ep.reusePercent !== undefined && ep.reusePercent > 0) {
+      doc.text(`${t('Wykorzystanie gruntu')}: ${ep.reusePercent}%`, col2, py);
+    }
+
+    y += 30;
   }
 
-  // Materials table
+  // ── Materials table ──
   if (options.includeQuantity) {
     const showPrice = options.includePrice;
 
-    doc.setFontSize(9);
-    doc.setFont(font, 'bold');
-    doc.text('Lp.', margin, y);
-    doc.text(t('Materiał'), margin + 12, y);
-    doc.text(t('Ilość'), pw - margin - (showPrice ? 70 : 20), y, { align: 'right' });
-    doc.text('Jed.', pw - margin - (showPrice ? 50 : 5), y);
-    if (showPrice) {
-      doc.text('Cena/jed.', pw - margin - 25, y, { align: 'right' });
-      doc.text('Razem', pw - margin, y, { align: 'right' });
-    }
-    y += 2;
-    doc.setDrawColor(180, 180, 180);
-    doc.line(margin, y, pw - margin, y);
-    y += 5;
+    // Table header
+    doc.setFillColor(...BRAND.primary);
+    doc.rect(margin, y, contentW, 8, 'F');
 
+    doc.setFontSize(8);
+    doc.setFont(font, 'bold');
+    doc.setTextColor(...BRAND.white);
+
+    const colLp = margin + 3;
+    const colName = margin + 14;
+    const colQty = showPrice ? pw - margin - 72 : pw - margin - 28;
+    const colUnit = showPrice ? pw - margin - 52 : pw - margin - 12;
+    const colRate = pw - margin - 28;
+    const colTotal = pw - margin - 3;
+
+    doc.text('Lp.', colLp, y + 5.5);
+    doc.text(t('Materiał'), colName, y + 5.5);
+    doc.text(t('Ilość'), colQty, y + 5.5, { align: 'right' });
+    doc.text('Jed.', colUnit - 4, y + 5.5);
+    if (showPrice) {
+      doc.text('Cena/jed.', colRate, y + 5.5, { align: 'right' });
+      doc.text('Razem', colTotal, y + 5.5, { align: 'right' });
+    }
+    y += 10;
+
+    doc.setTextColor(...BRAND.dark);
     doc.setFont(font, 'normal');
-    doc.setFontSize(9);
+    doc.setFontSize(8);
+
     materials.forEach((m, i) => {
-      if (y > 275) { doc.addPage(); y = 20; }
-      doc.text(`${i + 1}.`, margin, y);
-      const name = m.name.length > 50 ? m.name.substring(0, 47) + '...' : m.name;
-      doc.text(t(name), margin + 12, y);
-      doc.text(m.quantity.toString(), pw - margin - (showPrice ? 70 : 20), y, { align: 'right' });
-      doc.text(t(m.unit), pw - margin - (showPrice ? 50 : 5), y);
-      if (showPrice && m.rate !== undefined && m.total !== undefined) {
-        doc.text(`${m.rate.toFixed(2)} zl`, pw - margin - 25, y, { align: 'right' });
-        doc.text(`${m.total.toFixed(2)} zl`, pw - margin, y, { align: 'right' });
+      if (y > 275) { doc.addPage(); y = 16; }
+
+      // Alternating row background
+      if (i % 2 === 0) {
+        doc.setFillColor(...BRAND.lightGray);
+        doc.rect(margin, y - 4, contentW, 7, 'F');
       }
-      y += 6;
+
+      const rounded = roundForExport(m.quantity);
+      const total = m.rate !== undefined ? rounded * m.rate : (m.total ?? 0);
+
+      doc.text(`${i + 1}.`, colLp, y);
+      const name = m.name.length > 45 ? m.name.substring(0, 42) + '...' : m.name;
+      doc.text(t(name), colName, y);
+      doc.text(formatQty(m.quantity), colQty, y, { align: 'right' });
+      doc.text(t(m.unit), colUnit - 4, y);
+      if (showPrice && m.rate !== undefined) {
+        doc.text(`${m.rate.toFixed(2)} ${t('zł')}`, colRate, y, { align: 'right' });
+        doc.text(`${total.toFixed(2)} ${t('zł')}`, colTotal, y, { align: 'right' });
+      }
+      y += 7;
     });
 
     if (showPrice) {
-      y += 2;
-      doc.line(margin, y, pw - margin, y);
-      y += 6;
+      // Total row
+      doc.setFillColor(...BRAND.primary);
+      doc.rect(margin, y - 2, contentW, 9, 'F');
       doc.setFont(font, 'bold');
-      const total = materials.reduce((s, m) => s + (m.total ?? 0), 0);
-      doc.text('RAZEM NETTO:', pw - margin - 40, y);
-      doc.text(`${total.toFixed(2)} zl`, pw - margin, y, { align: 'right' });
-      y += 8;
+      doc.setFontSize(9);
+      doc.setTextColor(...BRAND.white);
+      const total = materials.reduce((s, m) => {
+        const r = roundForExport(m.quantity);
+        return s + (m.rate !== undefined ? r * m.rate : (m.total ?? 0));
+      }, 0);
+      doc.text('RAZEM NETTO:', colRate - 10, y + 4);
+      doc.text(`${total.toFixed(2)} ${t('zł')}`, colTotal, y + 4, { align: 'right' });
+      y += 14;
+      doc.setTextColor(...BRAND.dark);
     }
   }
 
-  // Notes section
+  // ── Notes section ──
   if (options.includeNotes && notes) {
-    if (y > 260) { doc.addPage(); y = 20; }
-    doc.setFontSize(10);
-    doc.setFont(font, 'bold');
-    doc.text(t('Uwagi'), margin, y);
-    y += 5;
+    if (y > 255) { doc.addPage(); y = 16; }
+    y += 4;
+    doc.setFillColor(...BRAND.primaryLight);
+    const noteLines = doc.splitTextToSize(t(notes), contentW - 8);
+    const noteH = Math.max(16, noteLines.length * 4 + 12);
+    doc.roundedRect(margin, y, contentW, noteH, 2, 2, 'F');
+
     doc.setFontSize(9);
+    doc.setFont(font, 'bold');
+    doc.setTextColor(...BRAND.primary);
+    doc.text(t('Uwagi'), margin + 4, y + 6);
     doc.setFont(font, 'normal');
-    const lines = doc.splitTextToSize(t(notes), pw - margin * 2);
-    doc.text(lines, margin, y);
+    doc.setTextColor(...BRAND.dark);
+    doc.setFontSize(8);
+    doc.text(noteLines, margin + 4, y + 12);
+  }
+
+  // ── Footer ──
+  const pageCount = doc.getNumberOfPages();
+  for (let i = 1; i <= pageCount; i++) {
+    doc.setPage(i);
+    const ph = doc.internal.pageSize.getHeight();
+    doc.setDrawColor(...BRAND.primary);
+    doc.setLineWidth(0.5);
+    doc.line(margin, ph - 12, pw - margin, ph - 12);
+    doc.setFontSize(7);
+    doc.setFont(font, 'normal');
+    doc.setTextColor(...BRAND.gray);
+    doc.text('Pool Prestige', margin, ph - 7);
+    doc.text(`${i} / ${pageCount}`, pw - margin, ph - 7, { align: 'right' });
   }
 
   doc.save(`${title.replace(/\s+/g, '_')}.pdf`);
@@ -242,22 +358,26 @@ function exportToXLSX(
   // Materials sheet
   if (options.includeQuantity) {
     const rows = materials.map((m, i) => {
+      const rounded = roundForExport(m.quantity);
       const row: Record<string, string | number> = {
         'Lp.': i + 1,
         'Materiał': m.name,
-        'Ilość': m.quantity,
+        'Ilość': rounded,
         'Jednostka': m.unit,
       };
       if (options.includePrice) {
         row['Cena/jed. (zł)'] = m.rate ?? 0;
-        row['Razem (zł)'] = m.total ?? 0;
+        row['Razem (zł)'] = m.rate !== undefined ? Math.round(rounded * m.rate * 100) / 100 : (m.total ?? 0);
       }
       return row;
     });
 
     if (options.includePrice) {
-      const total = materials.reduce((s, m) => s + (m.total ?? 0), 0);
-      rows.push({ 'Lp.': '', 'Materiał': 'RAZEM NETTO', 'Ilość': '' as any, 'Jednostka': '', 'Cena/jed. (zł)': '', 'Razem (zł)': total } as any);
+      const total = materials.reduce((s, m) => {
+        const r = roundForExport(m.quantity);
+        return s + (m.rate !== undefined ? r * m.rate : (m.total ?? 0));
+      }, 0);
+      rows.push({ 'Lp.': '', 'Materiał': 'RAZEM NETTO', 'Ilość': '' as any, 'Jednostka': '', 'Cena/jed. (zł)': '', 'Razem (zł)': Math.round(total * 100) / 100 } as any);
     }
 
     const ws = XLSX.utils.json_to_sheet(rows);
@@ -282,8 +402,11 @@ function exportToXLSX(
       { 'Parametr': 'Chudziak (cm)', 'Wartość': ep.leanConcreteHeight * 100 },
       { 'Parametr': 'Płyta denna (cm)', 'Wartość': ep.floorSlabThickness * 100 },
     ];
+    if (ep.reusePercent !== undefined && ep.reusePercent > 0) {
+      paramRows.push({ 'Parametr': 'Wykorzystanie gruntu z wykopu (%)', 'Wartość': ep.reusePercent });
+    }
     const wsP = XLSX.utils.json_to_sheet(paramRows);
-    wsP['!cols'] = [{ wch: 28 }, { wch: 12 }];
+    wsP['!cols'] = [{ wch: 34 }, { wch: 12 }];
     XLSX.utils.book_append_sheet(wb, wsP, 'Parametry wykopu');
   }
 
