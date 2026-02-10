@@ -2328,6 +2328,7 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
                 <div className="mt-4">
                   <MaterialsExportButton
                     title="Roboty ziemne"
+                    offerNumber={state.editMode.offerNumber}
                     notes={excavationNotes}
                     excavationParams={{
                       excLength, excWidth, excDepth,
@@ -3818,6 +3819,7 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
                 <div className="mt-4">
                   <MaterialsExportButton
                     title="Prace budowlane - materiały"
+                    offerNumber={state.editMode.offerNumber}
                     notes={constructionNotes}
                     excavationParams={{
                       excLength, excWidth, excDepth,
