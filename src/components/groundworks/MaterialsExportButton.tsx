@@ -37,6 +37,21 @@ export interface ExcavationParams {
   reusePercent?: number;
 }
 
+export interface ConstructionParams {
+  poolLength: number;
+  poolWidth: number;
+  poolDepth: number;
+  maxPoolDepth: number;
+  floorSlabThickness: number;
+  constructionTechnology: string;
+  blockHeight?: number;
+  blockLayers?: number;
+  crownHeight?: number;
+  wallInsulation?: string;
+  floorInsulation?: string;
+  hasSlope?: boolean;
+}
+
 export interface CustomerInfo {
   companyName?: string;
   contactPerson?: string;
@@ -53,6 +68,7 @@ interface MaterialsExportButtonProps {
   title: string;
   notes?: string;
   excavationParams?: ExcavationParams;
+  constructionParams?: ConstructionParams;
   customer?: CustomerInfo;
   offerNumber?: string | null;
 }
@@ -127,6 +143,7 @@ interface ExportOptions {
   includePrice: boolean;
   includeNotes: boolean;
   includeExcavationParams: boolean;
+  includeConstructionParams: boolean;
   includeCustomer: boolean;
 }
 
@@ -146,6 +163,7 @@ async function exportToPDF(
   options: ExportOptions,
   notes?: string,
   excavationParams?: ExcavationParams,
+  constructionParams?: ConstructionParams,
   customer?: CustomerInfo,
   offerNumber?: string | null,
 ) {
@@ -253,6 +271,46 @@ async function exportToPDF(
     }
 
     y += 30;
+  }
+
+  // ── Construction params section ──
+  if (options.includeConstructionParams && constructionParams) {
+    doc.setFillColor(...BRAND.lightGray);
+    doc.roundedRect(margin, y, contentW, 30, 2, 2, 'F');
+
+    doc.setFontSize(9);
+    doc.setFont(font, 'bold');
+    doc.setTextColor(...BRAND.primary);
+    doc.text(t('Parametry budowy'), margin + 4, y + 6);
+
+    doc.setFont(font, 'normal');
+    doc.setTextColor(...BRAND.dark);
+    doc.setFontSize(8);
+
+    const cp = constructionParams;
+    const col1 = margin + 4;
+    const col2 = margin + contentW / 2;
+    let py = y + 12;
+
+    const depthLabel = cp.hasSlope
+      ? `${cp.poolDepth} / ${cp.maxPoolDepth} m (spadek)`
+      : `${cp.poolDepth} m`;
+    doc.text(`Basen: ${cp.poolLength} x ${cp.poolWidth} x ${depthLabel}`, col1, py);
+    doc.text(`Technologia: ${cp.constructionTechnology === 'masonry' ? t('murowana') : t('wylewana')}`, col2, py);
+    py += 4.5;
+    doc.text(`${t('Płyta denna')}: ${cp.floorSlabThickness * 100} cm`, col1, py);
+    if (cp.constructionTechnology === 'masonry' && cp.blockHeight) {
+      doc.text(`Bloczek: ${cp.blockHeight} cm${cp.blockLayers ? `, ${cp.blockLayers} warstw` : ''}`, col2, py);
+    }
+    py += 4.5;
+    if (cp.wallInsulation) { doc.text(`${t('Izolacja ścian')}: ${t(cp.wallInsulation)}`, col1, py); }
+    if (cp.floorInsulation) { doc.text(`${t('Izolacja dna')}: ${t(cp.floorInsulation)}`, col2, py); }
+    if (cp.crownHeight !== undefined) {
+      py += 4.5;
+      doc.text(`Korona: ${(cp.crownHeight * 100).toFixed(0)} cm`, col1, py);
+    }
+
+    y += 34;
   }
 
   // ── Materials table ──
@@ -376,6 +434,7 @@ function exportToXLSX(
   options: ExportOptions,
   notes?: string,
   excavationParams?: ExcavationParams,
+  constructionParams?: ConstructionParams,
   customer?: CustomerInfo,
   offerNumber?: string | null,
 ) {
@@ -436,6 +495,35 @@ function exportToXLSX(
     XLSX.utils.book_append_sheet(wb, wsP, 'Parametry wykopu');
   }
 
+  // Construction params sheet
+  if (options.includeConstructionParams && constructionParams) {
+    const cp = constructionParams;
+    const paramRows: { 'Parametr': string; 'Wartość': string | number }[] = [
+      { 'Parametr': 'Basen - długość (m)', 'Wartość': cp.poolLength },
+      { 'Parametr': 'Basen - szerokość (m)', 'Wartość': cp.poolWidth },
+      { 'Parametr': 'Basen - głębokość (m)', 'Wartość': cp.poolDepth },
+    ];
+    if (cp.hasSlope) {
+      paramRows.push({ 'Parametr': 'Basen - max głębokość (m)', 'Wartość': cp.maxPoolDepth });
+    }
+    paramRows.push(
+      { 'Parametr': 'Płyta denna (cm)', 'Wartość': cp.floorSlabThickness * 100 },
+      { 'Parametr': 'Technologia', 'Wartość': cp.constructionTechnology === 'masonry' ? 'murowana' : 'wylewana' },
+    );
+    if (cp.constructionTechnology === 'masonry' && cp.blockHeight) {
+      paramRows.push({ 'Parametr': 'Wysokość bloczka (cm)', 'Wartość': cp.blockHeight });
+      if (cp.blockLayers) paramRows.push({ 'Parametr': 'Liczba warstw', 'Wartość': cp.blockLayers });
+    }
+    if (cp.crownHeight !== undefined) {
+      paramRows.push({ 'Parametr': 'Korona (cm)', 'Wartość': Number((cp.crownHeight * 100).toFixed(0)) });
+    }
+    if (cp.wallInsulation) paramRows.push({ 'Parametr': 'Izolacja ścian', 'Wartość': cp.wallInsulation });
+    if (cp.floorInsulation) paramRows.push({ 'Parametr': 'Izolacja dna', 'Wartość': cp.floorInsulation });
+    const wsP = XLSX.utils.json_to_sheet(paramRows);
+    wsP['!cols'] = [{ wch: 34 }, { wch: 20 }];
+    XLSX.utils.book_append_sheet(wb, wsP, 'Parametry budowy');
+  }
+
   // Customer sheet
   if (options.includeCustomer && customer) {
     const custRows = [
@@ -465,12 +553,13 @@ function exportToXLSX(
   toast.success('Wyeksportowano do Excel');
 }
 
-export function MaterialsExportButton({ materials, title, notes, excavationParams, customer, offerNumber }: MaterialsExportButtonProps) {
+export function MaterialsExportButton({ materials, title, notes, excavationParams, constructionParams, customer, offerNumber }: MaterialsExportButtonProps) {
   const [open, setOpen] = useState(false);
   const [includeQuantity, setIncludeQuantity] = useState(true);
   const [includePrice, setIncludePrice] = useState(false);
   const [includeNotes, setIncludeNotes] = useState(false);
   const [includeExcavationParams, setIncludeExcavationParams] = useState(false);
+  const [includeConstructionParams, setIncludeConstructionParams] = useState(false);
   const [includeCustomer, setIncludeCustomer] = useState(false);
 
   if (materials.length === 0) return null;
@@ -480,16 +569,17 @@ export function MaterialsExportButton({ materials, title, notes, excavationParam
     includePrice,
     includeNotes,
     includeExcavationParams,
+    includeConstructionParams,
     includeCustomer,
   };
 
   const handleExportPDF = () => {
-    exportToPDF(materials, title, options, notes, excavationParams, customer, offerNumber);
+    exportToPDF(materials, title, options, notes, excavationParams, constructionParams, customer, offerNumber);
     setOpen(false);
   };
 
   const handleExportXLSX = () => {
-    exportToXLSX(materials, title, options, notes, excavationParams, customer, offerNumber);
+    exportToXLSX(materials, title, options, notes, excavationParams, constructionParams, customer, offerNumber);
     setOpen(false);
   };
 
@@ -533,17 +623,31 @@ export function MaterialsExportButton({ materials, title, notes, excavationParam
               </Label>
             </div>
 
-            <div className="flex items-center gap-2">
-              <Checkbox
-                id="exp-exc"
-                checked={includeExcavationParams}
-                onCheckedChange={(v) => setIncludeExcavationParams(!!v)}
-                disabled={!excavationParams}
-              />
-              <Label htmlFor="exp-exc" className={`cursor-pointer ${!excavationParams ? 'text-muted-foreground' : ''}`}>
-                Parametry wykopu {!excavationParams && '(niedostępne)'}
-              </Label>
-            </div>
+            {excavationParams && (
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="exp-exc"
+                  checked={includeExcavationParams}
+                  onCheckedChange={(v) => setIncludeExcavationParams(!!v)}
+                />
+                <Label htmlFor="exp-exc" className="cursor-pointer">
+                  Parametry wykopu
+                </Label>
+              </div>
+            )}
+
+            {constructionParams && (
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="exp-constr"
+                  checked={includeConstructionParams}
+                  onCheckedChange={(v) => setIncludeConstructionParams(!!v)}
+                />
+                <Label htmlFor="exp-constr" className="cursor-pointer">
+                  Parametry budowy
+                </Label>
+              </div>
+            )}
 
             <div className="flex items-center gap-2">
               <Checkbox

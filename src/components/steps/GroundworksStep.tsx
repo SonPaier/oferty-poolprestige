@@ -3824,13 +3824,19 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
                     title="Prace budowlane - materiały"
                     offerNumber={state.editMode.offerNumber}
                     notes={constructionNotes}
-                    excavationParams={{
-                      excLength, excWidth, excDepth,
+                    constructionParams={{
                       poolLength: dimensions.length,
                       poolWidth: dimensions.width,
                       poolDepth: dimensions.depth,
-                      sandBeddingHeight, leanConcreteHeight, floorSlabThickness,
-                      reusePercent,
+                      maxPoolDepth,
+                      floorSlabThickness,
+                      constructionTechnology,
+                      blockHeight: blockHeight,
+                      blockLayers: blockCalculation?.layers,
+                      crownHeight: blockCalculation?.crownHeight,
+                      wallInsulation: wallInsulation !== 'none' ? wallInsulation : undefined,
+                      floorInsulation: floorInsulation !== 'none' ? floorInsulation : undefined,
+                      hasSlope: dimensions.hasSlope && !!dimensions.depthDeep,
                     }}
                     customer={state.customerData ? {
                       companyName: state.customerData.companyName,
