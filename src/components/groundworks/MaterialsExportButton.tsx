@@ -163,8 +163,9 @@ async function exportToPDF(
   const logo = await loadLogo();
 
   // ── Header bar ──
+  const headerH = 22;
   doc.setFillColor(...BRAND.primary);
-  doc.rect(0, 0, pw, 28, 'F');
+  doc.rect(0, 0, pw, headerH, 'F');
 
   let logoEndX = margin;
   if (logo) {
@@ -174,21 +175,23 @@ async function exportToPDF(
     await new Promise<void>((resolve) => { img.onload = () => resolve(); img.onerror = () => resolve(); });
     const naturalW = img.naturalWidth || 1;
     const naturalH = img.naturalHeight || 1;
-    const logoH = 18;
+    const logoH = 14;
     const logoW = (naturalW / naturalH) * logoH;
-    doc.addImage(logo, 'PNG', margin, 5, logoW, logoH);
+    // Use high-quality rendering by specifying original pixel dimensions
+    const imgProps: any = { compression: 'NONE' };
+    doc.addImage(logo, 'PNG', margin, (headerH - logoH) / 2, logoW, logoH, undefined, undefined, undefined);
     logoEndX = margin + logoW + 4;
   }
 
-  doc.setFontSize(16);
+  doc.setFontSize(14);
   doc.setFont(font, 'bold');
   doc.setTextColor(...BRAND.white);
-  doc.text(t(title), logoEndX, 16);
+  doc.text(t(title), logoEndX, headerH / 2 + 2);
 
   doc.setFontSize(8);
   doc.setFont(font, 'normal');
-  doc.text(`Eksport: ${new Date().toLocaleDateString('pl-PL')}`, pw - margin, 16, { align: 'right' });
-  y = 36;
+  doc.text(`Eksport: ${new Date().toLocaleDateString('pl-PL')}`, pw - margin, headerH / 2 + 2, { align: 'right' });
+  y = headerH + 8;
   doc.setTextColor(...BRAND.dark);
 
   // ── Customer section ──
