@@ -261,7 +261,7 @@ async function exportToPDF(
     const colRate = pw - margin - 28;
     const colTotal = pw - margin - 3;
 
-    const headerTextY = y + 5;
+    const headerTextY = y + 4;
     doc.text('Lp.', colLp, headerTextY, { baseline: 'middle' });
     doc.text(t('Materiał'), colName, headerTextY, { baseline: 'middle' });
     doc.text(t('Ilość'), colQty, headerTextY, { align: 'right', baseline: 'middle' });
