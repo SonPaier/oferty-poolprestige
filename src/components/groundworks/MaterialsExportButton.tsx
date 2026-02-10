@@ -54,6 +54,7 @@ interface MaterialsExportButtonProps {
   notes?: string;
   excavationParams?: ExcavationParams;
   customer?: CustomerInfo;
+  offerNumber?: string | null;
 }
 
 // Round quantity to 2 decimal places for export
@@ -138,6 +139,7 @@ async function exportToPDF(
   notes?: string,
   excavationParams?: ExcavationParams,
   customer?: CustomerInfo,
+  offerNumber?: string | null,
 ) {
   const doc = new jsPDF();
   const margin = 18;
@@ -352,7 +354,8 @@ async function exportToPDF(
     doc.text(`${i} / ${pageCount}`, pw - margin, ph - 7, { align: 'right' });
   }
 
-  doc.save(`${title.replace(/\s+/g, '_')}.pdf`);
+  const fileName = offerNumber ? `${offerNumber}-${title}`.replace(/\s+/g, '_') : title.replace(/\s+/g, '_');
+  doc.save(`${fileName}.pdf`);
   toast.success('Wyeksportowano do PDF');
 }
 
@@ -363,6 +366,7 @@ function exportToXLSX(
   notes?: string,
   excavationParams?: ExcavationParams,
   customer?: CustomerInfo,
+  offerNumber?: string | null,
 ) {
   const wb = XLSX.utils.book_new();
 
@@ -445,11 +449,12 @@ function exportToXLSX(
     XLSX.utils.book_append_sheet(wb, wsN, 'Uwagi');
   }
 
-  XLSX.writeFile(wb, `${title.replace(/\s+/g, '_')}.xlsx`);
+  const fileName = offerNumber ? `${offerNumber}-${title}`.replace(/\s+/g, '_') : title.replace(/\s+/g, '_');
+  XLSX.writeFile(wb, `${fileName}.xlsx`);
   toast.success('Wyeksportowano do Excel');
 }
 
-export function MaterialsExportButton({ materials, title, notes, excavationParams, customer }: MaterialsExportButtonProps) {
+export function MaterialsExportButton({ materials, title, notes, excavationParams, customer, offerNumber }: MaterialsExportButtonProps) {
   const [open, setOpen] = useState(false);
   const [includeQuantity, setIncludeQuantity] = useState(true);
   const [includePrice, setIncludePrice] = useState(false);
@@ -468,12 +473,12 @@ export function MaterialsExportButton({ materials, title, notes, excavationParam
   };
 
   const handleExportPDF = () => {
-    exportToPDF(materials, title, options, notes, excavationParams, customer);
+    exportToPDF(materials, title, options, notes, excavationParams, customer, offerNumber);
     setOpen(false);
   };
 
   const handleExportXLSX = () => {
-    exportToXLSX(materials, title, options, notes, excavationParams, customer);
+    exportToXLSX(materials, title, options, notes, excavationParams, customer, offerNumber);
     setOpen(false);
   };
 
