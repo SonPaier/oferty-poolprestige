@@ -2328,6 +2328,24 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
                 <div className="mt-4">
                   <MaterialsExportButton
                     title="Roboty ziemne"
+                    notes={excavationNotes}
+                    excavationParams={{
+                      excLength, excWidth, excDepth,
+                      poolLength: dimensions.length,
+                      poolWidth: dimensions.width,
+                      poolDepth: dimensions.depth,
+                      sandBeddingHeight, leanConcreteHeight, floorSlabThickness,
+                    }}
+                    customer={state.customerData ? {
+                      companyName: state.customerData.companyName,
+                      contactPerson: state.customerData.contactPerson,
+                      email: state.customerData.email,
+                      phone: state.customerData.phone,
+                      address: state.customerData.address,
+                      city: state.customerData.city,
+                      postalCode: state.customerData.postalCode,
+                      nip: state.customerData.nip,
+                    } : undefined}
                     materials={[
                       ...lineItems.filter(i => !i.hidden).map(i => ({
                         name: i.name,
@@ -3799,6 +3817,24 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
                 <div className="mt-4">
                   <MaterialsExportButton
                     title="Prace budowlane - materiały"
+                    notes={constructionNotes}
+                    excavationParams={{
+                      excLength, excWidth, excDepth,
+                      poolLength: dimensions.length,
+                      poolWidth: dimensions.width,
+                      poolDepth: dimensions.depth,
+                      sandBeddingHeight, leanConcreteHeight, floorSlabThickness,
+                    }}
+                    customer={state.customerData ? {
+                      companyName: state.customerData.companyName,
+                      contactPerson: state.customerData.contactPerson,
+                      email: state.customerData.email,
+                      phone: state.customerData.phone,
+                      address: state.customerData.address,
+                      city: state.customerData.city,
+                      postalCode: state.customerData.postalCode,
+                      nip: state.customerData.nip,
+                    } : undefined}
                     materials={[
                       ...constructionMaterials.map(m => ({
                         name: m.name,
@@ -3807,7 +3843,6 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
                         rate: m.rate,
                         total: roundQuantity(m.id, m.quantity) * m.rate,
                       })),
-                      // B25 concrete group
                       ...(b25ConcreteGroup.subItems.length > 0 ? [{
                         name: b25ConcreteGroup.groupName,
                         quantity: b25TotalRounded,
@@ -3815,7 +3850,6 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
                         rate: b25ConcreteGroup.rate,
                         total: b25TotalNet,
                       }] : []),
-                      // Block group (masonry only)
                       ...(constructionTechnology === 'masonry' && blockGroup.subItems.length > 0 ? [{
                         name: blockGroup.groupName,
                         quantity: blockGroupTotalRounded,
@@ -3823,7 +3857,6 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
                         rate: blockGroup.rate,
                         total: blockGroupTotalNet,
                       }] : []),
-                      // Reinforcement items
                       ...reinforcement.items.map(item => ({
                         name: item.name,
                         quantity: item.totalQuantity,
@@ -3831,7 +3864,6 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
                         rate: item.rate,
                         total: item.netValue,
                       })),
-                      // Labor items
                       ...laborItems.filter(i => !i.hidden).map(item => ({
                         name: item.name,
                         quantity: item.quantity,
