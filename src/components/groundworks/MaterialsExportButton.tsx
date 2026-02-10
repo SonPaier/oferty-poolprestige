@@ -261,13 +261,14 @@ async function exportToPDF(
     const colRate = pw - margin - 28;
     const colTotal = pw - margin - 3;
 
-    doc.text('Lp.', colLp, y + 5.5);
-    doc.text(t('Materiał'), colName, y + 5.5);
-    doc.text(t('Ilość'), colQty, y + 5.5, { align: 'right' });
-    doc.text('Jed.', colUnit - 4, y + 5.5);
+    const headerTextY = y + 5;
+    doc.text('Lp.', colLp, headerTextY, { baseline: 'middle' });
+    doc.text(t('Materiał'), colName, headerTextY, { baseline: 'middle' });
+    doc.text(t('Ilość'), colQty, headerTextY, { align: 'right', baseline: 'middle' });
+    doc.text('Jed.', colUnit - 4, headerTextY, { baseline: 'middle' });
     if (showPrice) {
-      doc.text('Cena/jed.', colRate, y + 5.5, { align: 'right' });
-      doc.text('Razem', colTotal, y + 5.5, { align: 'right' });
+      doc.text('Cena/jed.', colRate, headerTextY, { align: 'right', baseline: 'middle' });
+      doc.text('Razem', colTotal, headerTextY, { align: 'right', baseline: 'middle' });
     }
     y += 10;
 
