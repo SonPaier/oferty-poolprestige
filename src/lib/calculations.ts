@@ -21,10 +21,15 @@ export function calculatePoolMetrics(
   dimensions: PoolDimensions,
   poolType: PoolType
 ): PoolCalculations {
-  const { shape, length, width, depth, overflowType, attractions, customVertices, customArea, customPerimeter } = dimensions;
+  const { shape, length, width, depth, depthDeep, hasSlope, overflowType, attractions, customVertices, customArea, customPerimeter } = dimensions;
+  
+  // Maximum depth for structural calculations (excavation, walls)
+  const maxDepth = (hasSlope && depthDeep) ? depthDeep : depth;
   
   // Water depth: depth - 10cm for skimmer pools, = depth for gutter pools
-  const waterDepth = overflowType === 'skimmerowy' ? depth - 0.1 : depth;
+  // For sloped pools, use average depth for volume
+  const avgDepth = (hasSlope && depthDeep) ? (depth + depthDeep) / 2 : depth;
+  const waterDepth = overflowType === 'skimmerowy' ? avgDepth - 0.1 : avgDepth;
   
   let volume: number;
   let surfaceArea: number;
@@ -39,7 +44,7 @@ export function calculatePoolMetrics(
       bottomArea = surfaceArea;
       volume = surfaceArea * waterDepth;
       perimeterLength = customPerimeter || 0;
-      wallArea = perimeterLength * depth;
+      wallArea = perimeterLength * maxDepth;
       break;
 
     case 'owalny':
@@ -49,7 +54,7 @@ export function calculatePoolMetrics(
       volume = surfaceArea * waterDepth;
       // Perimeter approximation for ellipse
       perimeterLength = Math.PI * (3 * (length / 2 + width / 2) - Math.sqrt((3 * length / 2 + width / 2) * (length / 2 + 3 * width / 2)));
-      wallArea = perimeterLength * depth;
+      wallArea = perimeterLength * maxDepth;
       break;
 
     case 'prostokatny':
@@ -59,7 +64,8 @@ export function calculatePoolMetrics(
       bottomArea = surfaceArea;
       volume = surfaceArea * waterDepth;
       perimeterLength = 2 * (length + width);
-      wallArea = 2 * length * depth + 2 * width * depth;
+      // For sloped pools: 2 long walls have varying height (use max), 2 short walls have max depth
+      wallArea = perimeterLength * maxDepth;
       break;
   }
   

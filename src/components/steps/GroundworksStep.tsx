@@ -113,6 +113,9 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
   // Get material rates from settings (with fallback to defaults)
   const materialRates = companySettings.constructionMaterialRates || defaultConstructionMaterialRates;
   
+  // Maximum pool depth (for sloped pools use depthDeep, otherwise depth)
+  const maxPoolDepth = (dimensions.hasSlope && dimensions.depthDeep) ? dimensions.depthDeep : dimensions.depth;
+  
   // Excavation state - editable dimensions
   const [excavationScope, setExcavationScope] = useState<ScopeType>(
     (sections.roboty_ziemne?.scope as ScopeType) || 'our'
@@ -136,19 +139,19 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
   const [wallInsulation, setWallInsulation] = useState<WallInsulationType>('none');
   
   // Calculate excavation depth using correct formula:
-  // excDepth = pool depth + floor slab + floor insulation + lean concrete + sand bedding
+  // excDepth = max pool depth + floor slab + floor insulation + lean concrete + sand bedding
   const floorInsThickness = floorInsulationThickness[floorInsulation];
   const wallInsThickness = wallInsulationThickness[wallInsulation];
   
   const [excDepth, setExcDepth] = useState(() => 
-    Math.round((dimensions.depth + floorSlabThickness + floorInsThickness + leanConcreteHeight + sandBeddingHeight) * 100) / 100
+    Math.round((maxPoolDepth + floorSlabThickness + floorInsThickness + leanConcreteHeight + sandBeddingHeight) * 100) / 100
   );
   
   // Update excavation depth when components change
   useEffect(() => {
-    const newDepth = dimensions.depth + floorSlabThickness + floorInsulationThickness[floorInsulation] + leanConcreteHeight + sandBeddingHeight;
+    const newDepth = maxPoolDepth + floorSlabThickness + floorInsulationThickness[floorInsulation] + leanConcreteHeight + sandBeddingHeight;
     setExcDepth(Math.round(newDepth * 100) / 100);
-  }, [dimensions.depth, floorSlabThickness, floorInsulation, leanConcreteHeight, sandBeddingHeight]);
+  }, [maxPoolDepth, floorSlabThickness, floorInsulation, leanConcreteHeight, sandBeddingHeight]);
   
   // Drainage toggle
   const [drainageEnabled, setDrainageEnabled] = useState(false);
@@ -284,20 +287,20 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
     return calculateTotalBlocks(
       dimensions.length,
       dimensions.width,
-      dimensions.depth,
+      maxPoolDepth,
       customBlockLayers,
       customCrownHeight,
       totalColumnCount,
       blockHeight
     );
-  }, [dimensions.length, dimensions.width, dimensions.depth, constructionTechnology, customBlockLayers, customCrownHeight, totalColumnCount, blockHeight]);
+  }, [dimensions.length, dimensions.width, maxPoolDepth, constructionTechnology, customBlockLayers, customCrownHeight, totalColumnCount, blockHeight]);
   
   // Calculate wading pool blocks (2 non-shared walls: width + length)
   const wadingPoolBlockCalc = useMemo(() => {
     if (!dimensions.wadingPool?.enabled || constructionTechnology !== 'masonry') return null;
-    const wallHeight = dimensions.depth - (dimensions.wadingPool.depth || 0);
+    const wallHeight = maxPoolDepth - (dimensions.wadingPool.depth || 0);
     return calculateBlockLayers(wallHeight, blockHeight, customWadingPoolLayers);
-  }, [dimensions.wadingPool?.enabled, dimensions.wadingPool?.depth, dimensions.depth, constructionTechnology, blockHeight, customWadingPoolLayers]);
+  }, [dimensions.wadingPool?.enabled, dimensions.wadingPool?.depth, maxPoolDepth, constructionTechnology, blockHeight, customWadingPoolLayers]);
   
   const wadingPoolBlocks = useMemo(() => {
     if (!wadingPoolBlockCalc || !dimensions.wadingPool?.enabled) return 0;
@@ -331,7 +334,7 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
     setCustomCrownHeight(undefined);
     setCustomColumnCounts(undefined);
     setCustomWadingPoolLayers(undefined);
-  }, [dimensions.depth, dimensions.length, dimensions.width]);
+  }, [maxPoolDepth, dimensions.length, dimensions.width]);
   
   // Calculate excavation area (for material calculations)
   const excavationArea = excLength * excWidth;
@@ -348,14 +351,14 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
     // External dimensions of construction (pool + walls + insulation)
     const extLength = dimensions.length + (wallThickness * 2) + (wallInsThickness * 2);
     const extWidth = dimensions.width + (wallThickness * 2) + (wallInsThickness * 2);
-    // Height: pool depth + floor slab + lean concrete + floor insulation
-    const extHeight = dimensions.depth + floorSlabThickness + leanConcreteHeight + floorInsThickness;
+    // Height: max pool depth + floor slab + lean concrete + floor insulation
+    const extHeight = maxPoolDepth + floorSlabThickness + leanConcreteHeight + floorInsThickness;
     
     const constructionVolume = extLength * extWidth * extHeight;
     const podsypkaVolume = excavationArea * sandBeddingHeight;
     
     return Math.max(0, excavationVolume - podsypkaVolume - constructionVolume);
-  }, [dimensions.length, dimensions.width, dimensions.depth, wallInsThickness, floorInsThickness, floorSlabThickness, leanConcreteHeight, excavationVolume, excavationArea, sandBeddingHeight]);
+  }, [dimensions.length, dimensions.width, maxPoolDepth, wallInsThickness, floorInsThickness, floorSlabThickness, leanConcreteHeight, excavationVolume, excavationArea, sandBeddingHeight]);
   
   // Construction VAT
   const [constructionVatRate, setConstructionVatRate] = useState<VatRate>(23);
@@ -470,11 +473,11 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
     // Wall XPS area (only if XPS, not PUR)
     if (wallInsulation === 'xps-5cm-wall' || wallInsulation === 'xps-10cm-wall') {
       const perimeter = 2 * ((dimensions.length + 0.48) + (dimensions.width + 0.48));
-      totalXpsArea += perimeter * dimensions.depth;
+      totalXpsArea += perimeter * maxPoolDepth;
     }
     if (totalXpsArea === 0) return 0;
     return Math.ceil(totalXpsArea / 8);
-  }, [dimensions.length, dimensions.width, dimensions.depth, floorInsulation, wallInsulation]);
+  }, [dimensions.length, dimensions.width, maxPoolDepth, floorInsulation, wallInsulation]);
 
   // ---- Vertical insulation calculations ----
   // External wall perimeter (pool + wall thickness 0.24m each side)
@@ -482,10 +485,10 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
     return 2 * ((dimensions.length + 0.48) + (dimensions.width + 0.48));
   }, [dimensions.length, dimensions.width]);
   
-  // External wall area: perimeter * (depth + 0.3m for plate offset)
+  // External wall area: perimeter * (maxDepth + 0.3m for plate offset)
   const verticalWallArea = useMemo(() => {
-    return verticalWallPerimeter * (dimensions.depth + 0.3);
-  }, [verticalWallPerimeter, dimensions.depth]);
+    return verticalWallPerimeter * (maxPoolDepth + 0.3);
+  }, [verticalWallPerimeter, maxPoolDepth]);
 
   // 1. Primer Kiesol MB: 10L packages, 0.2L/m²
   const calculatePrimerKiesol = useCallback(() => {
@@ -595,7 +598,7 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
       // Wall insulation
       if (wallInsulation === 'xps-5cm-wall' || wallInsulation === 'xps-10cm-wall') {
         const thickness = wallInsulation === 'xps-5cm-wall' ? '5cm' : '10cm';
-        const xpsResult = calculateWallXps(dimensions.length, dimensions.width, dimensions.depth, thickness);
+        const xpsResult = calculateWallXps(dimensions.length, dimensions.width, maxPoolDepth, thickness);
         const rate = thickness === '5cm' ? materialRates.xpsWall5cm : materialRates.xpsWall10cm;
         updated.push({
           id: 'xps_wall',
@@ -607,7 +610,7 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
           customOverride: false,
         });
       } else if (wallInsulation === 'pur-5cm') {
-        const purArea = calculateWallPurArea(dimensions.length, dimensions.width, dimensions.depth);
+        const purArea = calculateWallPurArea(dimensions.length, dimensions.width, maxPoolDepth);
         const rate = materialRates.purFoam5cm;
         updated.push({
           id: 'pur_wall',
@@ -794,7 +797,7 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
         return { ...prev, groupName: `Bloczek betonowy 38×24×${blockHeight}`, subItems: newSubItems };
       });
     }
-  }, [excavationArea, leanConcreteHeight, dimensions.stairs?.enabled, dimensions.wadingPool?.enabled, dimensions.length, dimensions.width, dimensions.depth, constructionTechnology, blockCalculation, blockHeight, wadingPoolBlocks, stairsBlocks, floorInsulation, wallInsulation, materialRates, calculatePapaRolls, calculateGruntPackages, calculatePapaObwodRolls, horizontalInsulationEnabled, papaLayers, verticalInsulationEnabled, calculatePrimerKiesol, calculateMasaMb2k, calculateMapegrout, calculateFoliaKubelkowa, calculateListwaMontazowa]);
+  }, [excavationArea, leanConcreteHeight, dimensions.stairs?.enabled, dimensions.wadingPool?.enabled, dimensions.length, dimensions.width, maxPoolDepth, constructionTechnology, blockCalculation, blockHeight, wadingPoolBlocks, stairsBlocks, floorInsulation, wallInsulation, materialRates, calculatePapaRolls, calculateGruntPackages, calculatePapaObwodRolls, horizontalInsulationEnabled, papaLayers, verticalInsulationEnabled, calculatePrimerKiesol, calculateMasaMb2k, calculateMapegrout, calculateFoliaKubelkowa, calculateListwaMontazowa]);
   
   // Update podsypka, piasek_zasypka, drenaz, and zakopanie in lineItems when excavation dimensions change
   useEffect(() => {
@@ -851,7 +854,7 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
     
     // Calculate columns concrete volume (only for masonry technology)
     const columnsConcreteData = blockCalculation 
-      ? calculateColumnsConcreteVolume(dimensions.length, dimensions.width, dimensions.depth, blockCalculation.crownHeight, totalColumnCount)
+      ? calculateColumnsConcreteVolume(dimensions.length, dimensions.width, maxPoolDepth, blockCalculation.crownHeight, totalColumnCount)
       : { volume: 0, columnCount: 0 };
     
     setB25ConcreteGroup(prev => {
@@ -913,7 +916,7 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
       
       return { ...prev, subItems: newSubItems };
     });
-  }, [floorSlabArea, floorSlabThickness, constructionTechnology, blockCalculation, dimensions.length, dimensions.width, dimensions.depth, totalColumnCount, dimensions.wadingPool, dimensions.stairs, wadingPoolSlabHeight]);
+  }, [floorSlabArea, floorSlabThickness, constructionTechnology, blockCalculation, dimensions.length, dimensions.width, maxPoolDepth, totalColumnCount, dimensions.wadingPool, dimensions.stairs, wadingPoolSlabHeight]);
   
   // Calculate expected values for reset functionality
   const getExpectedMaterialQuantity = useCallback((id: string): number => {
@@ -936,10 +939,10 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
       case 'xps_wall': {
         if (wallInsulation !== 'xps-5cm-wall' && wallInsulation !== 'xps-10cm-wall') return 0;
         const thickness = wallInsulation === 'xps-5cm-wall' ? '5cm' as const : '10cm' as const;
-        return calculateWallXps(dimensions.length, dimensions.width, dimensions.depth, thickness).packages;
+        return calculateWallXps(dimensions.length, dimensions.width, maxPoolDepth, thickness).packages;
       }
       case 'pur_wall':
-        return wallInsulation === 'pur-5cm' ? calculateWallPurArea(dimensions.length, dimensions.width, dimensions.depth) : 0;
+        return wallInsulation === 'pur-5cm' ? calculateWallPurArea(dimensions.length, dimensions.width, maxPoolDepth) : 0;
       case 'pianoklej':
         return calculatePianoklejCans();
       case 'papa_sbs':
