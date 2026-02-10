@@ -156,14 +156,24 @@ async function exportToPDF(
   doc.setFillColor(...BRAND.primary);
   doc.rect(0, 0, pw, 28, 'F');
 
+  let logoEndX = margin;
   if (logo) {
-    doc.addImage(logo, 'PNG', margin, 4, 20, 20);
+    // Load image to get natural dimensions for aspect ratio
+    const img = new Image();
+    img.src = logo;
+    await new Promise<void>((resolve) => { img.onload = () => resolve(); img.onerror = () => resolve(); });
+    const naturalW = img.naturalWidth || 1;
+    const naturalH = img.naturalHeight || 1;
+    const logoH = 18;
+    const logoW = (naturalW / naturalH) * logoH;
+    doc.addImage(logo, 'PNG', margin, 5, logoW, logoH);
+    logoEndX = margin + logoW + 4;
   }
 
   doc.setFontSize(16);
   doc.setFont(font, 'bold');
   doc.setTextColor(...BRAND.white);
-  doc.text(t(title), logo ? margin + 24 : margin, 16);
+  doc.text(t(title), logoEndX, 16);
 
   doc.setFontSize(8);
   doc.setFont(font, 'normal');
@@ -300,8 +310,8 @@ async function exportToPDF(
         const r = roundForExport(m.quantity);
         return s + (m.rate !== undefined ? r * m.rate : (m.total ?? 0));
       }, 0);
-      doc.text('RAZEM NETTO:', colRate - 10, y + 4);
-      doc.text(`${total.toFixed(2)} ${t('zł')}`, colTotal, y + 4, { align: 'right' });
+      const totalLabel = `RAZEM NETTO:  ${total.toFixed(2)} ${t('zł')}`;
+      doc.text(totalLabel, colTotal, y + 4, { align: 'right' });
       y += 14;
       doc.setTextColor(...BRAND.dark);
     }
