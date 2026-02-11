@@ -10,18 +10,31 @@ import {
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Edit2, RotateCcw } from 'lucide-react';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { Edit2, RotateCcw, Check, Save } from 'lucide-react';
 import { formatPrice } from '@/lib/calculations';
 import { cn } from '@/lib/utils';
-import { CalculatedMaterial, FoilLineItem } from '@/lib/finishingMaterials';
+import { CalculatedMaterial, FoilLineItem, FINISHING_MATERIALS } from '@/lib/finishingMaterials';
 
 interface FinishingMaterialsTableProps {
   foilLineItem: FoilLineItem;
   structuralFoilLineItem?: FoilLineItem | null;
   materials: CalculatedMaterial[];
   onUpdateMaterial: (id: string, manualQty: number | null) => void;
+  onUpdateMaterialPrice: (id: string, price: number) => void;
   onUpdateFoilQuantity: (qty: number | null) => void;
   manualFoilQty: number | null;
+  onSavePriceToSettings?: (materialId: string, price: number) => Promise<void>;
+  savedRates?: Record<string, number>;
 }
 
 export function FinishingMaterialsTable({
@@ -29,11 +42,26 @@ export function FinishingMaterialsTable({
   structuralFoilLineItem,
   materials,
   onUpdateMaterial,
+  onUpdateMaterialPrice,
   onUpdateFoilQuantity,
   manualFoilQty,
+  onSavePriceToSettings,
+  savedRates,
 }: FinishingMaterialsTableProps) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState<string>('');
+
+  // Track changed prices for confirm button
+  const [changedPrices, setChangedPrices] = useState<Record<string, number>>({});
+  
+  // Dialog state for rate save
+  const [showRateDialog, setShowRateDialog] = useState(false);
+  const [pendingRateChange, setPendingRateChange] = useState<{
+    materialId: string;
+    materialName: string;
+    oldRate: number;
+    newRate: number;
+  } | null>(null);
 
   const handleEditStart = (id: string, currentQty: number) => {
     setEditingId(id);
@@ -64,6 +92,68 @@ export function FinishingMaterialsTable({
     onUpdateMaterial(id, null);
   };
 
+  // Get default price for a material
+  const getDefaultPrice = (materialId: string): number => {
+    // Check saved settings first
+    if (savedRates?.[materialId] !== undefined) return savedRates[materialId];
+    // Then check hardcoded defaults
+    const def = FINISHING_MATERIALS.find(m => m.id === materialId);
+    return def?.pricePerUnit ?? 0;
+  };
+
+  // Handle price input change
+  const handlePriceChange = (materialId: string, newPrice: number) => {
+    onUpdateMaterialPrice(materialId, newPrice);
+    const defaultPrice = getDefaultPrice(materialId);
+    if (newPrice !== defaultPrice) {
+      setChangedPrices(prev => ({ ...prev, [materialId]: newPrice }));
+    } else {
+      setChangedPrices(prev => {
+        const { [materialId]: _, ...rest } = prev;
+        return rest;
+      });
+    }
+  };
+
+  // Confirm price change - opens dialog
+  const confirmPriceChange = (materialId: string, materialName: string) => {
+    const newRate = changedPrices[materialId];
+    if (newRate !== undefined) {
+      setPendingRateChange({
+        materialId,
+        materialName,
+        oldRate: getDefaultPrice(materialId),
+        newRate,
+      });
+      setShowRateDialog(true);
+    }
+  };
+
+  // Save rate to global settings
+  const handleSaveRateToSettings = async () => {
+    if (pendingRateChange && onSavePriceToSettings) {
+      await onSavePriceToSettings(pendingRateChange.materialId, pendingRateChange.newRate);
+      setChangedPrices(prev => {
+        const { [pendingRateChange.materialId]: _, ...rest } = prev;
+        return rest;
+      });
+    }
+    setShowRateDialog(false);
+    setPendingRateChange(null);
+  };
+
+  // Keep rate only for this offer
+  const handleKeepRateLocal = () => {
+    if (pendingRateChange) {
+      setChangedPrices(prev => {
+        const { [pendingRateChange.materialId]: _, ...rest } = prev;
+        return rest;
+      });
+    }
+    setShowRateDialog(false);
+    setPendingRateChange(null);
+  };
+
   // Calculate totals
   const foilQty = manualFoilQty ?? foilLineItem.quantity;
   const foilTotal = foilQty * foilLineItem.pricePerUnit;
@@ -82,7 +172,7 @@ export function FinishingMaterialsTable({
             <TableHead>Materiał</TableHead>
             <TableHead className="w-[100px] text-right">Ilość</TableHead>
             <TableHead className="w-[60px]">Jed.</TableHead>
-            <TableHead className="w-[100px] text-right">Cena/jed.</TableHead>
+            <TableHead className="w-[120px] text-right">Cena/jed.</TableHead>
             <TableHead className="w-[120px] text-right">Razem</TableHead>
             <TableHead className="w-[80px]">Akcje</TableHead>
           </TableRow>
@@ -160,7 +250,7 @@ export function FinishingMaterialsTable({
 
           {/* Structural foil line item (if present) */}
           {structuralFoilLineItem && (
-            <TableRow className="bg-amber-50/50 dark:bg-amber-900/10">
+            <TableRow className="bg-accent/30">
               <TableCell>
                 <div>
                   <p className="font-medium">{structuralFoilLineItem.name}</p>
@@ -189,6 +279,8 @@ export function FinishingMaterialsTable({
             const total = qty * material.pricePerUnit;
             const isModified = material.manualQty !== null;
             const isEditing = editingId === material.id;
+            const defaultPrice = getDefaultPrice(material.id);
+            const isPriceChanged = material.pricePerUnit !== defaultPrice;
 
             return (
               <TableRow key={material.id}>
@@ -230,7 +322,28 @@ export function FinishingMaterialsTable({
                 </TableCell>
                 <TableCell>{material.unit}</TableCell>
                 <TableCell className="text-right">
-                  {formatPrice(material.pricePerUnit)} zł
+                  <div className="flex items-center justify-end gap-1">
+                    <Input
+                      type="number"
+                      min="0"
+                      step="0.5"
+                      value={material.pricePerUnit}
+                      onChange={(e) => handlePriceChange(material.id, parseFloat(e.target.value) || 0)}
+                      className="w-[80px] h-8 text-right"
+                    />
+                    {changedPrices[material.id] !== undefined && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 text-success hover:text-success/80 hover:bg-success/10"
+                        onClick={() => confirmPriceChange(material.id, material.name)}
+                        title="Zatwierdź zmianę ceny"
+                      >
+                        <Check className="w-3.5 h-3.5" />
+                      </Button>
+                    )}
+                  </div>
                 </TableCell>
                 <TableCell className="text-right font-medium">
                   {formatPrice(total)} zł
@@ -287,6 +400,31 @@ export function FinishingMaterialsTable({
           </div>
         </div>
       </div>
+
+      {/* Rate change dialog */}
+      <AlertDialog open={showRateDialog} onOpenChange={setShowRateDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Zmiana ceny materiału</AlertDialogTitle>
+            <AlertDialogDescription>
+              Zmieniłeś cenę dla <strong>{pendingRateChange?.materialName}</strong> z{' '}
+              <strong>{formatPrice(pendingRateChange?.oldRate ?? 0)} zł</strong> na{' '}
+              <strong>{formatPrice(pendingRateChange?.newRate ?? 0)} zł</strong>.
+              <br /><br />
+              Czy chcesz zapisać tę cenę jako domyślną dla wszystkich przyszłych ofert?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="flex-col sm:flex-row gap-2">
+            <AlertDialogCancel onClick={handleKeepRateLocal}>
+              Tylko w tej ofercie
+            </AlertDialogCancel>
+            <AlertDialogAction onClick={handleSaveRateToSettings} className="flex items-center gap-2">
+              <Save className="w-4 h-4" />
+              Zapisz na stałe
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useConfigurator } from '@/context/ConfiguratorContext';
+import { useSettings } from '@/context/SettingsContext';
 import { FinishingWizardProvider, useFinishingWizard, FinishingType } from './FinishingWizardContext';
 import { SubtypeCard } from './components/SubtypeCard';
 import { FoilProductTable } from './components/FoilProductTable';
@@ -11,6 +12,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { ChevronLeft, ChevronRight, Layers, Grid3X3, AlertTriangle, RefreshCw, Calculator } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { FoilSubtype, SUBTYPE_NAMES } from '@/lib/finishingMaterials';
+import { toast } from 'sonner';
 
 interface FinishingModuleWizardProps {
   onNext: () => void;
@@ -20,6 +22,7 @@ interface FinishingModuleWizardProps {
 function WizardContent({ onNext, onBack }: FinishingModuleWizardProps) {
   const { state, dispatch, foilLineItem, structuralFoilLineItem, totalNet, canProceed } = useFinishingWizard();
   const { state: configuratorState } = useConfigurator();
+  const { companySettings, setCompanySettings } = useSettings();
   const [showDetailsDialog, setShowDetailsDialog] = useState(false);
   
   const subtypes: FoilSubtype[] = ['jednokolorowa', 'nadruk', 'strukturalna'];
@@ -42,6 +45,19 @@ function WizardContent({ onNext, onBack }: FinishingModuleWizardProps) {
 
   const handleUpdateMaterial = (id: string, manualQty: number | null) => {
     dispatch({ type: 'UPDATE_MATERIAL', payload: { id, manualQty } });
+  };
+
+  const handleUpdateMaterialPrice = (id: string, price: number) => {
+    dispatch({ type: 'UPDATE_MATERIAL_PRICE', payload: { id, price } });
+  };
+
+  const handleSavePriceToSettings = async (materialId: string, price: number) => {
+    const updatedRates = { ...(companySettings.finishingMaterialRates || {}), [materialId]: price };
+    await setCompanySettings({
+      ...companySettings,
+      finishingMaterialRates: updatedRates,
+    });
+    toast.success('Cena materiału zapisana w ustawieniach');
   };
 
   const handleUpdateFoilQuantity = (qty: number | null) => {
@@ -182,8 +198,11 @@ function WizardContent({ onNext, onBack }: FinishingModuleWizardProps) {
               structuralFoilLineItem={structuralFoilLineItem}
               materials={state.materials}
               onUpdateMaterial={handleUpdateMaterial}
+              onUpdateMaterialPrice={handleUpdateMaterialPrice}
               onUpdateFoilQuantity={handleUpdateFoilQuantity}
               manualFoilQty={state.manualFoilQty}
+              onSavePriceToSettings={handleSavePriceToSettings}
+              savedRates={companySettings.finishingMaterialRates}
             />
           </CardContent>
         </Card>
