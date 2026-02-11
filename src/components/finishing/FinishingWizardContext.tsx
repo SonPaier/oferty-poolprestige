@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useReducer, ReactNode, useMemo, useEffect } from 'react';
+import { useSettings } from '@/context/SettingsContext';
 import { 
   FoilSubtype, 
   DEFAULT_SUBTYPE_PRICES, 
@@ -69,6 +70,7 @@ type FinishingWizardAction =
   | { type: 'SET_MANUAL_FOIL_QTY'; payload: number | null }
   | { type: 'SET_MATERIALS'; payload: CalculatedMaterial[] }
   | { type: 'UPDATE_MATERIAL'; payload: { id: string; manualQty: number | null } }
+  | { type: 'UPDATE_MATERIAL_PRICE'; payload: { id: string; price: number } }
   | { type: 'SET_SHOW_COLOR_GALLERY'; payload: boolean }
   | { type: 'SET_SHOW_PRODUCT_TABLE'; payload: boolean }
   | { type: 'SET_REQUIRES_RECALCULATION'; payload: boolean }
@@ -182,6 +184,16 @@ function finishingWizardReducer(
         ),
       };
 
+    case 'UPDATE_MATERIAL_PRICE':
+      return {
+        ...state,
+        materials: state.materials.map((m) =>
+          m.id === action.payload.id
+            ? { ...m, pricePerUnit: action.payload.price, total: (m.manualQty ?? m.suggestedQty) * action.payload.price }
+            : m
+        ),
+      };
+
     case 'SET_SHOW_COLOR_GALLERY':
       return {
         ...state,
@@ -240,6 +252,8 @@ export function FinishingWizardProvider({
   initialFinishingType,
 }: FinishingWizardProviderProps) {
   const { state: configuratorState } = useConfigurator();
+  const { companySettings } = useSettings();
+  const savedRates = companySettings.finishingMaterialRates;
   const [state, dispatch] = useReducer(finishingWizardReducer, {
     ...initialState,
     finishingType: initialFinishingType ?? null,
@@ -292,10 +306,17 @@ export function FinishingWizardProvider({
       },
     });
 
-    // Calculate materials with butt joint info
+    // Calculate materials with butt joint info, applying saved rates
+    const mats = calculateMaterials(fullAreas);
+    const matsWithSavedRates = savedRates 
+      ? mats.map(m => savedRates[m.id] !== undefined 
+          ? { ...m, pricePerUnit: savedRates[m.id], total: m.suggestedQty * savedRates[m.id] }
+          : m
+        )
+      : mats;
     dispatch({
       type: 'SET_MATERIALS',
-      payload: calculateMaterials(fullAreas),
+      payload: matsWithSavedRates,
     });
   }, [
     configuratorState.dimensions.length,
@@ -306,6 +327,7 @@ export function FinishingWizardProvider({
     configuratorState.dimensions.stairs?.enabled,
     configuratorState.dimensions.wadingPool?.enabled,
     state.selectedSubtype, // Recalculate when subtype changes (affects buttJointMeters)
+    savedRates,
   ]);
 
   // Computed: foil line items (main + structural)

@@ -364,6 +364,11 @@ export const defaultConstructionMaterialRates: ConstructionMaterialRates = {
   laborWadingRate: 1000,
 };
 
+// Finishing material rates (keyed by material id from FINISHING_MATERIALS)
+export interface FinishingMaterialRates {
+  [materialId: string]: number; // material id → price per unit
+}
+
 export interface CompanySettings {
   name: string;
   address: string;
@@ -384,6 +389,8 @@ export interface CompanySettings {
   contactPerson?: ContactPersonSettings;
   // Construction material rates
   constructionMaterialRates?: ConstructionMaterialRates;
+  // Finishing material rates
+  finishingMaterialRates?: FinishingMaterialRates;
 }
 
 export interface EmailTemplateSettings {
