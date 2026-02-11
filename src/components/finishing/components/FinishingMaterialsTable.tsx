@@ -218,10 +218,10 @@ export function FinishingMaterialsTable({
             </TableCell>
             <TableCell>{foilLineItem.unit}</TableCell>
             <TableCell className="text-right">
-              {formatPrice(foilLineItem.pricePerUnit)} zł
+              {formatPrice(foilLineItem.pricePerUnit)}
             </TableCell>
             <TableCell className="text-right font-medium">
-              {formatPrice(foilTotal)} zł
+              {formatPrice(foilTotal)}
             </TableCell>
             <TableCell>
               <div className="flex items-center gap-1">
@@ -262,10 +262,10 @@ export function FinishingMaterialsTable({
               </TableCell>
               <TableCell>{structuralFoilLineItem.unit}</TableCell>
               <TableCell className="text-right">
-                {formatPrice(structuralFoilLineItem.pricePerUnit)} zł
+                {formatPrice(structuralFoilLineItem.pricePerUnit)}
               </TableCell>
               <TableCell className="text-right font-medium">
-                {formatPrice(structuralFoilLineItem.total)} zł
+                {formatPrice(structuralFoilLineItem.total)}
               </TableCell>
               <TableCell>
                 {/* Structural foil quantity is auto-calculated, no manual edit */}
@@ -346,7 +346,7 @@ export function FinishingMaterialsTable({
                   </div>
                 </TableCell>
                 <TableCell className="text-right font-medium">
-                  {formatPrice(total)} zł
+                  {formatPrice(total)}
                 </TableCell>
                 <TableCell>
                   <div className="flex items-center gap-1">
@@ -382,21 +382,21 @@ export function FinishingMaterialsTable({
         <div className="w-72 space-y-2 text-sm">
           <div className="flex justify-between">
             <span className="text-muted-foreground">Folia główna:</span>
-            <span className="font-medium">{formatPrice(foilTotal)} zł</span>
+            <span className="font-medium">{formatPrice(foilTotal)}</span>
           </div>
           {structuralFoilLineItem && (
             <div className="flex justify-between">
               <span className="text-muted-foreground">Folia strukturalna:</span>
-              <span className="font-medium">{formatPrice(structuralTotal)} zł</span>
+              <span className="font-medium">{formatPrice(structuralTotal)}</span>
             </div>
           )}
           <div className="flex justify-between">
             <span className="text-muted-foreground">Materiały:</span>
-            <span className="font-medium">{formatPrice(materialsTotal)} zł</span>
+            <span className="font-medium">{formatPrice(materialsTotal)}</span>
           </div>
           <div className="flex justify-between pt-2 border-t text-base">
             <span className="font-semibold">RAZEM NETTO:</span>
-            <span className="font-bold text-primary">{formatPrice(grandTotal)} zł</span>
+            <span className="font-bold text-primary">{formatPrice(grandTotal)}</span>
           </div>
         </div>
       </div>
@@ -408,8 +408,8 @@ export function FinishingMaterialsTable({
             <AlertDialogTitle>Zmiana ceny materiału</AlertDialogTitle>
             <AlertDialogDescription>
               Zmieniłeś cenę dla <strong>{pendingRateChange?.materialName}</strong> z{' '}
-              <strong>{formatPrice(pendingRateChange?.oldRate ?? 0)} zł</strong> na{' '}
-              <strong>{formatPrice(pendingRateChange?.newRate ?? 0)} zł</strong>.
+              <strong>{formatPrice(pendingRateChange?.oldRate ?? 0)}</strong> na{' '}
+              <strong>{formatPrice(pendingRateChange?.newRate ?? 0)}</strong>.
               <br /><br />
               Czy chcesz zapisać tę cenę jako domyślną dla wszystkich przyszłych ofert?
             </AlertDialogDescription>
