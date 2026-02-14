@@ -1,7 +1,7 @@
 import { ReactNode, useState } from "react";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { AppSidebar } from "./AppSidebar";
-import { AppHeader } from "./AppHeader";
+
 import { SettingsDialog } from "./SettingsDialog";
 import { useSettings } from "@/context/SettingsContext";
 
@@ -23,7 +23,7 @@ export function AppLayout({ children }: AppLayoutProps) {
       <div className="min-h-screen flex w-full">
         <AppSidebar />
         <div className="flex-1 flex flex-col min-w-0">
-          <AppHeader onSettingsClick={() => setShowSettings(true)} />
+          
           <main className="flex-1 overflow-visible">
             {children}
           </main>
