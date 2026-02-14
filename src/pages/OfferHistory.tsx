@@ -44,7 +44,7 @@ import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { pl } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
-import { Header } from '@/components/Header';
+
 
 type OfferWithShare = SavedOffer & { shareUid?: string };
 
@@ -228,8 +228,6 @@ export default function OfferHistory() {
 
   return (
     <div className="min-h-screen bg-background">
-      <Header />
-
       <main className="container mx-auto px-4 py-6 space-y-6">
         {/* Filters */}
         <div className="glass-card p-4 space-y-4">
