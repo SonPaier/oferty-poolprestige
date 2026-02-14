@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react';
-
+import { Header } from '@/components/Header';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -277,6 +277,8 @@ export default function Products() {
 
   return (
     <div className="min-h-screen bg-background">
+      <Header showNavLinks />
+
       <main className="container mx-auto px-4 py-6">
         <Card>
           <CardHeader>

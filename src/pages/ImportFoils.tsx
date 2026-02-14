@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
-
+import { Header } from '@/components/Header';
 import { foilImportApi, elbeImportApi, FoilProduct, extractColorFromImage } from '@/lib/api/firecrawl';
 import { Search, Download, Save, CheckCircle, Loader2, ExternalLink, Factory, ImageIcon, Type } from 'lucide-react';
 import { ShadeSelect, getShadeHex } from '@/components/ShadeSelect';
@@ -256,6 +256,7 @@ export default function ImportFoils() {
 
   return (
     <div className="min-h-screen bg-background">
+      <Header />
       <main className="container mx-auto py-8 px-4">
         <Card className="max-w-6xl mx-auto">
           <CardHeader>

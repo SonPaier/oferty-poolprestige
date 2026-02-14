@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { SettingsDialog } from '@/components/SettingsDialog';
-
+import { Header } from '@/components/Header';
 import { 
   Plus, 
   Waves, 
@@ -115,6 +115,8 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen bg-background">
+      <Header onSettingsClick={() => setShowSettings(true)} />
+
       <main className="container mx-auto px-4 py-8">
         {/* New Offer Buttons */}
         <section className="mb-8">

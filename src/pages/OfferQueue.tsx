@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-
+import { Header } from '@/components/Header';
 import { SettingsDialog } from '@/components/SettingsDialog';
 import { useSettings } from '@/context/SettingsContext';
 import { Button } from '@/components/ui/button';
@@ -148,6 +148,10 @@ export default function OfferQueue() {
 
   return (
     <div className="min-h-screen bg-background">
+      <Header 
+        onSettingsClick={() => setSettingsOpen(true)} 
+      />
+      
       <main className="container mx-auto px-4 lg:px-6 py-6">
         <div className="flex items-center justify-between mb-6">
           <div>
