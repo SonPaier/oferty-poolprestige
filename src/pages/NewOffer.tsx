@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useSearchParams, useNavigate, useBlocker } from 'react-router-dom';
 import { ConfiguratorProvider, useConfigurator } from '@/context/ConfiguratorContext';
 import { useSettings } from '@/context/SettingsContext';
-import { Header } from '@/components/Header';
+
 import { StepNavigation } from '@/components/StepNavigation';
 import { BottomNavigationBar } from '@/components/BottomNavigationBar';
 import { CustomerStep } from '@/components/steps/CustomerStep';
@@ -331,12 +331,6 @@ function ConfiguratorContent() {
 
   return (
     <div className="min-h-screen pb-20">
-      <Header 
-        onNewOffer={handleNewOffer}
-        onSettingsClick={() => setShowSettings(true)}
-        editMode={state.editMode}
-      />
-      
       <main className="container mx-auto px-4 py-6">
         <StepNavigation 
           currentStep={step} 
