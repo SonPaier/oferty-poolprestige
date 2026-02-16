@@ -6,13 +6,17 @@ import { SubtypeCard } from './components/SubtypeCard';
 import { FoilProductTable } from './components/FoilProductTable';
 import { FinishingMaterialsTable } from './components/FinishingMaterialsTable';
 import { CalculationDetailsDialog } from './components/CalculationDetailsDialog';
+import { MaterialsExportButton } from '@/components/groundworks/MaterialsExportButton';
 import { Button } from '@/components/ui/button';
+import { Textarea } from '@/components/ui/textarea';
+import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { ChevronLeft, ChevronRight, Layers, Grid3X3, AlertTriangle, RefreshCw, Calculator } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { FoilSubtype, SUBTYPE_NAMES } from '@/lib/finishingMaterials';
 import { toast } from 'sonner';
+import { formatPrice } from '@/lib/calculations';
 
 interface FinishingModuleWizardProps {
   onNext: () => void;
@@ -225,6 +229,85 @@ function WizardContent({ onNext, onBack }: FinishingModuleWizardProps) {
         </Card>
       )}
 
+
+      {/* Notes and Export */}
+      {state.finishingType === 'foil' && state.selectedSubtype && foilLineItem && (
+        <Card>
+          <CardContent className="pt-6 space-y-4">
+            <div>
+              <Label htmlFor="finishing-notes" className="text-sm font-medium">Uwagi</Label>
+              <Textarea
+                id="finishing-notes"
+                value={state.finishingNotes}
+                onChange={(e) => dispatch({ type: 'SET_FINISHING_NOTES', payload: e.target.value })}
+                placeholder="Dodatkowe uwagi dotyczące wykończenia..."
+                className="mt-2"
+              />
+            </div>
+            <div className="mt-4">
+              <MaterialsExportButton
+                title="Wykończenie"
+                offerNumber={configuratorState.editMode.offerNumber}
+                notes={state.finishingNotes}
+                materials={(() => {
+                  const rows = [];
+                  // Foil main
+                  const foilQty = state.manualFoilQty ?? foilLineItem.quantity;
+                  rows.push({
+                    name: foilLineItem.name,
+                    quantity: foilQty,
+                    unit: foilLineItem.unit,
+                    rate: foilLineItem.pricePerUnit,
+                    total: foilQty * foilLineItem.pricePerUnit,
+                  });
+                  // Structural foil
+                  if (structuralFoilLineItem) {
+                    rows.push({
+                      name: structuralFoilLineItem.name,
+                      quantity: structuralFoilLineItem.quantity,
+                      unit: structuralFoilLineItem.unit,
+                      rate: structuralFoilLineItem.pricePerUnit,
+                      total: structuralFoilLineItem.total,
+                    });
+                  }
+                  // Materials
+                  state.materials.forEach(m => {
+                    const qty = m.manualQty ?? m.suggestedQty;
+                    rows.push({
+                      name: m.name,
+                      quantity: qty,
+                      unit: m.unit,
+                      rate: m.pricePerUnit,
+                      total: qty * m.pricePerUnit,
+                    });
+                  });
+                  // Extra items
+                  state.extraItems.forEach(i => {
+                    rows.push({
+                      name: i.name,
+                      quantity: i.quantity,
+                      unit: i.unit,
+                      rate: i.rate,
+                      total: i.netValue,
+                    });
+                  });
+                  return rows;
+                })()}
+                customer={configuratorState.customerData ? {
+                  companyName: configuratorState.customerData.companyName,
+                  contactPerson: configuratorState.customerData.contactPerson,
+                  email: configuratorState.customerData.email,
+                  phone: configuratorState.customerData.phone,
+                  address: configuratorState.customerData.address,
+                  city: configuratorState.customerData.city,
+                  postalCode: configuratorState.customerData.postalCode,
+                  nip: configuratorState.customerData.nip,
+                } : undefined}
+              />
+            </div>
+          </CardContent>
+        </Card>
+      )}
       {/* Ceramic placeholder */}
       {state.finishingType === 'ceramic' && (
         <Card>

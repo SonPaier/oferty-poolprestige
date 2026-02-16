@@ -35,6 +35,7 @@ export interface FinishingWizardState {
   materials: CalculatedMaterial[];
   underlayType: UnderlayType;
   extraItems: ExtraLineItem[];
+  finishingNotes: string;
   showColorGallery: boolean;
   showProductTable: boolean;
   requiresRecalculation: boolean;
@@ -59,6 +60,7 @@ type FinishingWizardAction =
   | { type: 'SET_UNDERLAY_TYPE'; payload: UnderlayType }
   | { type: 'ADD_EXTRA_ITEM'; payload: ExtraLineItem }
   | { type: 'REMOVE_EXTRA_ITEM'; payload: string }
+  | { type: 'SET_FINISHING_NOTES'; payload: string }
   | { type: 'RESET' };
 
 const defaultPoolAreas: PoolAreas = {
@@ -93,6 +95,7 @@ const initialState: FinishingWizardState = {
   materials: [],
   underlayType: 'zwykly',
   extraItems: [],
+  finishingNotes: '',
   showColorGallery: false,
   showProductTable: false,
   requiresRecalculation: false,
@@ -180,6 +183,8 @@ function finishingWizardReducer(
       return { ...state, extraItems: [...state.extraItems, action.payload] };
     case 'REMOVE_EXTRA_ITEM':
       return { ...state, extraItems: state.extraItems.filter((i) => i.id !== action.payload) };
+    case 'SET_FINISHING_NOTES':
+      return { ...state, finishingNotes: action.payload };
     case 'RESET':
       return initialState;
     default:
