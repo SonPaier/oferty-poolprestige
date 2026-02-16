@@ -7,77 +7,102 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { PoolAreas } from '@/lib/finishingMaterials';
+import { PoolAreas, MaterialContext, FINISHING_MATERIALS, calculateMaterials } from '@/lib/finishingMaterials';
 
 interface MaterialFormulasTableProps {
   poolAreas: PoolAreas;
+  materialContext: MaterialContext;
 }
 
-interface FormulaDefinition {
+interface FormulaDisplay {
   name: string;
   formula: string;
-  inputField: keyof PoolAreas | 'custom';
-  multiplier?: number;
-  unit: string;
-  calculate: (areas: PoolAreas) => number;
+  inputValue: string;
+  result: string;
 }
 
-const MATERIAL_FORMULAS: FormulaDefinition[] = [
-  {
-    name: 'Podkład pod folię',
-    formula: 'powierzchnia × 1.1',
-    inputField: 'totalArea',
-    unit: 'm²',
-    calculate: (areas) => Math.ceil(areas.totalArea * 1.1),
-  },
-  {
-    name: 'Kątownik PVC',
-    formula: 'obwód',
-    inputField: 'perimeter',
-    unit: 'mb',
-    calculate: (areas) => Math.ceil(areas.perimeter),
-  },
-  {
-    name: 'Klej kontaktowy',
-    formula: 'powierzchnia / 20',
-    inputField: 'totalArea',
-    unit: 'kg',
-    calculate: (areas) => Math.ceil(areas.totalArea / 20),
-  },
-  {
-    name: 'Nity montażowe',
-    formula: 'obwód × 4',
-    inputField: 'perimeter',
-    unit: 'szt',
-    calculate: (areas) => Math.ceil(areas.perimeter * 4),
-  },
-  {
-    name: 'Silikon podwodny',
-    formula: 'obwód / 8',
-    inputField: 'perimeter',
-    unit: 'szt',
-    calculate: (areas) => Math.ceil(areas.perimeter / 8),
-  },
-  {
-    name: 'Taśma uszczelniająca',
-    formula: 'obwód × 1.05',
-    inputField: 'perimeter',
-    unit: 'mb',
-    calculate: (areas) => Math.ceil(areas.perimeter * 1.05),
-  },
-];
+function getFormulas(areas: PoolAreas, ctx: MaterialContext): FormulaDisplay[] {
+  const materials = calculateMaterials(areas, ctx);
+  const formulas: FormulaDisplay[] = [];
 
-export function MaterialFormulasTable({ poolAreas }: MaterialFormulasTableProps) {
-  const getInputValue = (formula: FormulaDefinition): string => {
-    if (formula.inputField === 'custom') {
-      return '-';
+  for (const mat of materials) {
+    const def = FINISHING_MATERIALS.find(m => m.id === mat.id);
+    if (!def) continue;
+
+    let formula = '';
+    let inputValue = '';
+
+    switch (mat.id) {
+      case 'podklad-pod-folie':
+        if (ctx.underlayType === 'impregnowany') {
+          formula = 'optymalizacja pasów 1.5m+2m (dno) + ściany×głęb.';
+          inputValue = `${areas.poolWidth.toFixed(1)}m szer. × ${areas.poolLength.toFixed(1)}m dł., obw. ${areas.perimeter.toFixed(1)}mb`;
+        } else {
+          formula = 'ceil(szer./2) × dł. × 2m (dno) + obwód × 2m (ściany)';
+          inputValue = `${areas.poolWidth.toFixed(1)}m szer. × ${areas.poolLength.toFixed(1)}m dł., obw. ${areas.perimeter.toFixed(1)}mb`;
+        }
+        break;
+      case 'klej-podklad-20kg':
+        formula = 'ceil(powierzchnia / 100)';
+        inputValue = `${areas.totalArea.toFixed(2)} m²`;
+        break;
+      case 'folia-podkladowa-20m':
+        formula = 'ceil(zgrzewy doczołowe / 20)';
+        inputValue = `${(areas.buttJointMeters ?? 0).toFixed(1)} mb zgrzewów`;
+        break;
+      case 'katownik-zewnetrzny-2m':
+        formula = 'ceil((obwód + stopnie + brodzik) / 2)';
+        inputValue = `obw. ${areas.perimeter.toFixed(1)} + stopnie ${areas.stairsStepPerimeter.toFixed(1)} + brodz. ${areas.wadingPoolPerimeter.toFixed(1)}mb`;
+        break;
+      case 'katownik-wewnetrzny-2m':
+        formula = 'ręcznie';
+        inputValue = '-';
+        break;
+      case 'plaskownik-pvc-2m':
+        formula = 'ręcznie';
+        inputValue = '-';
+        break;
+      case 'nity-200szt':
+        formula = 'ceil(suma profili / 40)';
+        const totalProfiles = (ctx.materialQtys['katownik-zewnetrzny-2m'] || 0) +
+          (ctx.materialQtys['katownik-wewnetrzny-2m'] || 0) +
+          (ctx.materialQtys['plaskownik-pvc-2m'] || 0);
+        inputValue = `${totalProfiles} szt. profili`;
+        break;
+      case 'folia-w-plynie-1l':
+        formula = 'ceil(powierzchnia / 100)';
+        inputValue = `${areas.totalArea.toFixed(2)} m²`;
+        break;
+      case 'usluga-foliowanie-niecki':
+        formula = 'dno netto + ściany';
+        inputValue = `dno ${areas.netBottomArea.toFixed(2)} + ściany ${areas.wallArea.toFixed(2)} m²`;
+        break;
+      case 'usluga-foliowanie-schodow':
+        formula = 'powierzchnia schodów';
+        inputValue = `${(areas.stairsArea ?? 0).toFixed(2)} m²`;
+        break;
+      case 'usluga-foliowanie-rynny':
+        formula = 'obwód basenu';
+        inputValue = `${areas.perimeter.toFixed(2)} mb`;
+        break;
+      default:
+        formula = '-';
+        inputValue = '-';
     }
-    const value = poolAreas[formula.inputField];
-    if (typeof value === 'number') {
-      return `${value.toFixed(2)} ${formula.inputField === 'perimeter' ? 'mb' : 'm²'}`;
-    }
-    return '-';
-  };
+
+    formulas.push({
+      name: mat.name,
+      formula,
+      inputValue,
+      result: `${mat.suggestedQty} ${mat.unit}`,
+    });
+  }
+
+  return formulas;
+}
+
+export function MaterialFormulasTable({ poolAreas, materialContext }: MaterialFormulasTableProps) {
+  const formulas = getFormulas(poolAreas, materialContext);
 
   return (
     <div className="space-y-4">
@@ -97,32 +122,29 @@ export function MaterialFormulasTable({ poolAreas }: MaterialFormulasTableProps)
             </TableRow>
           </TableHeader>
           <TableBody>
-            {MATERIAL_FORMULAS.map((formula, idx) => {
-              const result = formula.calculate(poolAreas);
-              return (
-                <TableRow key={idx}>
-                  <TableCell className="font-medium">{formula.name}</TableCell>
-                  <TableCell>
-                    <code className="px-2 py-1 rounded bg-muted text-sm font-mono">
-                      {formula.formula}
-                    </code>
-                  </TableCell>
-                  <TableCell className="text-right text-muted-foreground">
-                    {getInputValue(formula)}
-                  </TableCell>
-                  <TableCell className="text-right font-semibold">
-                    {result} {formula.unit}
-                  </TableCell>
-                </TableRow>
-              );
-            })}
+            {formulas.map((f, idx) => (
+              <TableRow key={idx}>
+                <TableCell className="font-medium">{f.name}</TableCell>
+                <TableCell>
+                  <code className="px-2 py-1 rounded bg-muted text-sm font-mono">
+                    {f.formula}
+                  </code>
+                </TableCell>
+                <TableCell className="text-right text-muted-foreground">
+                  {f.inputValue}
+                </TableCell>
+                <TableCell className="text-right font-semibold">
+                  {f.result}
+                </TableCell>
+              </TableRow>
+            ))}
           </TableBody>
         </Table>
       </div>
 
       <p className="text-xs text-muted-foreground">
-        📐 Wartości zaokrąglane w górę do pełnych jednostek. 
-        Obliczenia bazują na powierzchni całkowitej ({poolAreas.totalArea.toFixed(2)} m²) 
+        📐 Wartości zaokrąglane w górę do pełnych jednostek.
+        Obliczenia bazują na powierzchni całkowitej ({poolAreas.totalArea.toFixed(2)} m²)
         i obwodzie ({poolAreas.perimeter.toFixed(2)} mb).
       </p>
     </div>
