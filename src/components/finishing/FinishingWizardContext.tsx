@@ -2,6 +2,7 @@ import React, { createContext, useContext, useReducer, ReactNode, useMemo, useEf
 import { useSettings } from '@/context/SettingsContext';
 import { 
   FoilSubtype, 
+  UnderlayType,
   DEFAULT_SUBTYPE_PRICES, 
   CalculatedMaterial, 
   calculateMaterials, 
@@ -9,51 +10,31 @@ import {
   getFoilLineItems,
   FoilLineItem,
   PoolAreas,
+  MaterialContext,
 } from '@/lib/finishingMaterials';
 import { useConfigurator } from '@/context/ConfiguratorContext';
 import { autoOptimizeMixConfig, calculateFoilAreaForPricing, calculateButtJointMeters } from '@/lib/foil/mixPlanner';
+import { ExtraLineItem } from '@/components/groundworks/ExtraLineItems';
 
 // Types
 export type FinishingType = 'foil' | 'ceramic' | null;
 
 export interface FinishingWizardState {
-  // Main selection
   finishingType: FinishingType;
-  
-  // Foil subtype (3 price variants)
   selectedSubtype: FoilSubtype | null;
   subtypePrices: Record<FoilSubtype, number>;
-  
-  // Specific product (optional)
   selectedProductId: string | null;
   selectedProductName: string | null;
-  
-  // Table filters
   filters: {
     manufacturer: string | null;
     shade: string | null;
     searchQuery: string;
   };
-  
-  // Foil quantity
-  poolAreas: {
-    totalArea: number;
-    perimeter: number;
-    bottomArea: number;
-    netBottomArea: number;
-    wallArea: number;
-    stairsArea: number;
-    stairsProjection: number;
-    wadingPoolArea: number;
-    wadingPoolProjection: number;
-    buttJointMeters: number; // Butt joint weld length for structural foil
-  };
+  poolAreas: PoolAreas;
   manualFoilQty: number | null;
-  
-  // Materials (hardcoded, with manual overrides)
   materials: CalculatedMaterial[];
-  
-  // UI state
+  underlayType: UnderlayType;
+  extraItems: ExtraLineItem[];
   showColorGallery: boolean;
   showProductTable: boolean;
   requiresRecalculation: boolean;
@@ -66,7 +47,7 @@ type FinishingWizardAction =
   | { type: 'SET_SUBTYPE_PRICE'; payload: { subtype: FoilSubtype; price: number } }
   | { type: 'SET_SELECTED_PRODUCT'; payload: { id: string | null; name: string | null } }
   | { type: 'SET_FILTERS'; payload: Partial<FinishingWizardState['filters']> }
-  | { type: 'SET_POOL_AREAS'; payload: FinishingWizardState['poolAreas'] }
+  | { type: 'SET_POOL_AREAS'; payload: PoolAreas }
   | { type: 'SET_MANUAL_FOIL_QTY'; payload: number | null }
   | { type: 'SET_MATERIALS'; payload: CalculatedMaterial[] }
   | { type: 'UPDATE_MATERIAL'; payload: { id: string; manualQty: number | null } }
@@ -75,40 +56,48 @@ type FinishingWizardAction =
   | { type: 'SET_SHOW_PRODUCT_TABLE'; payload: boolean }
   | { type: 'SET_REQUIRES_RECALCULATION'; payload: boolean }
   | { type: 'RECALCULATE_MATERIALS' }
+  | { type: 'SET_UNDERLAY_TYPE'; payload: UnderlayType }
+  | { type: 'ADD_EXTRA_ITEM'; payload: ExtraLineItem }
+  | { type: 'REMOVE_EXTRA_ITEM'; payload: string }
   | { type: 'RESET' };
 
-// Initial state
+const defaultPoolAreas: PoolAreas = {
+  totalArea: 0,
+  perimeter: 0,
+  bottomArea: 0,
+  netBottomArea: 0,
+  wallArea: 0,
+  stairsArea: 0,
+  stairsProjection: 0,
+  wadingPoolArea: 0,
+  wadingPoolProjection: 0,
+  buttJointMeters: 0,
+  poolLength: 0,
+  poolWidth: 0,
+  poolDepth: 0,
+  stairsStepPerimeter: 0,
+  wadingPoolPerimeter: 0,
+  hasWadingWall: false,
+  isGutterPool: false,
+};
+
 const initialState: FinishingWizardState = {
   finishingType: null,
   selectedSubtype: null,
   subtypePrices: { ...DEFAULT_SUBTYPE_PRICES },
   selectedProductId: null,
   selectedProductName: null,
-  filters: {
-    manufacturer: null,
-    shade: null,
-    searchQuery: '',
-  },
-  poolAreas: {
-    totalArea: 0,
-    perimeter: 0,
-    bottomArea: 0,
-    netBottomArea: 0,
-    wallArea: 0,
-    stairsArea: 0,
-    stairsProjection: 0,
-    wadingPoolArea: 0,
-    wadingPoolProjection: 0,
-    buttJointMeters: 0,
-  },
+  filters: { manufacturer: null, shade: null, searchQuery: '' },
+  poolAreas: defaultPoolAreas,
   manualFoilQty: null,
   materials: [],
+  underlayType: 'zwykly',
+  extraItems: [],
   showColorGallery: false,
   showProductTable: false,
   requiresRecalculation: false,
 };
 
-// Reducer
 function finishingWizardReducer(
   state: FinishingWizardState,
   action: FinishingWizardAction
@@ -123,7 +112,6 @@ function finishingWizardReducer(
         selectedProductName: null,
         showProductTable: false,
       };
-
     case 'SET_SELECTED_SUBTYPE':
       return {
         ...state,
@@ -132,58 +120,32 @@ function finishingWizardReducer(
         selectedProductName: null,
         showProductTable: action.payload !== null,
       };
-
     case 'SET_SUBTYPE_PRICE':
       return {
         ...state,
-        subtypePrices: {
-          ...state.subtypePrices,
-          [action.payload.subtype]: action.payload.price,
-        },
+        subtypePrices: { ...state.subtypePrices, [action.payload.subtype]: action.payload.price },
       };
-
     case 'SET_SELECTED_PRODUCT':
       return {
         ...state,
         selectedProductId: action.payload.id,
         selectedProductName: action.payload.name,
       };
-
     case 'SET_FILTERS':
-      return {
-        ...state,
-        filters: { ...state.filters, ...action.payload },
-      };
-
+      return { ...state, filters: { ...state.filters, ...action.payload } };
     case 'SET_POOL_AREAS':
-      return {
-        ...state,
-        poolAreas: action.payload,
-        requiresRecalculation: false,
-      };
-
+      return { ...state, poolAreas: action.payload, requiresRecalculation: false };
     case 'SET_MANUAL_FOIL_QTY':
-      return {
-        ...state,
-        manualFoilQty: action.payload,
-      };
-
+      return { ...state, manualFoilQty: action.payload };
     case 'SET_MATERIALS':
-      return {
-        ...state,
-        materials: action.payload,
-      };
-
+      return { ...state, materials: action.payload };
     case 'UPDATE_MATERIAL':
       return {
         ...state,
         materials: state.materials.map((m) =>
-          m.id === action.payload.id
-            ? { ...m, manualQty: action.payload.manualQty }
-            : m
+          m.id === action.payload.id ? { ...m, manualQty: action.payload.manualQty } : m
         ),
       };
-
     case 'UPDATE_MATERIAL_PRICE':
       return {
         ...state,
@@ -193,36 +155,33 @@ function finishingWizardReducer(
             : m
         ),
       };
-
     case 'SET_SHOW_COLOR_GALLERY':
-      return {
-        ...state,
-        showColorGallery: action.payload,
-      };
-
+      return { ...state, showColorGallery: action.payload };
     case 'SET_SHOW_PRODUCT_TABLE':
-      return {
-        ...state,
-        showProductTable: action.payload,
-      };
-
+      return { ...state, showProductTable: action.payload };
     case 'SET_REQUIRES_RECALCULATION':
-      return {
-        ...state,
-        requiresRecalculation: action.payload,
+      return { ...state, requiresRecalculation: action.payload };
+    case 'RECALCULATE_MATERIALS': {
+      const ctx: MaterialContext = {
+        selectedSubtype: state.selectedSubtype,
+        underlayType: state.underlayType,
+        materialQtys: {},
       };
-
-    case 'RECALCULATE_MATERIALS':
       return {
         ...state,
-        materials: calculateMaterials(state.poolAreas),
+        materials: calculateMaterials(state.poolAreas, ctx),
         manualFoilQty: null,
         requiresRecalculation: false,
       };
-
+    }
+    case 'SET_UNDERLAY_TYPE':
+      return { ...state, underlayType: action.payload };
+    case 'ADD_EXTRA_ITEM':
+      return { ...state, extraItems: [...state.extraItems, action.payload] };
+    case 'REMOVE_EXTRA_ITEM':
+      return { ...state, extraItems: state.extraItems.filter((i) => i.id !== action.payload) };
     case 'RESET':
       return initialState;
-
     default:
       return state;
   }
@@ -232,7 +191,6 @@ function finishingWizardReducer(
 interface FinishingWizardContextType {
   state: FinishingWizardState;
   dispatch: React.Dispatch<FinishingWizardAction>;
-  // Computed values
   foilLineItem: FoilLineItem | null;
   structuralFoilLineItem: FoilLineItem | null;
   totalNet: number;
@@ -241,7 +199,6 @@ interface FinishingWizardContextType {
 
 const FinishingWizardContext = createContext<FinishingWizardContextType | undefined>(undefined);
 
-// Provider
 interface FinishingWizardProviderProps {
   children: ReactNode;
   initialFinishingType?: FinishingType;
@@ -271,11 +228,13 @@ export function FinishingWizardProvider({
       depth: dimensions.depth,
       depthDeep: dimensions.depthDeep,
       hasSlope: dimensions.hasSlope,
+      overflowType: dimensions.overflowType,
       stairs: dimensions.stairs ? {
         enabled: dimensions.stairs.enabled,
         width: stairsWidth,
         stepCount: dimensions.stairs.stepCount,
         stepDepth: dimensions.stairs.stepDepth,
+        direction: dimensions.stairs.direction,
       } : undefined,
       wadingPool: dimensions.wadingPool,
     });
@@ -284,117 +243,89 @@ export function FinishingWizardProvider({
     const autoConfig = autoOptimizeMixConfig(dimensions, state.selectedSubtype);
     const buttJointMeters = calculateButtJointMeters(autoConfig, dimensions, state.selectedSubtype);
 
-    // Create full areas object with buttJointMeters
-    const fullAreas: PoolAreas = {
-      ...areas,
-      buttJointMeters,
+    const fullAreas: PoolAreas = { ...areas, buttJointMeters };
+
+    dispatch({ type: 'SET_POOL_AREAS', payload: fullAreas });
+
+    // Calculate materials with context
+    const ctx: MaterialContext = {
+      selectedSubtype: state.selectedSubtype,
+      underlayType: state.underlayType,
+      materialQtys: {},
     };
-
-    dispatch({
-      type: 'SET_POOL_AREAS',
-      payload: {
-        totalArea: areas.totalArea,
-        perimeter: areas.perimeter,
-        bottomArea: areas.bottomArea,
-        netBottomArea: areas.netBottomArea,
-        wallArea: areas.wallArea,
-        stairsArea: areas.stairsArea || 0,
-        stairsProjection: areas.stairsProjection || 0,
-        wadingPoolArea: areas.wadingPoolArea || 0,
-        wadingPoolProjection: areas.wadingPoolProjection || 0,
-        buttJointMeters,
-      },
-    });
-
-    // Calculate materials with butt joint info, applying saved rates
-    const mats = calculateMaterials(fullAreas);
+    const mats = calculateMaterials(fullAreas, ctx);
     const matsWithSavedRates = savedRates 
       ? mats.map(m => savedRates[m.id] !== undefined 
           ? { ...m, pricePerUnit: savedRates[m.id], total: m.suggestedQty * savedRates[m.id] }
           : m
         )
       : mats;
-    dispatch({
-      type: 'SET_MATERIALS',
-      payload: matsWithSavedRates,
-    });
+    dispatch({ type: 'SET_MATERIALS', payload: matsWithSavedRates });
   }, [
     configuratorState.dimensions.length,
     configuratorState.dimensions.width,
     configuratorState.dimensions.depth,
     configuratorState.dimensions.depthDeep,
     configuratorState.dimensions.hasSlope,
+    configuratorState.dimensions.overflowType,
     configuratorState.dimensions.stairs?.enabled,
+    configuratorState.dimensions.stairs?.stepCount,
+    configuratorState.dimensions.stairs?.stepDepth,
+    configuratorState.dimensions.stairs?.width,
+    configuratorState.dimensions.stairs?.direction,
     configuratorState.dimensions.wadingPool?.enabled,
-    state.selectedSubtype, // Recalculate when subtype changes (affects buttJointMeters)
+    configuratorState.dimensions.wadingPool?.width,
+    configuratorState.dimensions.wadingPool?.length,
+    configuratorState.dimensions.wadingPool?.hasDividingWall,
+    state.selectedSubtype,
+    state.underlayType,
     savedRates,
   ]);
 
-  // Computed: foil line items (main + structural)
+  // Computed: foil line items
   const { foilLineItem, structuralFoilLineItem } = useMemo(() => {
     if (!state.selectedSubtype) return { foilLineItem: null, structuralFoilLineItem: null };
 
     const autoConfig = autoOptimizeMixConfig(configuratorState.dimensions, state.selectedSubtype);
     const pricingResult = calculateFoilAreaForPricing(
-      autoConfig,
-      configuratorState.dimensions,
-      state.selectedSubtype,
-      'minWaste' // default priority
+      autoConfig, configuratorState.dimensions, state.selectedSubtype, 'minWaste'
     );
 
     const mainArea = state.manualFoilQty ?? pricingResult.mainFoilArea;
     const structuralArea = pricingResult.structuralFoilArea;
 
     const items = getFoilLineItems(
-      state.selectedSubtype,
-      mainArea,
-      structuralArea,
-      state.subtypePrices[state.selectedSubtype],
-      state.selectedProductName
+      state.selectedSubtype, mainArea, structuralArea,
+      state.subtypePrices[state.selectedSubtype], state.selectedProductName
     );
 
-    return { 
-      foilLineItem: items.main, 
-      structuralFoilLineItem: items.structural,
-    };
+    return { foilLineItem: items.main, structuralFoilLineItem: items.structural };
   }, [
-    state.selectedSubtype,
-    state.manualFoilQty,
-    state.subtypePrices,
+    state.selectedSubtype, state.manualFoilQty, state.subtypePrices,
     state.selectedProductName,
-    configuratorState.dimensions.length,
-    configuratorState.dimensions.width,
-    configuratorState.dimensions.depth,
-    configuratorState.dimensions.depthDeep,
-    configuratorState.dimensions.hasSlope,
-    configuratorState.dimensions.stairs,
+    configuratorState.dimensions.length, configuratorState.dimensions.width,
+    configuratorState.dimensions.depth, configuratorState.dimensions.depthDeep,
+    configuratorState.dimensions.hasSlope, configuratorState.dimensions.stairs,
     configuratorState.dimensions.wadingPool,
   ]);
 
-  // Computed: total net price
+  // Computed: total net price (including extra items)
   const totalNet = useMemo(() => {
     const foilTotal = (foilLineItem?.total ?? 0) + (structuralFoilLineItem?.total ?? 0);
     const materialsTotal = state.materials.reduce((sum, m) => {
       const qty = m.manualQty ?? m.suggestedQty;
       return sum + qty * m.pricePerUnit;
     }, 0);
-    return foilTotal + materialsTotal;
-  }, [foilLineItem, structuralFoilLineItem, state.materials]);
+    const extraTotal = state.extraItems.reduce((sum, i) => sum + i.netValue, 0);
+    return foilTotal + materialsTotal + extraTotal;
+  }, [foilLineItem, structuralFoilLineItem, state.materials, state.extraItems]);
 
-  // Can proceed to next step
   const canProceed = useMemo(() => {
     return state.finishingType !== null && state.selectedSubtype !== null;
   }, [state.finishingType, state.selectedSubtype]);
 
   const contextValue = useMemo(
-    () => ({
-      state,
-      dispatch,
-      foilLineItem,
-      structuralFoilLineItem,
-      totalNet,
-      canProceed,
-    }),
+    () => ({ state, dispatch, foilLineItem, structuralFoilLineItem, totalNet, canProceed }),
     [state, foilLineItem, structuralFoilLineItem, totalNet, canProceed]
   );
 
@@ -405,7 +336,6 @@ export function FinishingWizardProvider({
   );
 }
 
-// Hook
 export function useFinishingWizard() {
   const context = useContext(FinishingWizardContext);
   if (context === undefined) {
@@ -414,5 +344,4 @@ export function useFinishingWizard() {
   return context;
 }
 
-// Re-export types for convenience
 export type { CalculatedMaterial, FoilSubtype } from '@/lib/finishingMaterials';
