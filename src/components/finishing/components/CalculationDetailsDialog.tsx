@@ -8,7 +8,7 @@ import {
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Pool2DFoilLayout } from './Pool2DFoilLayout';
-import { PoolAreas, CalculatedMaterial, FoilSubtype, SUBTYPE_NAMES } from '@/lib/finishingMaterials';
+import { PoolAreas, CalculatedMaterial, FoilSubtype, SUBTYPE_NAMES, MaterialContext, UnderlayType } from '@/lib/finishingMaterials';
 
 import { formatPrice } from '@/lib/calculations';
 import { PoolDimensions } from '@/types/configurator';
@@ -324,7 +324,11 @@ export function CalculationDetailsDialog({
 
             {/* Material Formulas Table */}
             <section>
-              <MaterialFormulasTable poolAreas={poolAreas} />
+              <MaterialFormulasTable poolAreas={poolAreas} materialContext={{
+                selectedSubtype: foilSubtype,
+                underlayType: 'zwykly' as UnderlayType,
+                materialQtys: materials.reduce((acc, m) => ({ ...acc, [m.id]: m.manualQty ?? m.suggestedQty }), {} as Record<string, number>),
+              }} />
             </section>
 
             {/* Materials breakdown */}
