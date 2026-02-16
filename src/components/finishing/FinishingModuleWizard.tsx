@@ -68,6 +68,18 @@ function WizardContent({ onNext, onBack }: FinishingModuleWizardProps) {
     dispatch({ type: 'RECALCULATE_MATERIALS' });
   };
 
+  const handleUnderlayTypeChange = (type: import('@/lib/finishingMaterials').UnderlayType) => {
+    dispatch({ type: 'SET_UNDERLAY_TYPE', payload: type });
+  };
+
+  const handleAddExtraItem = (item: import('@/components/groundworks/ExtraLineItems').ExtraLineItem) => {
+    dispatch({ type: 'ADD_EXTRA_ITEM', payload: item });
+  };
+
+  const handleRemoveExtraItem = (id: string) => {
+    dispatch({ type: 'REMOVE_EXTRA_ITEM', payload: id });
+  };
+
   return (
     <div className="space-y-6">
       {/* Section 1: Finishing Type Selection */}
@@ -203,6 +215,11 @@ function WizardContent({ onNext, onBack }: FinishingModuleWizardProps) {
               manualFoilQty={state.manualFoilQty}
               onSavePriceToSettings={handleSavePriceToSettings}
               savedRates={companySettings.finishingMaterialRates}
+              underlayType={state.underlayType}
+              onUnderlayTypeChange={handleUnderlayTypeChange}
+              extraItems={state.extraItems}
+              onAddExtraItem={handleAddExtraItem}
+              onRemoveExtraItem={handleRemoveExtraItem}
             />
           </CardContent>
         </Card>
