@@ -293,6 +293,21 @@ function WizardContent({ onNext, onBack }: FinishingModuleWizardProps) {
                   });
                   return rows;
                 })()}
+                finishingParams={{
+                  poolLength: state.poolAreas.poolLength,
+                  poolWidth: state.poolAreas.poolWidth,
+                  poolDepth: state.poolAreas.poolDepth,
+                  poolDepthDeep: configuratorState.dimensions.depthDeep,
+                  hasSlope: configuratorState.dimensions.hasSlope,
+                  totalArea: state.poolAreas.totalArea,
+                  perimeter: state.poolAreas.perimeter,
+                  foilSubtype: state.selectedSubtype!,
+                  foilProductName: state.selectedProductName ?? undefined,
+                  underlayType: state.underlayType,
+                  overflowType: configuratorState.dimensions.overflowType,
+                  stairsEnabled: configuratorState.dimensions.stairs?.enabled,
+                  wadingPoolEnabled: configuratorState.dimensions.wadingPool?.enabled,
+                }}
                 customer={configuratorState.customerData ? {
                   companyName: configuratorState.customerData.companyName,
                   contactPerson: configuratorState.customerData.contactPerson,
