@@ -1,93 +1,86 @@
 
-# Plan: Nowe materialy w tabeli kroku 4 (Wykonczenie)
+# Plan: Optymalizacja doboru folii na sciany
 
-## Zakres zmian
+## Problemy do rozwiazania
 
-Kompletna przebudowa listy materialow wykoczeniowych w kroku 4. Zamiast obecnych 7 pozycji (z `finishingMaterials.ts`) pojawia sie 12 nowych pozycji z calkowicie nowa logika obliczen, plus mozliwosc recznego dodawania pozycji (jak w kroku 3).
+### Problem 1: Nierownomierny podzial pasow scian (tryb minWaste)
+Obecne scoring w `selectOptimalWallPlan` (minWaste) faworyzuje rownomierne pasy (np. 15.1m + 15.1m) przez kare za "imbalance". Ale podzial 15.0m + 15.2m bylby lepszy, bo pas 15.0m miesci sie w resztce z rolki dna (25m - 10m = 15m), co eliminuje potrzebe osobnej rolki na sciane.
 
-## Nowa lista materialow
+**Przyczyna**: `actualRollsNeeded` w scoring liczy tylko rolki scianowe (bez uwzglednienia resztek z dna). `pairedLeftover` istnieje, ale ma zbyt niski priorytet (`*100`).
 
-| # | Nazwa | Jedn. | Cena | Logika obliczen |
-|---|-------|-------|------|-----------------|
-| 1 | Folie (bez zmian) | m2 | wg podtypu | Bez zmian - obecna logika |
-| 2a | Podklad zwykly (rolka 2m) | m2 | 16 zl/m2 | Dno: pasy 2m (ceil(width/2) * length * 2). Sciany: obwod * 2m |
-| 2b | Podklad impregnowany (1.5m + 2m) | m2 | 32 zl/m2 | Jak wyzej ale optymalizacja miedzy szerokosciami 1.5m i 2m (minimalizacja odpadu) |
-| 3 | Klej do podkladu 20kg | szt | 400 zl | ceil(totalArea / 100) |
-| 4 | Pasy folii podkladowej 20m | szt | 500 zl | Tylko przy folii strukturalnej. ceil(buttJointMeters / 20) |
-| 5 | Katownik PVC 2m zewnetrzny | szt | 40 zl | ceil((obwod + dlugosci stopni schodow + obwod brodzika [x2 jesli murek]) / 2) |
-| 6 | Katownik PVC 2m wewnetrzny | szt | 40 zl | Domyslnie 0 - reczne |
-| 7 | Plaskownik PVC 2m | szt | 30 zl | Domyslnie 0 - reczne |
-| 8 | Nity 200szt | szt | 270 zl | ceil(suma katownikow i plaskownikow / 40) |
-| 9 | Folia w plynie 1L | szt | 220/270 zl | 220 zl (jednokolorowa/nadruk), 270 zl (strukturalna + dopisek). ceil(totalArea / 100) |
-| 10 | Usluga foliowanie niecki | m2 | 90/130 zl | 90 (jednokolorowa/nadruk), 130 (strukturalna). Powierzchnia scian + dno |
-| 11 | Usluga foliowanie schodow | m2 | 500 zl | stairsArea m2 |
-| 12 | Usluga foliowanie rynny | mb | 500 zl | Tylko basen rynnowy. Dlugosc = obwod basenu |
-| + | Pozycja reczna / z bazy | dowolne | reczna | Reuse ExtraLineItems z kroku 3 |
+**Rozwiazanie**: Zastapic `actualRollsNeeded` (z lokalnego pakowania scian) metoda `calculateAdditionalWallOrderedArea`, ktora juz poprawnie uwzglednia konsumpcje resztek z rolek dna. Uzyc jej jako glownego kryterium w minWaste - mniej dodatkowej zamawianej powierzchni = mniej rolek do kupienia.
+
+### Problem 2: minRolls niepotrzebnie zwieksza zuzycie folii
+Przelaczenie na minRolls nie zmniejsza ilosci rolek (nadal 4), ale zwieksza powierzchnie folii (109 -> 112 m2) przez uzycie folii 2.05m na scianie zamiast 1.65m.
+
+**Przyczyna**: Wall optimizer dla minRolls wybiera plan z 4 pasami (w tym 2.05m), bo `additionalOrderedArea` moze wychodzic nizsza dla tego planu (pas 5m miesci sie w resztce z dna). Jednak calosciowo to nie obniza ilosci rolek.
+
+**Rozwiazanie**: Dodac guardrail na poziomie koncowej konfiguracji - jesli minRolls daje tyle samo lub wiecej rolek niz minWaste ORAZ wieksza powierzchnie folii, to uzyj wyniku minWaste.
 
 ## Szczegoly techniczne
 
-### 1. Plik `src/lib/finishingMaterials.ts` - calkowita przebudowa tablicy `FINISHING_MATERIALS`
+### Plik: `src/lib/foil/wallStripOptimizer.ts`
 
-- Usunac obecne 7 materialow
-- Dodac nowe 11 materialow (pozycje 2-12 z tabeli) z nowymi ID, nazwami, jednostkami, cenami i funkcjami `calculate()`
-- Funkcja `calculate()` bedzie przyjmowac rozszerzony interfejs `PoolAreas` (dodane pola: `stairsStepPerimeter`, `wadingPoolPerimeter`, `hasWadingWall`, `isGutterPool`, `poolLength`, `poolWidth`)
-- Nowa logika podkladu (2a/2b): osobna funkcja `calculateUnderlayStrips()` ktora oblicza pasy na dno i sciany
-- Material "Podklad" bedzie mial dwa warianty - uzytkownik wybiera typ podkladu (zwykly/impregnowany) w UI
+**Zmiana 1: Scoring minWaste - uwzglednienie resztek z dna**
 
-### 2. Nowy interfejs `PoolAreas` - rozszerzenie
+W funkcji `selectOptimalWallPlan`, dla `priority === 'minWaste'`:
+- Zamiast `actualRollsNeeded * 100_000_000` uzyc `additionalWallOrderedArea * 1_000_000` jako glowne kryterium
+- To sprawia, ze plany gdzie pasy scian mieszcza sie w restkach z rolek dna sa silnie preferowane
+- Nastepnie `totalFoilArea` (minimalizacja calkowitej powierzchni folii scianowej)
+- Potem `totalStripCount` (mniej pasow = mniej spoin)
+- Na koncu `imbalance` jako tie-break
+
+**Zmiana 2: Scoring minRolls - silniejsza kara za szerokosc**
+
+Upewnic sie, ze `widthWaste` jest wystarczajaco silny, aby zapobiec uzyciu 2.05m gdy 1.65m wystarcza i daje te sama ilosc rolek.
+
+### Plik: `src/lib/foil/mixPlanner.ts`
+
+**Zmiana 3: Guardrail w `autoOptimizeMixConfig` lub `calculateSurfaceDetails`**
+
+Dodac logike porownawcza: po wygenerowaniu konfiguracji w trybie minRolls, porownac z minWaste:
+- Jesli minRolls daje `totalRolls >= minWaste.totalRolls` ORAZ `totalFoilArea > minWaste.totalFoilArea` -> uzyj minWaste
+- Ta logika powinna byc w funkcji `packStripsIntoRolls` lub w warstwie wyzej (np. `calculateSurfaceDetails`)
+
+Alternatywnie, guardrail mozna dodac bezposrednio w `getOptimalWallStripPlan`: po wybraniu optymalnego planu dla minRolls, porownac go z najlepszym planem minWaste - jesli minRolls nie daje lepszego wyniku, zwrocic plan minWaste.
+
+### Zmiana w scoring (pseudo-kod)
 
 ```text
-PoolAreas {
-  ...existing fields...
-  + poolLength: number       // dlugosc basenu (do obliczen pasow)
-  + poolWidth: number        // szerokosc basenu (do obliczen pasow)
-  + stairsStepPerimeter: number  // suma dlugosci krawedzi stopni
-  + wadingPoolPerimeter: number  // obwod brodzika
-  + hasWadingWall: boolean       // czy brodzik ma murek
-  + isGutterPool: boolean        // basen rynnowy
-  + selectedSubtype: FoilSubtype // wybrany podtyp folii (potrzebny do warunkowych materialow)
+// BEFORE (minWaste):
+score = actualRollsNeeded * 100_000_000
+      + wasteSignificance
+      + totalStripCount * 10_000
+      + imbalance * 1_000
+      + pairedLeftover * 100
+      + totalFoilArea * 0.01
+
+// AFTER (minWaste):
+additionalArea = calculateAdditionalWallOrderedArea(strips, bottomStrips)
+score = additionalArea * 1_000_000       // Primary: minimize new rolls needed for walls
+      + plan.totalFoilArea * 10_000      // Secondary: minimize total wall foil area
+      + plan.totalStripCount * 1_000     // Tertiary: fewer welds
+      + wasteArea * 100                  // Less waste
+      + imbalance * 10                   // Balanced splits as tie-break only
+```
+
+### Guardrail (pseudo-kod)
+
+```text
+// In getOptimalWallStripPlan or higher:
+if (priority === 'minRolls') {
+  const minRollsPlan = selectOptimalWallPlan(plans, 'minRolls', ...)
+  const minWastePlan = selectOptimalWallPlan(plans, 'minWaste', ...)
+  
+  if (minRollsPlan.totalFoilArea > minWastePlan.totalFoilArea 
+      && minRollsPlan does not reduce actual total rolls) {
+    return minWastePlan  // minRolls is worse, fallback
+  }
 }
 ```
 
-### 3. Plik `src/components/finishing/FinishingWizardContext.tsx`
-
-- Rozszerzyc `poolAreas` w stanie o nowe pola
-- Przekazywac `overflowType`, `stairs`, `wadingPool` z configuratorState do `calculatePoolAreas()`
-- Dodac akcje `ADD_EXTRA_ITEM` i `REMOVE_EXTRA_ITEM` do reducera
-- Dodac `extraItems: ExtraLineItem[]` do stanu
-- Uwzgledniac `extraItems` w obliczeniu `totalNet`
-
-### 4. Plik `src/components/finishing/components/FinishingMaterialsTable.tsx`
-
-- Dostosowac do nowych materialow (nowe nazwy, jednostki, ceny)
-- Na koncu tabeli dodac `ExtraLineItemRows` i `AddItemRow` (import z `ExtraLineItems.tsx`)
-- Uwzglednic `extraItems` w sumie
-
-### 5. Plik `src/components/finishing/FinishingModuleWizard.tsx`
-
-- Dodac handlery `handleAddExtraItem` i `handleRemoveExtraItem`
-- Przekazac je do `FinishingMaterialsTable`
-
-### 6. Logika obliczen podkladu (kluczowa)
-
-Podklad zwykly (rolki 2m):
-- Dno: `ceil(poolWidth / 2)` pasow * `poolLength` * 2m = m2
-- Sciany: `perimeter * 2m` = m2 (nawet jesli sciana ma 1.5m - 0.5m odpadu sie liczy)
-- Razem: suma dna + sciany
-
-Podklad impregnowany (rolki 1.5m i 2m):
-- Optymalizacja: dla danej szerokosci basenu sprawdzamy kombinacje 1.5m i 2m aby pokryc szerokosc z minimalnym odpadem
-- Np. 5m = 2+2+1.5 (5.5m, odpad 0.5m) vs 2+2+2 (6m, odpad 1m) - lepsza pierwsza opcja
-- Sciany analogicznie - dobor szerokosci do glebokosci
-
-### 7. Wybor typu podkladu w UI
-
-Dodac prosty `Select` nad tabela materialow (lub w wierszu podkladu) do wyboru miedzy "Podklad zwykly" a "Podklad impregnowany". Domyslnie zwykly. Zmiana przelicza ilosc i cene.
-
 ## Kolejnosc implementacji
 
-1. Rozszerzyc `PoolAreas` i `calculatePoolAreas()` o nowe pola
-2. Przebudowac `FINISHING_MATERIALS` z nowa logika
-3. Dodac obsluge `extraItems` w kontekscie
-4. Zaktualizowac tabele materialow z nowymi pozycjami i dodawaniem recznym
-5. Dodac wybor typu podkladu w UI
+1. Zmiana scoring w `selectOptimalWallPlan` (minWaste) - uzycie `calculateAdditionalWallOrderedArea`
+2. Dodanie guardrail w `getOptimalWallStripPlan` (minRolls fallback)
+3. Weryfikacja z testem `packStripsIntoRolls.test.ts` - upewnienie sie ze istniejacy test nadal przechodzi
