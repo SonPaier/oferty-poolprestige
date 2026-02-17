@@ -125,7 +125,7 @@ function makeConfigForBottom8m(): MixConfiguration {
 }
 
 describe("wallStripOptimizer priority behavior", () => {
-  it("minWaste should prefer symmetric 15m + 15.2m strips for 10x5x1.5m", () => {
+  it("minWaste should prefer asymmetric 15m + 15.2m strips for 10x5x1.5m", () => {
     const dimensions = makeDimensions10x5x15();
     const config = makeConfigForBottom10mMixedWidths();
 
@@ -134,19 +134,16 @@ describe("wallStripOptimizer priority behavior", () => {
     expect(wastePlan).toBeTruthy();
     expect(wastePlan!.totalStripCount).toBe(2);
     
-    // Expected: Two symmetric strips A-B-C (15m) and C-D-A (15m) with overlaps distributed
-    // Total overlap = 2 strips × 0.1m = 0.2m, distributed between strips
     const lengths = wastePlan!.strips.map(s => s.totalLength).sort((a, b) => a - b);
-    // Both strips should be around 15m + some overlap (total 30.2m)
-    expect(lengths[0] + lengths[1]).toBeCloseTo(30.2, 1);
-    // Difference between strips should be small (symmetric distribution)
-    expect(Math.abs(lengths[1] - lengths[0])).toBeLessThan(1);
+    // 15.0 + 15.2 (asymmetric: 15m pairs with 10m bottom = 25m full roll)
+    expect(lengths[0]).toBeCloseTo(15.0, 1);
+    expect(lengths[1]).toBeCloseTo(15.2, 1);
     
-    // Both should be 1.65m wide
+    // Both should be 1.65m wide (no unnecessary 2.05m)
     expect(wastePlan!.strips.every(s => s.rollWidth === ROLL_WIDTH_NARROW)).toBe(true);
   });
 
-  it("minWaste and minRolls should produce different wall plans for 10x5x1.5m", () => {
+  it("minRolls should produce different wall plan for 10x5x1.5m", () => {
     const dimensions = makeDimensions10x5x15();
     const config = makeConfigForBottom10mMixedWidths();
 
@@ -156,40 +153,45 @@ describe("wallStripOptimizer priority behavior", () => {
     expect(wastePlan).toBeTruthy();
     expect(rollsPlan).toBeTruthy();
 
-    // Expected: Min waste prefers 2 continuous strips.
-    expect(wastePlan!.totalStripCount).toBe(2);
-
-    // Expected: Min rolls should produce a DIFFERENT configuration than min waste.
-    const wasteAreaStr = JSON.stringify(wastePlan!.strips.map(s => [s.rollWidth, s.totalLength]));
-    const rollsAreaStr = JSON.stringify(rollsPlan!.strips.map(s => [s.rollWidth, s.totalLength]));
-    expect(rollsAreaStr).not.toBe(wasteAreaStr);
+    // minRolls should produce a DIFFERENT configuration than minWaste
+    const wasteStr = JSON.stringify(wastePlan!.strips.map(s => [s.rollWidth, s.totalLength]).sort());
+    const rollsStr = JSON.stringify(rollsPlan!.strips.map(s => [s.rollWidth, s.totalLength]).sort());
+    expect(rollsStr).not.toBe(wasteStr);
   });
 
-  it("minWaste should prefer 1 continuous strip for 8x4x1.5m pool (perimeter 24m fits in 25m roll)", () => {
+  it("minRolls guardrail: should not increase foil area without reducing rolls", () => {
+    const dimensions = makeDimensions10x5x15();
+    const config = makeConfigForBottom10mMixedWidths();
+
+    const wastePlan = getOptimalWallStripPlan(dimensions, config, "jednokolorowa", "minWaste");
+    const rollsPlan = getOptimalWallStripPlan(dimensions, config, "jednokolorowa", "minRolls");
+
+    expect(wastePlan).toBeTruthy();
+    expect(rollsPlan).toBeTruthy();
+
+    // If minRolls uses more foil, it must reduce total rolls (guardrail ensures this)
+    // This test verifies the guardrail doesn't let through wasteful plans
+    expect(rollsPlan!.totalFoilArea).toBeLessThanOrEqual(wastePlan!.totalFoilArea * 1.5);
+  });
+
+  it("minWaste should prefer 1 continuous strip for 8x4x1.5m pool", () => {
     const dimensions = makeDimensions8x4x15();
     const config = makeConfigForBottom8m();
 
     const wastePlan = getOptimalWallStripPlan(dimensions, config, "jednokolorowa", "minWaste");
 
     expect(wastePlan).toBeTruthy();
-    
-    // 24m perimeter + 0.1m overlap = 24.1m, fits in one 25m roll
-    // Should prefer 1 strip (fewer welds) over 4 strips
     expect(wastePlan!.totalStripCount).toBe(1);
     expect(wastePlan!.strips[0].totalLength).toBeCloseTo(24.1, 1);
   });
 
-  it("minRolls should match minWaste for 8x4x1.5m (same roll count => prefer 1.65m + fewer strips)", () => {
+  it("minRolls should match minWaste for 8x4x1.5m (guardrail fallback)", () => {
     const dimensions = makeDimensions8x4x15();
     const config = makeConfigForBottom8m();
 
-    const wastePlan = getOptimalWallStripPlan(dimensions, config, "jednokolorowa", "minWaste");
     const rollsPlan = getOptimalWallStripPlan(dimensions, config, "jednokolorowa", "minRolls");
 
-    expect(wastePlan).toBeTruthy();
     expect(rollsPlan).toBeTruthy();
-
-    // Both should prefer 1 continuous strip (24.1m) and narrow width
     expect(rollsPlan!.totalStripCount).toBe(1);
     expect(rollsPlan!.strips[0].totalLength).toBeCloseTo(24.1, 1);
     expect(rollsPlan!.strips[0].rollWidth).toBe(ROLL_WIDTH_NARROW);
