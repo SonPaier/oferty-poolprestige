@@ -1657,6 +1657,37 @@ export function getUnusableWaste(
     // If NOT unusable (>= 2m AND >= 0.5m), it's reusable - goes to getReusableOffcutsWithDimensions
   }
 
+  // Calculate wall width waste (roll width exceeds wall depth + overlaps)
+  // e.g., 2.05m roll on 1.5m deep wall: used height = 1.5 + 0.075 + 0.075 = 1.65m, waste = 0.4m strip
+  const wallPlan = getOptimalWallStripPlan(dimensions, config, foilSubtype, priority);
+  if (wallPlan && wallPlan.strips.length > 0) {
+    const usedWallHeight = dimensions.depth + 0.075 + 0.075; // depth + top overlap + bottom overlap
+    for (const strip of wallPlan.strips) {
+      const widthWaste = strip.rollWidth - usedWallHeight;
+      if (widthWaste > 0.01) {
+        const wasteLength = strip.totalLength;
+        const wasteWidth = Math.round(widthWaste * 1000) / 1000;
+        // Width waste from walls is typically < 0.5m so it's unusable
+        if (isWasteUnusable(wasteLength, wasteWidth)) {
+          // Find which roll this wall strip is on
+          const rollNum = mainRolls.find(r => 
+            r.rollWidth === strip.rollWidth &&
+            r.strips.some(s => s.surface === 'Ściany' && Math.abs(s.length - strip.totalLength) < 0.01)
+          )?.rollNumber || 0;
+          
+          wastes.push({
+            rollNumber: rollNum,
+            rollWidth: strip.rollWidth,
+            length: Math.round(wasteLength * 100) / 100,
+            width: Math.round(wasteWidth * 100) / 100,
+            area: Math.round(wasteLength * wasteWidth * 100) / 100,
+            source: `Ściany (${strip.wallLabels.join(', ')}) - ścięcie z wysokości`,
+          });
+        }
+      }
+    }
+  }
+
   return wastes;
 }
 
