@@ -52,6 +52,22 @@ export interface ConstructionParams {
   hasSlope?: boolean;
 }
 
+export interface FinishingParams {
+  poolLength: number;
+  poolWidth: number;
+  poolDepth: number;
+  poolDepthDeep?: number;
+  hasSlope?: boolean;
+  totalArea: number;
+  perimeter: number;
+  foilSubtype: string;
+  foilProductName?: string;
+  underlayType: string;
+  overflowType?: string;
+  stairsEnabled?: boolean;
+  wadingPoolEnabled?: boolean;
+}
+
 export interface CustomerInfo {
   companyName?: string;
   contactPerson?: string;
@@ -69,6 +85,7 @@ interface MaterialsExportButtonProps {
   notes?: string;
   excavationParams?: ExcavationParams;
   constructionParams?: ConstructionParams;
+  finishingParams?: FinishingParams;
   customer?: CustomerInfo;
   offerNumber?: string | null;
 }
@@ -144,6 +161,7 @@ interface ExportOptions {
   includeNotes: boolean;
   includeExcavationParams: boolean;
   includeConstructionParams: boolean;
+  includeFinishingParams: boolean;
   includeCustomer: boolean;
 }
 
@@ -164,6 +182,7 @@ async function exportToPDF(
   notes?: string,
   excavationParams?: ExcavationParams,
   constructionParams?: ConstructionParams,
+  finishingParams?: FinishingParams,
   customer?: CustomerInfo,
   offerNumber?: string | null,
 ) {
@@ -313,6 +332,56 @@ async function exportToPDF(
     y += 34;
   }
 
+  // ── Finishing params section ──
+  if (options.includeFinishingParams && finishingParams) {
+    const fp = finishingParams;
+    const lineCount = 3 + (fp.stairsEnabled ? 1 : 0) + (fp.wadingPoolEnabled ? 1 : 0);
+    const boxH = 12 + lineCount * 4.5;
+    doc.setFillColor(...BRAND.lightGray);
+    doc.roundedRect(margin, y, contentW, boxH, 2, 2, 'F');
+
+    doc.setFontSize(9);
+    doc.setFont(font, 'bold');
+    doc.setTextColor(...BRAND.primary);
+    doc.text(t('Parametry wykończenia'), margin + 4, y + 6);
+
+    doc.setFont(font, 'normal');
+    doc.setTextColor(...BRAND.dark);
+    doc.setFontSize(8);
+
+    const col1 = margin + 4;
+    const col2 = margin + contentW / 2;
+    let py = y + 12;
+
+    const depthLabel = fp.hasSlope && fp.poolDepthDeep
+      ? `${fp.poolDepth} / ${fp.poolDepthDeep} m (spadek)`
+      : `${fp.poolDepth} m`;
+    doc.text(`Basen: ${fp.poolLength} x ${fp.poolWidth} x ${depthLabel}`, col1, py);
+    doc.text(`${t('Powierzchnia')}: ${fp.totalArea.toFixed(2)} m2`, col2, py);
+    py += 4.5;
+    doc.text(`Typ folii: ${t(fp.foilSubtype)}`, col1, py);
+    doc.text(`${t('Podkład')}: ${t(fp.underlayType === 'impregnowany' ? 'impregnowany' : 'zwykły')}`, col2, py);
+    py += 4.5;
+    doc.text(`${t('Obwód')}: ${fp.perimeter.toFixed(2)} mb`, col1, py);
+    if (fp.foilProductName) {
+      doc.text(`Produkt: ${t(fp.foilProductName.length > 35 ? fp.foilProductName.substring(0, 32) + '...' : fp.foilProductName)}`, col2, py);
+    }
+    if (fp.overflowType && fp.overflowType !== 'skimmerowy') {
+      py += 4.5;
+      doc.text(`Typ przelewu: ${t(fp.overflowType)}`, col1, py);
+    }
+    if (fp.stairsEnabled) {
+      py += 4.5;
+      doc.text(t('Schody: tak'), col1, py);
+    }
+    if (fp.wadingPoolEnabled) {
+      py += 4.5;
+      doc.text(t('Brodzik: tak'), col1, py);
+    }
+
+    y += boxH + 4;
+  }
+
   // ── Materials table ──
   if (options.includeQuantity) {
     const showPrice = options.includePrice;
@@ -435,6 +504,7 @@ function exportToXLSX(
   notes?: string,
   excavationParams?: ExcavationParams,
   constructionParams?: ConstructionParams,
+  finishingParams?: FinishingParams,
   customer?: CustomerInfo,
   offerNumber?: string | null,
 ) {
@@ -524,6 +594,33 @@ function exportToXLSX(
     XLSX.utils.book_append_sheet(wb, wsP, 'Parametry budowy');
   }
 
+  // Finishing params sheet
+  if (options.includeFinishingParams && finishingParams) {
+    const fp = finishingParams;
+    const paramRows: { 'Parametr': string; 'Wartość': string | number }[] = [
+      { 'Parametr': 'Basen - długość (m)', 'Wartość': fp.poolLength },
+      { 'Parametr': 'Basen - szerokość (m)', 'Wartość': fp.poolWidth },
+      { 'Parametr': 'Basen - głębokość (m)', 'Wartość': fp.poolDepth },
+    ];
+    if (fp.hasSlope && fp.poolDepthDeep) {
+      paramRows.push({ 'Parametr': 'Basen - max głębokość (m)', 'Wartość': fp.poolDepthDeep });
+    }
+    paramRows.push(
+      { 'Parametr': 'Powierzchnia całkowita (m²)', 'Wartość': Number(fp.totalArea.toFixed(2)) },
+      { 'Parametr': 'Obwód (mb)', 'Wartość': Number(fp.perimeter.toFixed(2)) },
+      { 'Parametr': 'Typ folii', 'Wartość': fp.foilSubtype },
+      { 'Parametr': 'Typ podkładu', 'Wartość': fp.underlayType === 'impregnowany' ? 'impregnowany' : 'zwykły' },
+    );
+    if (fp.foilProductName) paramRows.push({ 'Parametr': 'Produkt foliowy', 'Wartość': fp.foilProductName });
+    if (fp.overflowType && fp.overflowType !== 'skimmerowy') paramRows.push({ 'Parametr': 'Typ przelewu', 'Wartość': fp.overflowType });
+    if (fp.stairsEnabled) paramRows.push({ 'Parametr': 'Schody', 'Wartość': 'tak' });
+    if (fp.wadingPoolEnabled) paramRows.push({ 'Parametr': 'Brodzik', 'Wartość': 'tak' });
+
+    const wsF = XLSX.utils.json_to_sheet(paramRows);
+    wsF['!cols'] = [{ wch: 34 }, { wch: 20 }];
+    XLSX.utils.book_append_sheet(wb, wsF, 'Parametry wykończenia');
+  }
+
   // Customer sheet
   if (options.includeCustomer && customer) {
     const custRows = [
@@ -553,13 +650,14 @@ function exportToXLSX(
   toast.success('Wyeksportowano do Excel');
 }
 
-export function MaterialsExportButton({ materials, title, notes, excavationParams, constructionParams, customer, offerNumber }: MaterialsExportButtonProps) {
+export function MaterialsExportButton({ materials, title, notes, excavationParams, constructionParams, finishingParams, customer, offerNumber }: MaterialsExportButtonProps) {
   const [open, setOpen] = useState(false);
   const [includeQuantity, setIncludeQuantity] = useState(true);
   const [includePrice, setIncludePrice] = useState(false);
   const [includeNotes, setIncludeNotes] = useState(false);
   const [includeExcavationParams, setIncludeExcavationParams] = useState(false);
   const [includeConstructionParams, setIncludeConstructionParams] = useState(false);
+  const [includeFinishingParams, setIncludeFinishingParams] = useState(false);
   const [includeCustomer, setIncludeCustomer] = useState(false);
 
   if (materials.length === 0) return null;
@@ -570,16 +668,17 @@ export function MaterialsExportButton({ materials, title, notes, excavationParam
     includeNotes,
     includeExcavationParams,
     includeConstructionParams,
+    includeFinishingParams,
     includeCustomer,
   };
 
   const handleExportPDF = () => {
-    exportToPDF(materials, title, options, notes, excavationParams, constructionParams, customer, offerNumber);
+    exportToPDF(materials, title, options, notes, excavationParams, constructionParams, finishingParams, customer, offerNumber);
     setOpen(false);
   };
 
   const handleExportXLSX = () => {
-    exportToXLSX(materials, title, options, notes, excavationParams, constructionParams, customer, offerNumber);
+    exportToXLSX(materials, title, options, notes, excavationParams, constructionParams, finishingParams, customer, offerNumber);
     setOpen(false);
   };
 
@@ -645,6 +744,19 @@ export function MaterialsExportButton({ materials, title, notes, excavationParam
                 />
                 <Label htmlFor="exp-constr" className="cursor-pointer">
                   Parametry budowy
+                </Label>
+              </div>
+            )}
+
+            {finishingParams && (
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="exp-finish"
+                  checked={includeFinishingParams}
+                  onCheckedChange={(v) => setIncludeFinishingParams(!!v)}
+                />
+                <Label htmlFor="exp-finish" className="cursor-pointer">
+                  Parametry wykończenia
                 </Label>
               </div>
             )}
