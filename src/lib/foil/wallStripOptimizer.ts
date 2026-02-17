@@ -629,19 +629,26 @@ export function selectOptimalWallPlan(
     const widthWaste = calculateWidthWaste(plan.strips, depth);
     
     if (priority === 'minWaste') {
-      // Primary: minimize additional ordered area for walls (accounts for bottom offcuts).
-      // This strongly prefers plans where wall strips fit into leftover space from bottom rolls.
-      const additionalArea = calculateAdditionalWallOrderedArea(plan.strips, bottomStrips);
+      // For minWaste, the key insight is:
+      // 1. Fewer strips = fewer welds = better quality installation
+      // 2. When multiple configurations fit in the same number of rolls,
+      //    prefer fewer strips even if waste is slightly higher
+      // 3. Non-reusable waste difference of <1m² is negligible
+      
+      // Calculate if waste difference is significant (> 1m²)
+      const wasteSignificance = wasteArea > 1 ? wasteArea * 10_000 : 0;
       
       // Prefer more balanced strip lengths when strip count is the same
+      // (e.g. 15m + 15.2m over 10m + 20.2m)
       const lengths = plan.strips.map((s) => s.totalLength);
       const imbalance = lengths.length >= 2 ? Math.max(...lengths) - Math.min(...lengths) : 0;
 
-      score = additionalArea * 1_000_000        // Primary: minimize new rolls needed for walls
-            + plan.totalFoilArea * 10_000        // Secondary: minimize total wall foil area
-            + plan.totalStripCount * 1_000       // Tertiary: fewer welds
-            + wasteArea * 100                    // Less waste
-            + imbalance * 10;                    // Balanced splits as tie-break only
+      score = actualRollsNeeded * 100_000_000  // Primary: minimize rolls
+            + wasteSignificance                 // Secondary: only if waste > 1m²
+            + plan.totalStripCount * 10_000     // Tertiary: minimize welds
+            + imbalance * 1_000                 // Tie-break: more balanced splits
+            + pairedLeftover * 100
+            + plan.totalFoilArea * 0.01;
     } else {
       // minRolls: minimize additional ORDERED m² for walls (roll width × 25m),
       // after consuming bottom offcuts (same width) wherever possible.
@@ -681,28 +688,6 @@ export function getOptimalWallStripPlan(
 ): WallStripPlan | null {
   const plans = generateWallStripConfigurations(dimensions, config, foilSubtype);
   const bottomStrips = getBottomStripsInfo(config);
-  
-  if (priority === 'minRolls') {
-    const minRollsPlan = selectOptimalWallPlan(plans, 'minRolls', bottomStrips, dimensions.depth);
-    const minWastePlan = selectOptimalWallPlan(plans, 'minWaste', bottomStrips, dimensions.depth);
-    
-    if (minRollsPlan && minWastePlan) {
-      // Guardrail: if minRolls doesn't actually reduce rolls but increases foil area, use minWaste
-      const minRollsTotalFoil = minRollsPlan.totalFoilArea;
-      const minWasteTotalFoil = minWastePlan.totalFoilArea;
-      
-      // Compare actual total rolls (wall rolls needed after consuming bottom offcuts)
-      const minRollsAdditional = calculateAdditionalWallOrderedArea(minRollsPlan.strips, bottomStrips);
-      const minWasteAdditional = calculateAdditionalWallOrderedArea(minWastePlan.strips, bottomStrips);
-      
-      if (minRollsAdditional >= minWasteAdditional && minRollsTotalFoil > minWasteTotalFoil) {
-        return minWastePlan;
-      }
-    }
-    
-    return minRollsPlan;
-  }
-  
   return selectOptimalWallPlan(plans, priority, bottomStrips, dimensions.depth);
 }
 
