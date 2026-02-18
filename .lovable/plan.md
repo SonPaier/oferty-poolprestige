@@ -1,139 +1,313 @@
 
+# Wyliczenia wstępne basenu — Grzanie, Woda świeża, Filtracja DIN, Zbiornik przelewowy
 
-# Plan: Optymalizacja doboru folii na sciany (rewizja)
+## Zakres implementacji
 
-## Analiza problemu
+Na podstawie przesłanego skoroszytu i doprecyzowanych wzorów wdrożone zostaną cztery sekcje wyliczeń:
+1. **Woda świeża** — minimalny przepływ przyłącza wodnego
+2. **Grzanie wody** — moc grzewcza (q1 nagrzewanie + q2 straty z uwzgl. osłonięcia i przykrycia)
+3. **Filtracja wg DIN** — nowy wzór, liczba osób N, czas obiegu, powierzchnia filtra
+4. **Zbiornik przelewowy** — tylko dla `overflowType === 'rynnowy'`
 
-Przetestowałem algorytm na basenie 10x5x1.5m z dnem 1x2.05 + 2x1.65 (każdy pas 10m).
+Wyniki będą widoczne w zakładce "Obliczenia" w kroku Wymiary (prawa kolumna, tab "Obliczenia") oraz zostaną zapisane w stanie konfiguratora i przekazane do podsumowania/PDF.
 
-### Problem 1: minWaste daje 15.1+15.1 zamiast 15+15.2
+---
 
-**Przyczyna**: Dla partycji 2-pasowej [A-B+B-C, C-D+D-A] (obie grupy = 15m), funkcja `distributeVerticalOverlap` przypisuje zakłady symetrycznie (oba pasy 15m sa rowne, wiec `>=` rozdziela po rowno). Wynik: 15.1+15.1.
+## Nowe typy i interfejsy — `src/types/configurator.ts`
 
-**Dlaczego 15+15.2 jest lepsze**: Przy BFD packing calosciowym (dno+sciany razem):
-- 15+15.2: pas 15m + dno 10m = 25m (pelna rolka!), pas 15.2m na nowej rolce (offcut 9.8m), drugie dno na osobnej rolce (offcut 15m) = **jedna rolka bez odpadu**
-- 15.1+15.1: zaden pas sciany nie miesci sie z dnem na jednej rolce (15.1+10=25.1 > 25m), wiec dwa osobne rolki na sciany + jedna na oba dna = **zadna rolka w pelni wykorzystana**
+### Nowy interfejs `EngineeringParams` (parametry wejściowe, edytowalne przez użytkownika)
 
-Obie opcje daja 4 rolki, ale 15+15.2 daje lepsza jakosc odpadow (15m offcut = dokladnie na dno do przyszlego uzycia).
+```typescript
+export type WindExposure =
+  | 'wewnetrzny'        // K=1 (wewnętrzny lub zadaszony)
+  | 'osloniety3'        // K=1.5 (osłonięty z 3 stron)
+  | 'osloniety2'        // K=2 (osłonięty z 2 stron)
+  | 'nieosloniety'      // K=3 (nieosłonięty)
+  | 'ekstremalny';      // K=4 (morze, wzgórze, skarpa)
 
-**Rozwiazanie**: Zamiast jednej dystrybucji zakladow, generowac **warianty rozkladu zakladow** (symetryczny + asymetryczne). Dla kazdego wariantu oceniac plan. Dodac do scoringu **pelne BFD packing** (dno + sciany razem) zeby ocenic ile rolek jest w pelni wykorzystanych.
+export type PoolCover =
+  | 'brak'              // brak przykrycia
+  | 'folia_solarna'     // K_przykryty=0.3
+  | 'roleta_pvc';       // K_przykryty=0.15
 
-### Problem 2: minRolls daje 4 rolki zamiast 3
-
-**Oczekiwany wynik uzytkownika dla minRolls (3 rolki)**:
-- Rolka 1 (2.05): dno 10m + sciana 5.1m = 15.1m (offcut 9.9m)
-- Rolka 2 (1.65): 2x dno 10m + sciana 5m = 25m (pelna!)
-- Rolka 3 (1.65): sciana 20.2m (offcut 4.8m)
-
-**Przyczyna**: Optimizer generuje juz 3-pasowe partycje z mieszanymi szerokosciami, ale scoring nie korzysta z pelnego BFD. Takze rozklad zakladow jest deterministyczny i moze nie dawac optymalnych dlugosci pasow.
-
-**Rozwiazanie**: Ten sam - pelne BFD packing w scoringu automatycznie preferuje plany dajace 3 rolki nad planami dajacymi 4.
-
-## Zmiany techniczne
-
-### Plik: `src/lib/foil/wallStripOptimizer.ts`
-
-#### Zmiana 1: Generowanie wariantow zakladow
-
-Nowa funkcja `generateOverlapVariants` zastepuje pojedyncze wywolanie `distributeVerticalOverlap`. Dla kazdej partycji/szerokosc:
-- Wariant domyslny (obecna logika)
-- Warianty asymetryczne: przesuniecie calego zakladu jednego joina na jeden pas (np. [0, 0.2] zamiast [0.1, 0.1] dla 2 pasow)
-- Walidacja: kazdy wariant musi dawac strip.totalLength <= 25m i overlap >= MIN_VERTICAL_JOIN_OVERLAP na join
-
-Dla 2 pasow: generuje do 3 wariantow (rowny, calkowity-do-pasa1, calkowity-do-pasa2).
-Dla 3+ pasow: generuje domyslny + kilka permutacji przesuniec zakladow.
-
-#### Zmiana 2: `buildWallStripPlan` - przyjmuje gotowe overlaps
-
-Zamiast wyliczac overlaps wewnatrz, przyjmuje je jako parametr (wygenerowane wczesniej). `generateWallStripConfigurations` iteruje po wariantach overlap.
-
-#### Zmiana 3: Scoring - pelne BFD packing
-
-W `selectOptimalWallPlan`, dla kazdego planu:
-1. Polacz pasy dna i sciany w jedna liste
-2. Uruchom uproszczone BFD (per szerokosc) zeby obliczyc:
-   - `totalPhysicalRolls` - ile rolek faktycznie trzeba zamowic
-   - `fullyUsedRolls` - ile rolek jest w pelni wykorzystanych (waste < 0.5m)
-   - `maxOffcutLength` - dlugosc najwiekszego odpadu
-
-**Scoring minWaste**:
-```text
-score = totalPhysicalRolls * 10_000_000    // 1. Minimalizuj calkowita liczbe rolek
-      + plan.totalFoilArea * 100_000        // 2. Minimalizuj powierzchnie folii scianowej
-      + plan.totalStripCount * 10_000       // 3. Mniej spoin
-      - fullyUsedRolls * 5_000              // 4. Preferuj pelne rolki (lepsze offcuty)
-      + widthWaste * 1_000                  // 5. Unikaj szerszych rolek gdy niepotrzebne
-```
-
-**Scoring minRolls**:
-```text
-score = totalPhysicalRolls * 10_000_000    // 1. Minimalizuj calkowita liczbe rolek
-      + widthWaste * 1_000_000             // 2. Silna kara za niepotrzebna szerokosc
-      + plan.totalFoilArea * 10_000        // 3. Minimalizuj powierzchnie folii
-      + plan.totalStripCount * 1_000       // 4. Mniej spoin
-```
-
-#### Zmiana 4: Nowa funkcja `simulateFullBFDPacking`
-
-Uproszczona wersja `packStripsIntoRolls` pracujaca na listach dlugosci (bez SurfaceRollConfig). Przyjmuje:
-- bottomStrips: {rollWidth, length}[]
-- wallStrips: {rollWidth, length}[]
-- Zwraca: {totalRolls, fullyUsedRolls, maxOffcutLength}
-
-Algorytm: BFD per szerokosc (sortuj malejaco, best-fit do istniejacych rolek lub nowa rolka 25m).
-
-### Plik: `src/lib/foil/wallStripOptimizer.ts` - Guardrail
-
-#### Zmiana 5: Guardrail w `getOptimalWallStripPlan`
-
-```text
-if (priority === 'minRolls') {
-  const minRollsPlan = selectOptimalWallPlan(plans, 'minRolls', ...)
-  const minWastePlan = selectOptimalWallPlan(plans, 'minWaste', ...)
-
-  const rollsMinRolls = simulateFullBFDPacking(bottom, minRollsPlan.strips)
-  const rollsMinWaste = simulateFullBFDPacking(bottom, minWastePlan.strips)
-
-  if (rollsMinRolls.totalRolls >= rollsMinWaste.totalRolls
-      && minRollsPlan.totalFoilArea > minWastePlan.totalFoilArea) {
-    return minWastePlan
-  }
-  return minRollsPlan
+export interface EngineeringParams {
+  // Woda świeża
+  fillingTimeH: number;           // czas napełniania [h]
+  
+  // Grzanie
+  targetTemp: number;             // temperatura zadana [°C]
+  initialTemp: number;            // temperatura startowa wody [°C]
+  airTemp: number;                // temperatura powietrza [°C]
+  heatingTimeH: number;           // zakładany czas podgrzewu [h]
+  windExposure: WindExposure;     // osłoniecie basenu (K_odkryty)
+  hoursOpenPerDay: number;        // h/dobę bez przykrycia
+  poolCover: PoolCover;           // typ przykrycia (lub brak)
+  hoursCoveredPerDay: number;     // h/dobę pod przykryciem
+  
+  // Filtracja DIN
+  surfaceCoeffA: number;          // współczynnik "a" pow. użytk. (2.7/4.5/2.2)
+  assistedDisinfection: boolean;  // dezynfekcja wspomagająca → K=0.6 vs 0.5
+  manualPersonCount?: number;     // ręczne nadpisanie liczby osób N
+  filterCount: number;            // liczba filtrów
+  filtrationSpeedMH: number;      // prędkość filtracji [m/h], domyślnie 30
+  
+  // Zbiornik przelewowy (tylko rynnowy)
+  overflowReservePercent: number; // zapas w zb. przelewowym [%], domyślnie 20
+  flushFromPoolPercent: number;   // % wody płukania pobranej z niecki, domyślnie 0
 }
 ```
 
-### Testy
+### Nowy interfejs `EngineeringResults` (wyniki obliczeń, wyliczane automatycznie)
 
-Istniejace testy w `wallStripOptimizer.test.ts` i `packStripsIntoRolls.test.ts` powinny zostac zaktualizowane:
+```typescript
+export interface EngineeringResults {
+  // Woda świeża
+  freshWaterFlowM3H: number;      // min. wydajność przyłącza [m3/h]
+  
+  // Grzanie
+  q1kW: number;                   // ciepło do nagrzania wody [kW]
+  q2kW: number;                   // straty ciepła [kW]
+  heatingPowerKW: number;         // minimalna moc grzewcza (ceil(q1+q2)) [kW]
+  
+  // Filtracja DIN
+  personCount: number;            // N = A / a (lub manualPersonCount)
+  dinFlowM3H: number;             // Q_DIN = N / K + Q_atrakcje [m3/h]
+  circulationTimeH: number;       // V / Q_DIN [h]
+  cyclesPerDay: number;           // 24 / circulationTimeH
+  totalFilterAreaM2: number;      // Q_DIN / prędkość_filtracji [m2]
+  filterAreaEachM2: number;       // totalFilterAreaM2 / filterCount [m2]
+  
+  // Zbiornik przelewowy (tylko gdy rynnowy)
+  overflow?: {
+    displacedWaterM3: number;     // N × 0.75 / 1000 [m3]
+    overflowWaterM3: number;      // 0.052 × A × 10^(-0.144 × Q/L) [m3]
+    flushWaterPerFilterM3: number; // powierzchnia filtra [m2] × 6 [m3]
+    minTankVolumeM3: number;      // suma + zapas
+  };
+}
+```
 
-1. Test "minWaste should prefer symmetric 15m + 15.2m strips" - ten juz oczekuje 15+15.2-like split. Po zmianach powinien przechodzic.
-2. Test "minRolls should match minWaste for 8x4x1.5m" - guardrail powinien zapewnic fallback.
-3. Test `packStripsIntoRolls` - packing 10x5x1.5m powinien dawac 3 rolki w minRolls.
+### Rozszerzenie `ConfiguratorState`
 
-Mozliwe ze trzeba bedzie zaktualizowac oczekiwane wartosci w testach po zmianach scoringu.
+W `src/context/ConfiguratorContext.tsx` stan `ExtendedConfiguratorState` otrzyma dwa nowe pola:
 
-## Weryfikacja oczekiwanych wynikow
+```typescript
+engineeringParams: EngineeringParams;
+engineeringResults: EngineeringResults | null;
+```
 
-Dla basenu 10x5x1.5m (dno: 1x2.05@10m + 2x1.65@10m):
+---
 
-**minWaste - oczekiwane 4 rolki**:
-- Rolka 1 (2.05): dno 10m, offcut 15m
-- Rolka 2 (1.65): dno 10m + sciana 15m = 25m (pelna)
-- Rolka 3 (1.65): dno 10m, offcut 15m
-- Rolka 4 (1.65): sciana 15.2m, offcut 9.8m
+## Nowy moduł obliczeń — `src/lib/poolEngineeringCalcs.ts`
 
-**minRolls - oczekiwane 3 rolki**:
-- Rolka 1 (2.05): dno 10m + sciana ~5.1m (2.05 szer.) = 15.1m, offcut 9.9m
-- Rolka 2 (1.65): dno 2x10m + sciana 5m = 25m (pelna)
-- Rolka 3 (1.65): sciana ~20.2m, offcut 4.8m
+Plik zawierający czyste funkcje matematyczne:
 
-## Kolejnosc implementacji
+### Stałe
 
-1. Nowa funkcja `simulateFullBFDPacking` w wallStripOptimizer
-2. Nowa funkcja `generateOverlapVariants` w wallStripOptimizer
-3. Modyfikacja `buildWallStripPlan` - parametr overlaps
-4. Modyfikacja `generateWallStripConfigurations` - iteracja po wariantach overlap
-5. Modyfikacja `selectOptimalWallPlan` - nowy scoring z pelnym BFD
-6. Guardrail w `getOptimalWallStripPlan`
-7. Aktualizacja testow
+```typescript
+export const WIND_EXPOSURE_COEFFICIENTS: Record<WindExposure, number> = {
+  wewnetrzny: 1,
+  osloniety3: 1.5,
+  osloniety2: 2,
+  nieosloniety: 3,
+  ekstremalny: 4,
+};
 
+export const COVER_COEFFICIENTS: Record<PoolCover, number> = {
+  brak: 0,
+  folia_solarna: 0.3,
+  roleta_pvc: 0.15,
+};
+```
+
+### `calculateFreshWater(volume, fillingTimeH)`
+```text
+minFlowRate = volume / fillingTimeH  [m3/h]
+```
+
+### `calculateHeating(params, surfaceArea, volume)`
+Wzór na q2 wg specyfikacji:
+```text
+K_odkryty  = WIND_EXPOSURE_COEFFICIENTS[windExposure]
+K_przykryty = COVER_COEFFICIENTS[poolCover]
+
+q2 = A × 0.012 × (T_zadana - T_powietrza)
+       × ((K_odkryty × h_odkryty + K_przykryty × h_przykryty) / 24)
+
+q2 = 0 jeśli T_zadana <= T_powietrza
+```
+
+Wzór na q1 (bez zmian):
+```text
+q1 = V × 1.163 × (T_zadana - T_poczatkowa) / t_grzania
+```
+
+Wynik: `ceil(q1 + q2)` jako minimalna moc grzewcza.
+
+### `calculateDINFiltration(params, surfaceArea, volume, attractions)`
+```text
+K = assistedDisinfection ? 0.6 : 0.5
+N = manualPersonCount ?? floor(A / a)
+Q_DIN = N / K + 6 × n_atrakcje   [m3/h]
+circulationTimeH = V / Q_DIN
+cyclesPerDay = 24 / circulationTimeH
+totalFilterAreaM2 = Q_DIN / filtrationSpeedMH
+filterAreaEachM2 = totalFilterAreaM2 / filterCount
+```
+
+### `calculateOverflowTank(params, N, Q, surfaceArea, perimeterLength, filterAreaEachM2)`
+```text
+displacedWaterM3 = N × 0.75 / 1000
+
+L = perimeterLength (długość rynny przelewowej)
+overflowWaterM3 = 0.052 × A × 10^(-0.144 × (Q / L))
+
+flushWaterPerFilterM3 = filterAreaEachM2 × 6
+
+baseVolume = displacedWaterM3 + overflowWaterM3
+           + flushWaterPerFilterM3 × (1 - flushFromPoolPercent/100)
+
+minTankVolumeM3 = baseVolume × (1 + overflowReservePercent/100)
+```
+
+### `getDefaultEngineeringParams(poolType, location)`
+Zwraca domyślne wartości parametrów na podstawie typu basenu i lokalizacji:
+
+```text
+prywatny:
+  fillingTimeH: 24
+  targetTemp: 28, initialTemp: 10, airTemp: 20, heatingTimeH: 96
+  windExposure: zależy od location ('wewnetrzny' → 'wewnetrzny', 'zewnetrzny' → 'nieosloniety')
+  hoursOpenPerDay: 24, poolCover: 'brak', hoursCoveredPerDay: 0
+  surfaceCoeffA: 4.5  (basen prywatny = rekreacyjny indywidualny)
+  assistedDisinfection: false
+  filterCount: 1, filtrationSpeedMH: 30
+  overflowReservePercent: 20, flushFromPoolPercent: 0
+
+polprywatny:
+  fillingTimeH: 48
+  targetTemp: 28, initialTemp: 9, airTemp: 28, heatingTimeH: 96
+  surfaceCoeffA: 2.7
+
+hotelowy:
+  fillingTimeH: 48
+  targetTemp: 28, initialTemp: 9, airTemp: 28, heatingTimeH: 96
+  surfaceCoeffA: 2.7
+```
+
+---
+
+## Nowy komponent UI — `src/components/steps/EngineeringCalcsPanel.tsx`
+
+Panel wyświetlany w zakładce "Obliczenia" w DimensionsStep, **pod istniejącymi obliczeniami geometrycznymi**. Składa się z czterech sekcji z możliwością zwinięcia (Collapsible).
+
+### Sekcja 1: Woda świeża
+- Input: Czas napełniania [h] (edytowalny, domyślnie zależny od typu basenu)
+- Wynik: Minimalna wydajność przyłącza [m3/h] — wyróżniony box
+
+### Sekcja 2: Grzanie wody
+Parametry (edytowalne):
+- Temperatura zadana [°C] (default 28)
+- Temperatura startowa wody [°C] (default 10)
+- Temperatura powietrza [°C] (default 20/28 per typ)
+- Czas podgrzewu [h] (default 96)
+- Osłoniecie basenu → Select z 5 opcjami (K_odkryty)
+- Godziny bez przykrycia/dobę
+- Typ przykrycia → Select (brak / folia solarna / roleta PVC)
+- Godziny pod przykryciem/dobę
+
+Wyniki: q1 [kW], q2 [kW], min. moc grzewcza [kW]
+
+### Sekcja 3: Filtracja i obieg wody (DIN)
+Parametry (edytowalne):
+- Współczynnik powierzchniowy "a" → Select (2.2 brodzik / 2.7 rekreacyjny / 4.5 sportowy) + możliwość ręcznego wpisania
+- Dezynfekcja wspomagająca → Switch (K=0.5 lub 0.6)
+- Liczba osób N → wyliczona (A/a), z możliwością ręcznego nadpisania
+- Liczba filtrów → Input
+- Prędkość filtracji [m/h] → Input (default 30)
+
+Wyniki: Q_DIN [m3/h], czas obiegu [h], obiegi/dobę, pow. filtracji łącznie i na filtr
+
+### Sekcja 4: Zbiornik przelewowy (tylko gdy `overflowType === 'rynnowy'`)
+Parametry:
+- Zapas [%] (default 20)
+- % wody płukania z niecki (default 0)
+
+Wyniki: woda wypierana [m3], woda przelewowa [m3], woda do płukania/filtr [m3], **minimalna pojemność czynna [m3]**
+
+---
+
+## Integracja w `DimensionsStep.tsx`
+
+W zakładce `calculations` (tab "Obliczenia"), **po** istniejącym boxie z wydajnością filtracji DIN, dodany zostanie komponent `<EngineeringCalcsPanel />`.
+
+Parametry `engineeringParams` będą przechowywane w stanie konfiguratora (nowe akcje redux: `SET_ENGINEERING_PARAMS`). Wyniki `engineeringResults` będą wyliczane reaktywnie (useEffect) po każdej zmianie `engineeringParams`, `dimensions` lub `poolType`, analogicznie do `calculatePoolMetrics`.
+
+**Ważne**: istniejący wzór `requiredFlow` w `PoolCalculations` (0.37×V/K) zostanie **zachowany** (używany do doboru pompy/filtra w kolejnych krokach). Nowy Q_DIN wg `A/(K×a)` pojawi się **obok** jako "Filtracja DIN (nowy wzór)" w panelu inżynieryjnym. Użytkownik będzie mógł zadecydować który wzór zastosować — na razie oba będą widoczne.
+
+---
+
+## Zmiany w `src/context/ConfiguratorContext.tsx`
+
+1. Import nowych typów `EngineeringParams`, `EngineeringResults`
+2. Nowe akcje:
+   - `SET_ENGINEERING_PARAMS` — aktualizacja parametrów wejściowych
+   - `SET_ENGINEERING_RESULTS` — zapis wyników (dispatch z DimensionsStep)
+3. Stan początkowy: `engineeringParams` = `getDefaultEngineeringParams('prywatny', 'zewnetrzny')`, `engineeringResults` = null
+4. W akcji `LOAD_OFFER` — odtworzenie `engineeringParams` z zapisanej oferty (jeśli istnieje)
+5. W akcji `RESET` — reset do wartości domyślnych
+
+---
+
+## Kolejność implementacji plików
+
+```text
+1. src/lib/poolEngineeringCalcs.ts         (nowy - czyste funkcje)
+2. src/types/configurator.ts               (nowe interfejsy, stałe)
+3. src/context/ConfiguratorContext.tsx     (nowy stan + akcje)
+4. src/components/steps/EngineeringCalcsPanel.tsx  (nowy komponent UI)
+5. src/components/steps/DimensionsStep.tsx (integracja panelu)
+```
+
+---
+
+## Szczegóły techniczne — wzory do implementacji
+
+### q2 — straty ciepła (pełny wzór)
+
+```typescript
+const kOpen  = WIND_EXPOSURE_COEFFICIENTS[windExposure];
+const kCover = COVER_COEFFICIENTS[poolCover];
+const deltaT = targetTemp - airTemp;
+
+if (deltaT <= 0) {
+  q2 = 0;
+} else {
+  q2 = surfaceArea * 0.012 * deltaT
+     * ((kOpen * hoursOpenPerDay + kCover * hoursCoveredPerDay) / 24);
+}
+```
+
+### Zbiornik przelewowy — woda przelewowa
+
+```typescript
+const L = perimeterLength; // długość rynny = obwód basenu
+overflowWaterM3 = 0.052 * surfaceArea * Math.pow(10, -0.144 * (Q / L));
+```
+
+### Pojemność zbiornika przelewowego
+
+```typescript
+const flushUsedFromPool = flushWaterPerFilterM3 * (flushFromPoolPercent / 100);
+const base = displacedWaterM3 + overflowWaterM3
+           + flushWaterPerFilterM3 - flushUsedFromPool;
+minTankVolumeM3 = base * (1 + overflowReservePercent / 100);
+```
+
+---
+
+## Co NIE jest w tym zakresie
+
+- Szacunkowy pobór energii (zależy od doboru urządzeń — osobna iteracja)
+- Integracja z PDF (osobna iteracja po weryfikacji poprawności wyników)
+- Nowe typy basenów (SPA, brodzik — rozszerzenie w przyszłości)
