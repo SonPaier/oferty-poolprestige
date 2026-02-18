@@ -1,0 +1,290 @@
+import { PoolType, PoolLocation, WindExposure, PoolCover, EngineeringParams } from '@/types/configurator';
+
+// ─── Współczynniki wiatru ────────────────────────────────────────────────────
+export const WIND_EXPOSURE_COEFFICIENTS: Record<WindExposure, number> = {
+  wewnetrzny: 1,
+  osloniety3: 1.5,
+  osloniety2: 2,
+  nieosloniety: 3,
+  ekstremalny: 4,
+};
+
+export const WIND_EXPOSURE_LABELS: Record<WindExposure, string> = {
+  wewnetrzny: 'Wewnętrzny / zadaszony (K=1)',
+  osloniety3: 'Osłonięty z 3 stron (K=1,5)',
+  osloniety2: 'Osłonięty z 2 stron (K=2)',
+  nieosloniety: 'Nieosłonięty (K=3)',
+  ekstremalny: 'Ekstremalny — morze, skarpa (K=4)',
+};
+
+// ─── Współczynniki przykrycia ─────────────────────────────────────────────────
+export const COVER_COEFFICIENTS: Record<PoolCover, number> = {
+  brak: 0,
+  folia_solarna: 0.3,
+  roleta_pvc: 0.15,
+};
+
+export const COVER_LABELS: Record<PoolCover, string> = {
+  brak: 'Brak przykrycia',
+  folia_solarna: 'Folia solarna (K=0,3)',
+  roleta_pvc: 'Roleta PVC (K=0,15)',
+};
+
+// ─── Domyślne wartości parametrów ────────────────────────────────────────────
+export function getDefaultEngineeringParams(
+  poolType: PoolType,
+  location: PoolLocation
+): EngineeringParams {
+  const isIndoor = location === 'wewnetrzny';
+
+  const base: EngineeringParams = {
+    // Woda świeża
+    fillingTimeH: 24,
+
+    // Grzanie
+    targetTemp: 28,
+    initialTemp: 10,
+    airTemp: 20,
+    heatingTimeH: 96,
+    windExposure: isIndoor ? 'wewnetrzny' : 'nieosloniety',
+    hoursOpenPerDay: isIndoor ? 0 : 24,
+    poolCover: 'brak',
+    hoursCoveredPerDay: 0,
+
+    // Filtracja DIN
+    surfaceCoeffA: 4.5,
+    assistedDisinfection: false,
+    manualPersonCount: undefined,
+    filterCount: 1,
+    filtrationSpeedMH: 30,
+
+    // Zbiornik przelewowy
+    overflowReservePercent: 20,
+    flushFromPoolPercent: 0,
+  };
+
+  switch (poolType) {
+    case 'prywatny':
+      return {
+        ...base,
+        fillingTimeH: 24,
+        surfaceCoeffA: 4.5,
+        airTemp: isIndoor ? 28 : 20,
+      };
+
+    case 'polprywatny':
+      return {
+        ...base,
+        fillingTimeH: 48,
+        targetTemp: 28,
+        initialTemp: 9,
+        airTemp: 28,
+        surfaceCoeffA: 2.7,
+        windExposure: isIndoor ? 'wewnetrzny' : 'nieosloniety',
+      };
+
+    case 'hotelowy':
+      return {
+        ...base,
+        fillingTimeH: 48,
+        targetTemp: 28,
+        initialTemp: 9,
+        airTemp: 28,
+        surfaceCoeffA: 2.7,
+        windExposure: isIndoor ? 'wewnetrzny' : 'nieosloniety',
+      };
+
+    default:
+      return base;
+  }
+}
+
+// ─── Woda świeża ──────────────────────────────────────────────────────────────
+export interface FreshWaterResult {
+  minFlowM3H: number; // min. wydajność przyłącza [m³/h]
+}
+
+export function calculateFreshWater(
+  volumeM3: number,
+  fillingTimeH: number
+): FreshWaterResult {
+  const minFlowM3H = volumeM3 / Math.max(fillingTimeH, 0.1);
+  return { minFlowM3H };
+}
+
+// ─── Grzanie wody ─────────────────────────────────────────────────────────────
+export interface HeatingResult {
+  q1kW: number;            // ciepło do nagrzania wody
+  q2kW: number;            // straty ciepła z powierzchni
+  heatingPowerKW: number;  // ceil(q1 + q2)
+}
+
+export function calculateHeating(
+  params: Pick<
+    EngineeringParams,
+    | 'targetTemp'
+    | 'initialTemp'
+    | 'airTemp'
+    | 'heatingTimeH'
+    | 'windExposure'
+    | 'hoursOpenPerDay'
+    | 'poolCover'
+    | 'hoursCoveredPerDay'
+  >,
+  surfaceAreaM2: number,
+  volumeM3: number
+): HeatingResult {
+  const {
+    targetTemp, initialTemp, airTemp, heatingTimeH,
+    windExposure, hoursOpenPerDay, poolCover, hoursCoveredPerDay,
+  } = params;
+
+  // q1 — energia do nagrzewania wody
+  const q1kW =
+    (volumeM3 * 1.163 * Math.max(targetTemp - initialTemp, 0)) /
+    Math.max(heatingTimeH, 0.1);
+
+  // q2 — straty ciepła z powierzchni lustra wody
+  const deltaT = targetTemp - airTemp;
+  let q2kW = 0;
+  if (deltaT > 0) {
+    const kOpen = WIND_EXPOSURE_COEFFICIENTS[windExposure];
+    const kCover = COVER_COEFFICIENTS[poolCover];
+    q2kW =
+      surfaceAreaM2 *
+      0.012 *
+      deltaT *
+      ((kOpen * hoursOpenPerDay + kCover * hoursCoveredPerDay) / 24);
+  }
+
+  const heatingPowerKW = Math.ceil(q1kW + q2kW);
+
+  return {
+    q1kW: Math.round(q1kW * 100) / 100,
+    q2kW: Math.round(q2kW * 100) / 100,
+    heatingPowerKW,
+  };
+}
+
+// ─── Filtracja DIN ────────────────────────────────────────────────────────────
+export interface DINFiltrationResult {
+  personCount: number;          // N = A/a (lub manualPersonCount)
+  kCoeff: number;               // 0.5 lub 0.6
+  dinFlowM3H: number;           // Q = N/K + 6×atrakcje
+  circulationTimeH: number;     // V / Q
+  cyclesPerDay: number;         // 24 / circulationTime
+  totalFilterAreaM2: number;    // Q / v_filtracji
+  filterAreaEachM2: number;     // total / filterCount
+}
+
+export function calculateDINFiltration(
+  params: Pick<
+    EngineeringParams,
+    | 'surfaceCoeffA'
+    | 'assistedDisinfection'
+    | 'manualPersonCount'
+    | 'filterCount'
+    | 'filtrationSpeedMH'
+  >,
+  surfaceAreaM2: number,
+  volumeM3: number,
+  attractionsCount: number
+): DINFiltrationResult {
+  const { surfaceCoeffA, assistedDisinfection, manualPersonCount, filterCount, filtrationSpeedMH } = params;
+
+  const kCoeff = assistedDisinfection ? 0.6 : 0.5;
+  const personCount =
+    manualPersonCount != null && manualPersonCount > 0
+      ? manualPersonCount
+      : Math.floor(surfaceAreaM2 / Math.max(surfaceCoeffA, 0.1));
+
+  const dinFlowM3H = personCount / kCoeff + 6 * attractionsCount;
+
+  const circulationTimeH = volumeM3 / Math.max(dinFlowM3H, 0.01);
+  const cyclesPerDay = 24 / Math.max(circulationTimeH, 0.01);
+  const totalFilterAreaM2 = dinFlowM3H / Math.max(filtrationSpeedMH, 1);
+  const safeFilterCount = Math.max(filterCount, 1);
+  const filterAreaEachM2 = totalFilterAreaM2 / safeFilterCount;
+
+  return {
+    personCount,
+    kCoeff,
+    dinFlowM3H: Math.round(dinFlowM3H * 100) / 100,
+    circulationTimeH: Math.round(circulationTimeH * 100) / 100,
+    cyclesPerDay: Math.round(cyclesPerDay * 100) / 100,
+    totalFilterAreaM2: Math.round(totalFilterAreaM2 * 1000) / 1000,
+    filterAreaEachM2: Math.round(filterAreaEachM2 * 1000) / 1000,
+  };
+}
+
+// ─── Zbiornik przelewowy ──────────────────────────────────────────────────────
+export interface OverflowTankResult {
+  displacedWaterM3: number;       // N × 0.75 / 1000 [m³]  (0.75L/os)
+  overflowWaterM3: number;        // 0.052 × A × 10^(-0.144 × Q/L)
+  flushWaterPerFilterM3: number;  // filterAreaEach × 6
+  minTankVolumeM3: number;        // suma + zapas
+}
+
+export function calculateOverflowTank(
+  params: Pick<EngineeringParams, 'overflowReservePercent' | 'flushFromPoolPercent'>,
+  personCount: number,
+  dinFlowM3H: number,
+  surfaceAreaM2: number,
+  perimeterLengthM: number,
+  filterAreaEachM2: number
+): OverflowTankResult {
+  const { overflowReservePercent, flushFromPoolPercent } = params;
+
+  // Woda wypierana przez kąpiących (0.75L/os = 0.00075m³/os)
+  const displacedWaterM3 = personCount * 0.75 / 1000;
+
+  // Woda przelewowa
+  const L = Math.max(perimeterLengthM, 0.1);
+  const overflowWaterM3 =
+    0.052 * surfaceAreaM2 * Math.pow(10, -0.144 * (dinFlowM3H / L));
+
+  // Woda do płukania 1 filtra
+  const flushWaterPerFilterM3 = filterAreaEachM2 * 6;
+
+  // Woda do płukania pomniejszona o pobraną z niecki
+  const flushFromPool = flushWaterPerFilterM3 * (flushFromPoolPercent / 100);
+  const base =
+    displacedWaterM3 + overflowWaterM3 + flushWaterPerFilterM3 - flushFromPool;
+
+  const minTankVolumeM3 = base * (1 + overflowReservePercent / 100);
+
+  return {
+    displacedWaterM3: Math.round(displacedWaterM3 * 1000) / 1000,
+    overflowWaterM3: Math.round(overflowWaterM3 * 1000) / 1000,
+    flushWaterPerFilterM3: Math.round(flushWaterPerFilterM3 * 1000) / 1000,
+    minTankVolumeM3: Math.round(minTankVolumeM3 * 100) / 100,
+  };
+}
+
+// ─── Główna funkcja wyliczająca wszystko ─────────────────────────────────────
+export function calculateAllEngineering(
+  params: EngineeringParams,
+  surfaceAreaM2: number,
+  volumeM3: number,
+  perimeterLengthM: number,
+  attractionsCount: number,
+  isOverflow: boolean
+) {
+  const freshWater = calculateFreshWater(volumeM3, params.fillingTimeH);
+  const heating = calculateHeating(params, surfaceAreaM2, volumeM3);
+  const filtration = calculateDINFiltration(
+    params, surfaceAreaM2, volumeM3, attractionsCount
+  );
+  const overflow = isOverflow
+    ? calculateOverflowTank(
+        params,
+        filtration.personCount,
+        filtration.dinFlowM3H,
+        surfaceAreaM2,
+        perimeterLengthM,
+        filtration.filterAreaEachM2
+      )
+    : undefined;
+
+  return { freshWater, heating, filtration, overflow };
+}

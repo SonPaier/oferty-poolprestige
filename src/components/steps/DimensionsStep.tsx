@@ -55,6 +55,7 @@ import {
 import { calculatePoolMetrics, calculateFoilOptimization } from '@/lib/calculations';
 import { CustomPoolDrawer } from '@/components/CustomPoolDrawer';
 import { usePoolGeometryValidation } from '@/hooks/usePoolGeometryValidation';
+import { EngineeringCalcsPanel } from '@/components/steps/EngineeringCalcsPanel';
 
 interface DimensionsStepProps {
   onNext: () => void;
@@ -1750,7 +1751,7 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
                     {/* Stairs area - show only if stairs enabled */}
                     {(dimensions.stairs?.enabled || (dimensions.customStairsVertices && dimensions.customStairsVertices.some(v => v.length >= 3))) && (
                       <>
-                        <div className="flex justify-between p-3 rounded-lg bg-amber-500/10 border border-amber-500/20">
+                        <div className="flex justify-between p-3 rounded-lg bg-muted/30 border border-border">
                           <span className="text-muted-foreground flex items-center gap-1">
                             <Footprints className="w-3 h-3" />
                             Pow. schodów (rzut)
@@ -1762,7 +1763,7 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
                     
                     {/* Wading pool area - show only if wading pool enabled */}
                     {(dimensions.wadingPool?.enabled || (dimensions.customWadingPoolVertices && dimensions.customWadingPoolVertices.some(v => v.length >= 3))) && (
-                      <div className="flex justify-between p-3 rounded-lg bg-cyan-500/10 border border-cyan-500/20 col-span-2">
+                      <div className="flex justify-between p-3 rounded-lg bg-muted/30 border border-border col-span-2">
                         <span className="text-muted-foreground flex items-center gap-1">
                           <Baby className="w-3 h-3" />
                           Powierzchnia brodzika
@@ -1787,6 +1788,8 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
                       </div>
                     </div>
                   </div>
+
+                  <EngineeringCalcsPanel />
 
                 </div>
               )}

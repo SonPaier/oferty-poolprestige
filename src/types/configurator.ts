@@ -500,6 +500,62 @@ export const liningTypeLabels: Record<PoolLiningType, string> = {
   ceramiczny: 'Ceramiczny',
 };
 
+// ─── Wyliczenia inżynierskie ─────────────────────────────────────────────────
+
+export type WindExposure =
+  | 'wewnetrzny'   // K=1 (wewnętrzny lub zadaszony)
+  | 'osloniety3'   // K=1.5 (osłonięty z 3 stron)
+  | 'osloniety2'   // K=2 (osłonięty z 2 stron)
+  | 'nieosloniety' // K=3 (nieosłonięty)
+  | 'ekstremalny'; // K=4 (morze, wzgórze, skarpa)
+
+export type PoolCover =
+  | 'brak'         // brak przykrycia
+  | 'folia_solarna' // K_przykryty=0.3
+  | 'roleta_pvc';  // K_przykryty=0.15
+
+export interface EngineeringParams {
+  // Woda świeża
+  fillingTimeH: number;
+  // Grzanie
+  targetTemp: number;
+  initialTemp: number;
+  airTemp: number;
+  heatingTimeH: number;
+  windExposure: WindExposure;
+  hoursOpenPerDay: number;
+  poolCover: PoolCover;
+  hoursCoveredPerDay: number;
+  // Filtracja DIN
+  surfaceCoeffA: number;
+  assistedDisinfection: boolean;
+  manualPersonCount?: number;
+  filterCount: number;
+  filtrationSpeedMH: number;
+  // Zbiornik przelewowy
+  overflowReservePercent: number;
+  flushFromPoolPercent: number;
+}
+
+export interface EngineeringResults {
+  freshWaterFlowM3H: number;
+  q1kW: number;
+  q2kW: number;
+  heatingPowerKW: number;
+  personCount: number;
+  dinFlowM3H: number;
+  circulationTimeH: number;
+  cyclesPerDay: number;
+  totalFilterAreaM2: number;
+  filterAreaEachM2: number;
+  overflow?: {
+    displacedWaterM3: number;
+    overflowWaterM3: number;
+    flushWaterPerFilterM3: number;
+    minTankVolumeM3: number;
+  };
+}
+
 // Overflow type labels
 export const overflowTypeLabels: Record<PoolOverflowType, string> = {
   skimmerowy: 'Skimmerowy',
