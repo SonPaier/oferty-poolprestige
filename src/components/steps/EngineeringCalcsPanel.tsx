@@ -274,25 +274,20 @@ export function EngineeringCalcsPanel() {
               </SelectContent>
             </Select>
           </ParamRow>
-          <ParamRow label="Godzin odkrytego / dobę">
-            <Input
-              type="number"
-              min={0}
-              max={24}
-              value={engineeringParams.hoursOpenPerDay}
-              onChange={(e) =>
-                updateParam(
-                  'hoursOpenPerDay',
-                  Math.min(24, Math.max(0, Number(e.target.value)))
-                )
-              }
-              className="h-8 text-sm"
-            />
-          </ParamRow>
           <ParamRow label="Typ przykrycia">
             <Select
               value={engineeringParams.poolCover}
-              onValueChange={(v) => updateParam('poolCover', v as PoolCover)}
+              onValueChange={(v) => {
+                const cover = v as PoolCover;
+                if (cover === 'brak') {
+                  dispatch({
+                    type: 'SET_ENGINEERING_PARAMS',
+                    payload: { ...engineeringParams, poolCover: cover, hoursOpenPerDay: 24, hoursCoveredPerDay: 0 },
+                  });
+                } else {
+                  updateParam('poolCover', cover);
+                }
+              }}
             >
               <SelectTrigger className="h-8 text-xs">
                 <SelectValue />
@@ -307,21 +302,32 @@ export function EngineeringCalcsPanel() {
             </Select>
           </ParamRow>
           {engineeringParams.poolCover !== 'brak' && (
-            <ParamRow label="Godzin pod przykryciem / dobę">
-              <Input
-                type="number"
-                min={0}
-                max={24}
-                value={engineeringParams.hoursCoveredPerDay}
-                onChange={(e) =>
-                  updateParam(
-                    'hoursCoveredPerDay',
-                    Math.min(24, Math.max(0, Number(e.target.value)))
-                  )
-                }
-                className="h-8 text-sm"
-              />
-            </ParamRow>
+            <>
+              <ParamRow label="Godzin odkrytego / dobę">
+                <Input
+                  type="number"
+                  min={0}
+                  max={24}
+                  value={engineeringParams.hoursOpenPerDay}
+                  onChange={(e) => {
+                    const open = Math.min(24, Math.max(0, Number(e.target.value)));
+                    dispatch({
+                      type: 'SET_ENGINEERING_PARAMS',
+                      payload: { ...engineeringParams, hoursOpenPerDay: open, hoursCoveredPerDay: Math.max(0, 24 - open) },
+                    });
+                  }}
+                  className="h-8 text-sm"
+                />
+              </ParamRow>
+              <div className="flex items-center justify-between gap-2">
+                <Label className="text-xs text-muted-foreground flex-1 leading-tight">
+                  Godzin pod przykryciem / dobę
+                </Label>
+                <div className="w-36 shrink-0 h-8 flex items-center px-3 rounded-md border border-border bg-muted/30 text-sm text-muted-foreground">
+                  = 24 − {engineeringParams.hoursOpenPerDay} = <span className="font-semibold text-foreground ml-1">{Math.max(0, 24 - engineeringParams.hoursOpenPerDay)} h</span>
+                </div>
+              </div>
+            </>
           )}
 
           {res && (
