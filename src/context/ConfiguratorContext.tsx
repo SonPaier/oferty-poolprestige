@@ -5,10 +5,13 @@ import {
   PoolDimensions, 
   CustomerData,
   ConfiguratorSection,
-  OfferItem
+  OfferItem,
+  EngineeringParams,
+  EngineeringResults,
 } from '@/types/configurator';
 import { Product } from '@/data/products';
 import { SavedOffer } from '@/types/offers';
+import { getDefaultEngineeringParams } from '@/lib/poolEngineeringCalcs';
 
 export interface EditModeInfo {
   isEditing: boolean;
@@ -32,6 +35,8 @@ type ConfiguratorAction =
   | { type: 'LOAD_OFFER'; payload: { offer: SavedOffer & { shareUid: string } } }
   | { type: 'SET_EDIT_MODE'; payload: EditModeInfo }
   | { type: 'CLEAR_EDIT_MODE' }
+  | { type: 'SET_ENGINEERING_PARAMS'; payload: EngineeringParams }
+  | { type: 'SET_ENGINEERING_RESULTS'; payload: EngineeringResults | null }
   | { type: 'RESET' };
 
 const initialDimensions: PoolDimensions = {
@@ -97,6 +102,8 @@ const initialEditMode: EditModeInfo = {
 
 interface ExtendedConfiguratorState extends ConfiguratorState {
   editMode: EditModeInfo;
+  engineeringParams: EngineeringParams;
+  engineeringResults: EngineeringResults | null;
 }
 
 const initialState: ExtendedConfiguratorState = {
@@ -119,6 +126,8 @@ const initialState: ExtendedConfiguratorState = {
     prace_budowlane: { ...createEmptySection('prace_budowlane', 'Prace budowlane'), scope: 'investor' },
   },
   editMode: initialEditMode,
+  engineeringParams: getDefaultEngineeringParams('prywatny', 'zewnetrzny'),
+  engineeringResults: null,
 };
 
 function configuratorReducer(state: ExtendedConfiguratorState, action: ConfiguratorAction): ExtendedConfiguratorState {
@@ -227,6 +236,11 @@ function configuratorReducer(state: ExtendedConfiguratorState, action: Configura
           offerNumber: offer.offerNumber,
           shareUid: offer.shareUid,
         },
+        // Odtwórz parametry inżynierskie z oferty (jeśli zapisane)
+        engineeringParams:
+          (offer as any).engineeringParams ??
+          getDefaultEngineeringParams(offer.poolType, offer.dimensions.location),
+        engineeringResults: (offer as any).engineeringResults ?? null,
       };
     }
     
@@ -241,6 +255,12 @@ function configuratorReducer(state: ExtendedConfiguratorState, action: Configura
         ...state,
         editMode: initialEditMode,
       };
+
+    case 'SET_ENGINEERING_PARAMS':
+      return { ...state, engineeringParams: action.payload };
+
+    case 'SET_ENGINEERING_RESULTS':
+      return { ...state, engineeringResults: action.payload };
     
     case 'RESET':
       return initialState;
