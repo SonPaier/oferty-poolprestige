@@ -150,6 +150,7 @@ export function EngineeringCalcsPanel() {
         cyclesPerDay: results.filtration.cyclesPerDay,
         totalFilterAreaM2: results.filtration.totalFilterAreaM2,
         filterAreaEachM2: results.filtration.filterAreaEachM2,
+        filterDiameterEachCm: results.filtration.filterDiameterEachCm,
         overflow: results.overflow
           ? {
               displacedWaterM3: results.overflow.displacedWaterM3,
@@ -472,11 +473,25 @@ export function EngineeringCalcsPanel() {
                 value={res.totalFilterAreaM2.toFixed(3)}
                 unit="m²"
               />
-              {engineeringParams.filterCount > 1 && (
+              {engineeringParams.filterCount > 1 ? (
+                <>
+                  <ResultBox
+                    label={`Pow. 1 filtra (/${engineeringParams.filterCount})`}
+                    value={res.filterAreaEachM2.toFixed(3)}
+                    unit="m²"
+                  />
+                  <ResultBox
+                    label={`Śr. 1 filtra (/${engineeringParams.filterCount})`}
+                    value={res.filterDiameterEachCm.toFixed(1)}
+                    unit="cm"
+                    highlight
+                  />
+                </>
+              ) : (
                 <ResultBox
-                  label={`Pow. 1 filtra (/${engineeringParams.filterCount})`}
-                  value={res.filterAreaEachM2.toFixed(3)}
-                  unit="m²"
+                  label="Śr. zalecana filtra"
+                  value={res.filterDiameterEachCm.toFixed(1)}
+                  unit="cm"
                   highlight
                 />
               )}
