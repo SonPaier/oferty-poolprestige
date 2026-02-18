@@ -548,6 +548,7 @@ export interface EngineeringResults {
   cyclesPerDay: number;
   totalFilterAreaM2: number;
   filterAreaEachM2: number;
+  filterDiameterEachCm: number;
   overflow?: {
     displacedWaterM3: number;
     overflowWaterM3: number;

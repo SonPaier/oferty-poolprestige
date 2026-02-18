@@ -175,6 +175,7 @@ export interface DINFiltrationResult {
   cyclesPerDay: number;         // 24 / circulationTime
   totalFilterAreaM2: number;    // Q / v_filtracji
   filterAreaEachM2: number;     // total / filterCount
+  filterDiameterEachCm: number; // D = 2×√(A/π) przeliczone na cm
 }
 
 export function calculateDINFiltration(
@@ -205,6 +206,8 @@ export function calculateDINFiltration(
   const totalFilterAreaM2 = dinFlowM3H / Math.max(filtrationSpeedMH, 1);
   const safeFilterCount = Math.max(filterCount, 1);
   const filterAreaEachM2 = totalFilterAreaM2 / safeFilterCount;
+  // Średnica filtra: D = 2 × √(A / π), przeliczona na cm
+  const filterDiameterEachCm = 2 * Math.sqrt(filterAreaEachM2 / Math.PI) * 100;
 
   return {
     personCount,
@@ -214,6 +217,7 @@ export function calculateDINFiltration(
     cyclesPerDay: Math.round(cyclesPerDay * 100) / 100,
     totalFilterAreaM2: Math.round(totalFilterAreaM2 * 1000) / 1000,
     filterAreaEachM2: Math.round(filterAreaEachM2 * 1000) / 1000,
+    filterDiameterEachCm: Math.round(filterDiameterEachCm * 10) / 10,
   };
 }
 
