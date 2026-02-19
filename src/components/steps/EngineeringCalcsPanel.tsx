@@ -137,6 +137,7 @@ export function EngineeringCalcsPanel() {
       dimensions.attractions,
       isOverflow
     );
+    const evap = results.heating.evaporation;
     dispatch({
       type: 'SET_ENGINEERING_RESULTS',
       payload: {
@@ -151,6 +152,13 @@ export function EngineeringCalcsPanel() {
         totalFilterAreaM2: results.filtration.totalFilterAreaM2,
         filterAreaEachM2: results.filtration.filterAreaEachM2,
         filterDiameterEachCm: results.filtration.filterDiameterEachCm,
+        // Parowanie (model Magnus/ASHRAE)
+        evaporationLH: evap.evaporationLH,
+        evaporationLDay: evap.evaporationLDay,
+        pSatWaterHPa: evap.pSatWaterHPa,
+        pPartialAirHPa: evap.pPartialAirHPa,
+        deltaPHPa: evap.deltaPHPa,
+        q2MaxKW: evap.q2MaxKW,
         overflow: results.overflow
           ? {
               displacedWaterM3: results.overflow.displacedWaterM3,
@@ -332,16 +340,57 @@ export function EngineeringCalcsPanel() {
           )}
 
           {res && (
-            <div className="grid grid-cols-3 gap-2 mt-1">
-              <ResultBox label="q1 (nagrzewanie)" value={res.q1kW.toFixed(1)} unit="kW" />
-              <ResultBox label="q2 (straty)" value={res.q2kW.toFixed(1)} unit="kW" />
-              <ResultBox
-                label="Min. moc grzewcza"
-                value={res.heatingPowerKW}
-                unit="kW"
-                highlight
-              />
-            </div>
+            <>
+              <div className="grid grid-cols-3 gap-2 mt-1">
+                <ResultBox label="q1 (nagrzewanie)" value={res.q1kW.toFixed(1)} unit="kW" />
+                <ResultBox label="q2 (straty)" value={res.q2kW.toFixed(1)} unit="kW" />
+                <ResultBox
+                  label="Min. moc grzewcza"
+                  value={res.heatingPowerKW}
+                  unit="kW"
+                  highlight
+                />
+              </div>
+              {/* Parowanie — szczegóły modelu Magnus/ASHRAE */}
+              <p className="text-xs text-muted-foreground uppercase tracking-wide mt-3 mb-1">
+                Parowanie wody (Magnus / ASHRAE)
+              </p>
+              <div className="grid grid-cols-3 gap-2">
+                <ResultBox
+                  label="P_wody"
+                  value={res.pSatWaterHPa.toFixed(2)}
+                  unit="hPa"
+                />
+                <ResultBox
+                  label="P_powietrza"
+                  value={res.pPartialAirHPa.toFixed(2)}
+                  unit="hPa"
+                />
+                <ResultBox
+                  label="ΔP"
+                  value={res.deltaPHPa.toFixed(2)}
+                  unit="hPa"
+                  highlight
+                />
+              </div>
+              <div className="grid grid-cols-3 gap-2 mt-2">
+                <ResultBox
+                  label="Parowanie (odkryte)"
+                  value={res.evaporationLH.toFixed(1)}
+                  unit="l/h"
+                />
+                <ResultBox
+                  label="Parowanie / dobę"
+                  value={res.evaporationLDay.toFixed(0)}
+                  unit="l/d"
+                />
+                <ResultBox
+                  label="q2 maks."
+                  value={res.q2MaxKW.toFixed(2)}
+                  unit="kW"
+                />
+              </div>
+            </>
           )}
         </CollapsibleContent>
       </Collapsible>

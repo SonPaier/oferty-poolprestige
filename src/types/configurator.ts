@@ -551,6 +551,13 @@ export interface EngineeringResults {
   totalFilterAreaM2: number;
   filterAreaEachM2: number;
   filterDiameterEachCm: number;
+  // Parowanie (model Magnus/ASHRAE)
+  evaporationLH: number;       // odparowana woda przy pełnym odkryciu [l/h]
+  evaporationLDay: number;     // ważona dobowo [l/dobę]
+  pSatWaterHPa: number;        // P_sat(T_wody) [hPa]
+  pPartialAirHPa: number;      // P_sat(T_powietrza) × RH/100 [hPa]
+  deltaPHPa: number;           // ΔP = P_w − P_a [hPa]
+  q2MaxKW: number;             // strata maks. bez przykrycia [kW]
   overflow?: {
     displacedWaterM3: number;
     overflowWaterM3: number;
