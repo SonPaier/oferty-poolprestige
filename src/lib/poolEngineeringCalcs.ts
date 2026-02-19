@@ -186,12 +186,47 @@ function calculateEvaporation(
   };
 }
 
+// ─── Uzupełnianie wody ───────────────────────────────────────────────────────
+export interface WaterMakeupResult {
+  flushDayM3: number;       // płukanie / dobę [m³/d]
+  evapDayM3: number;        // parowanie / dobę [m³/d]
+  splashDayM3: number;      // wychlapanie / dobę [m³/d]
+  totalMakeupDayM3: number; // suma [m³/d]
+  q3kW: number;             // moc do podgrzania [kW]
+}
+
+export function calculateWaterMakeup(
+  personCount: number,
+  evaporationLDay: number,
+  flushWaterPerFilterM3: number,
+  hoursOpenPerDay: number,
+  targetTemp: number,
+  initialTemp: number
+): WaterMakeupResult {
+  const flushDayM3 = flushWaterPerFilterM3 / 7;
+  const evapDayM3 = evaporationLDay / 1000;
+  const splashDayM3 = (personCount * 2 * (hoursOpenPerDay / 24)) / 1000;
+  const totalMakeupDayM3 = flushDayM3 + evapDayM3 + splashDayM3;
+  const deltaT = Math.max(targetTemp - initialTemp, 0);
+  const q3kW = (totalMakeupDayM3 * 1.163 * deltaT) / 24;
+
+  return {
+    flushDayM3: Math.round(flushDayM3 * 10000) / 10000,
+    evapDayM3: Math.round(evapDayM3 * 10000) / 10000,
+    splashDayM3: Math.round(splashDayM3 * 10000) / 10000,
+    totalMakeupDayM3: Math.round(totalMakeupDayM3 * 10000) / 10000,
+    q3kW: Math.round(q3kW * 100) / 100,
+  };
+}
+
 // ─── Grzanie wody ─────────────────────────────────────────────────────────────
 export interface HeatingResult {
   q1kW: number;            // ciepło do nagrzania wody
   q2kW: number;            // straty ciepła z powierzchni
-  heatingPowerKW: number;  // ceil(q1 + q2)
+  q3kW: number;            // moc do podgrzania wody uzupełnianej
+  heatingPowerKW: number;  // ceil(q1 + q2 + q3)
   evaporation: EvaporationResult;
+  makeup: WaterMakeupResult;
 }
 
 export function calculateHeating(
@@ -208,7 +243,9 @@ export function calculateHeating(
     | 'hoursCoveredPerDay'
   >,
   surfaceAreaM2: number,
-  volumeM3: number
+  volumeM3: number,
+  personCount: number,
+  flushWaterPerFilterM3: number
 ): HeatingResult {
   const {
     targetTemp, initialTemp, airTemp, airHumidityPercent, heatingTimeH,
@@ -228,13 +265,26 @@ export function calculateHeating(
   );
   const q2kW = evaporation.q2kW;
 
-  const heatingPowerKW = Math.ceil(q1kW + q2kW);
+  // q3 — moc do podgrzania wody uzupełnianej
+  const makeup = calculateWaterMakeup(
+    personCount,
+    evaporation.evaporationLDay,
+    flushWaterPerFilterM3,
+    hoursOpenPerDay,
+    targetTemp,
+    initialTemp
+  );
+  const q3kW = makeup.q3kW;
+
+  const heatingPowerKW = Math.ceil(q1kW + q2kW + q3kW);
 
   return {
     q1kW: Math.round(q1kW * 100) / 100,
     q2kW,
+    q3kW,
     heatingPowerKW,
     evaporation,
+    makeup,
   };
 }
 
@@ -346,10 +396,15 @@ export function calculateAllEngineering(
   attractionsCount: number,
   isOverflow: boolean
 ) {
-  const freshWater = calculateFreshWater(volumeM3, params.fillingTimeH);
-  const heating = calculateHeating(params, surfaceAreaM2, volumeM3);
+  // Filtrację obliczamy PRZED grzaniem — personCount i flushWaterPerFilterM3 potrzebne do q3
   const filtration = calculateDINFiltration(
     params, surfaceAreaM2, volumeM3, attractionsCount
+  );
+  const flushWaterPerFilterM3 = filtration.filterAreaEachM2 * 6;
+  const freshWater = calculateFreshWater(volumeM3, params.fillingTimeH);
+  const heating = calculateHeating(
+    params, surfaceAreaM2, volumeM3,
+    filtration.personCount, flushWaterPerFilterM3
   );
   const overflow = isOverflow
     ? calculateOverflowTank(

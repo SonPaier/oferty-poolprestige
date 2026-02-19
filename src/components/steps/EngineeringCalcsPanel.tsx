@@ -144,7 +144,12 @@ export function EngineeringCalcsPanel() {
         freshWaterFlowM3H: results.freshWater.minFlowM3H,
         q1kW: results.heating.q1kW,
         q2kW: results.heating.q2kW,
+        q3kW: results.heating.q3kW,
         heatingPowerKW: results.heating.heatingPowerKW,
+        makeupFlushDayM3: results.heating.makeup.flushDayM3,
+        makeupEvapDayM3: results.heating.makeup.evapDayM3,
+        makeupSplashDayM3: results.heating.makeup.splashDayM3,
+        makeupTotalDayM3: results.heating.makeup.totalMakeupDayM3,
         personCount: results.filtration.personCount,
         dinFlowM3H: results.filtration.dinFlowM3H,
         circulationTimeH: results.filtration.circulationTimeH,
@@ -375,9 +380,11 @@ export function EngineeringCalcsPanel() {
 
           {res && (
             <>
-              <div className="grid grid-cols-3 gap-2 mt-1">
+              {/* q1 / q2 / q3 / heatingPower */}
+              <div className="grid grid-cols-2 gap-2 mt-1">
                 <ResultBox label="q1 (nagrzewanie)" value={res.q1kW.toFixed(1)} unit="kW" />
                 <ResultBox label="q2 (straty)" value={res.q2kW.toFixed(1)} unit="kW" />
+                <ResultBox label="q3 (uzupełnianie)" value={res.q3kW.toFixed(2)} unit="kW" />
                 <ResultBox
                   label="Min. moc grzewcza"
                   value={res.heatingPowerKW}
@@ -421,6 +428,40 @@ export function EngineeringCalcsPanel() {
                 <ResultBox
                   label="q2 maks."
                   value={res.q2MaxKW.toFixed(2)}
+                  unit="kW"
+                />
+              </div>
+              {/* Uzupełnianie wody */}
+              <p className="text-xs text-muted-foreground uppercase tracking-wide mt-3 mb-1">
+                Uzupełnianie wody (dobowe)
+              </p>
+              <div className="grid grid-cols-3 gap-2">
+                <ResultBox
+                  label="Płukanie filtra"
+                  value={(res.makeupFlushDayM3 * 1000).toFixed(1)}
+                  unit="l/d"
+                />
+                <ResultBox
+                  label="Parowanie"
+                  value={(res.makeupEvapDayM3 * 1000).toFixed(1)}
+                  unit="l/d"
+                />
+                <ResultBox
+                  label="Wychlapanie"
+                  value={(res.makeupSplashDayM3 * 1000).toFixed(1)}
+                  unit="l/d"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-2 mt-2">
+                <ResultBox
+                  label="Łącznie / dobę"
+                  value={(res.makeupTotalDayM3 * 1000).toFixed(1)}
+                  unit="l/d"
+                  highlight
+                />
+                <ResultBox
+                  label="q3 (podgrzanie uzup.)"
+                  value={res.q3kW.toFixed(2)}
                   unit="kW"
                 />
               </div>

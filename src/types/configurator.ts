@@ -544,7 +544,13 @@ export interface EngineeringResults {
   freshWaterFlowM3H: number;
   q1kW: number;
   q2kW: number;
+  q3kW: number;
   heatingPowerKW: number;
+  // Uzupełnianie wody
+  makeupFlushDayM3: number;
+  makeupEvapDayM3: number;
+  makeupSplashDayM3: number;
+  makeupTotalDayM3: number;
   personCount: number;
   dinFlowM3H: number;
   circulationTimeH: number;
