@@ -1,55 +1,77 @@
 
-# Zmiana opcji "Osłonięcie basenu" — dodanie K=0,5 i rozróżnienie nazw
+# Aktualizacja przykryć basenu — 4 typy z nowymi współczynnikami
 
 ## Co się zmienia
 
-Obecna lista opcji `WindExposure`:
+Obecna lista `PoolCover` jest zastąpiona nową, opartą na podanych przez Ciebie danych:
 
-| Klucz | K | Etykieta |
-|---|---|---|
-| `wewnetrzny` | 1 | Wewnętrzny / zadaszony |
-| `osloniety3` | 1.5 | Osłonięty z 3 stron |
-| `osloniety2` | 2 | Osłonięty z 2 stron |
-| `nieosloniety` | 3 | Nieosłonięty |
-| `ekstremalny` | 4 | Ekstremalny |
+| Klucz | Etykieta | Redukcja strat | wsp_przykrycia |
+|---|---|---|---|
+| `brak` | Brak przykrycia | 0% | **1.00** |
+| `folia_komorkowa` | Folia komórkowa (bąbelkowa) | ~60–65% | **0.35** |
+| `pianka_izolacyjna` | Pianka izolacyjna (GeoBubble) | ~70–75% | **0.25** |
+| `roleta_pvc` | Roleta profilowa PVC / Poliwęglan | ~80–85% | **0.15** |
 
-Docelowa lista:
+Stary klucz `folia_solarna` zostaje zastąpiony przez `folia_komorkowa` i `pianka_izolacyjna`. Klucz `roleta_pvc` pozostaje — zmienia się tylko etykieta i wartość współczynnika (z `0.15` na `0.15` — bez zmian).
 
-| Klucz | K | Etykieta |
-|---|---|---|
-| `wewnetrzny` | **0.5** | **Basen wewnętrzny (K=0,5)** |
-| `zadaszony` (nowy) | **1** | **Basen pod zadaszeniem (K=1)** |
-| `osloniety3` | 1.5 | Osłonięty z 3 stron (K=1,5) |
-| `osloniety2` | 2 | Osłonięty z 2 stron (K=2) |
-| `nieosloniety` | 3 | Nieosłonięty (K=3) |
-| `ekstremalny` | 4 | Ekstremalny — morze, skarpa (K=4) |
+## Uwaga: wartość COVER_COEFFICIENTS w nowym modelu
 
-## Szczegóły techniczne
+Zgodnie z planem wymiany wzoru q2 (Magnus + ASHRAE), `COVER_COEFFICIENTS` będzie teraz przechowywać **wsp_przykrycia** jako współczynnik redukcji strat (ile strat zostaje gdy basen jest przykryty), a nie dawny K do starego wzoru. Wartości już są właściwe:
 
-### 1. `src/types/configurator.ts`
-
-Typ `WindExposure` rozszerzony o nowy klucz `'zadaszony'`:
-
-```typescript
-export type WindExposure =
-  | 'wewnetrzny'   // K=0.5 (basen wewnętrzny)
-  | 'zadaszony'    // K=1   (basen pod zadaszeniem) — NOWY
-  | 'osloniety3'   // K=1.5
-  | 'osloniety2'   // K=2
-  | 'nieosloniety' // K=3
-  | 'ekstremalny'; // K=4
+```
+brak:             1.00  ← 100% strat (brak redukcji)
+folia_komorkowa:  0.35  ← zostaje 35% strat (60-65% redukcja)
+pianka_izolacyjna: 0.25 ← zostaje 25% strat (70-75% redukcja)
+roleta_pvc:       0.15  ← zostaje 15% strat (80-85% redukcja)
 ```
 
-### 2. `src/lib/poolEngineeringCalcs.ts`
+---
 
-- `WIND_EXPOSURE_COEFFICIENTS` — zmiana wartości `wewnetrzny` z `1` na `0.5`, dodanie `zadaszony: 1`
-- `WIND_EXPOSURE_LABELS` — zmiana etykiety `wewnetrzny`, dodanie `zadaszony`
-- `getDefaultEngineeringParams()` — domyślny `windExposure` dla basenu wewnętrznego pozostaje `'wewnetrzny'` (nowa wartość K=0,5 jest bardziej precyzyjna)
+## Pliki do zmiany
 
-## Brak zmian w UI
+### 1. `src/types/configurator.ts` — typ `PoolCover`
 
-`EngineeringCalcsPanel.tsx` renderuje opcje dynamicznie przez `Object.keys(WIND_EXPOSURE_LABELS)`, więc nowa pozycja pojawi się automatycznie bez żadnej edycji tego pliku.
+```typescript
+export type PoolCover =
+  | 'brak'              // brak przykrycia
+  | 'folia_komorkowa'   // folia komórkowa/bąbelkowa, redukcja ~60-65%
+  | 'pianka_izolacyjna' // pianka izolacyjna GeoBubble, redukcja ~70-75%
+  | 'roleta_pvc';       // roleta profilowa PVC/Poliwęglan, redukcja ~80-85%
+```
 
-## Kolejność wyświetlania
+### 2. `src/lib/poolEngineeringCalcs.ts` — stałe
 
-JavaScript `Object.keys()` zachowuje kolejność wstawiania, więc kolejność w obiekcie `WIND_EXPOSURE_LABELS` wyznacza kolejność w dropdownie — nowy klucz `zadaszony` będzie na drugiej pozycji (po `wewnetrzny`).
+```typescript
+export const COVER_COEFFICIENTS: Record<PoolCover, number> = {
+  brak: 1.0,
+  folia_komorkowa: 0.35,
+  pianka_izolacyjna: 0.25,
+  roleta_pvc: 0.15,
+};
+
+export const COVER_LABELS: Record<PoolCover, string> = {
+  brak: 'Brak przykrycia',
+  folia_komorkowa: 'Folia komórkowa (bąbelkowa) — redukcja ~60%',
+  pianka_izolacyjna: 'Pianka izolacyjna (GeoBubble) — redukcja ~75%',
+  roleta_pvc: 'Roleta profilowa PVC / Poliwęglan — redukcja ~80%',
+};
+```
+
+### 3. Żadnych zmian w UI (`EngineeringCalcsPanel.tsx`)
+
+Dropdown renderuje opcje dynamicznie przez `Object.keys(COVER_LABELS)` — nowe pozycje pojawią się automatycznie.
+
+---
+
+## Wpływ na istniejące oferty
+
+Oferty zapisane w bazie z wartością `poolCover: 'folia_solarna'` będą miały nierozpoznany klucz po zmianie. Ryzyko jest niskie — to parametr inżynieryjny, a fallback w obliczeniach (nieznany klucz → `undefined` → `0`) spowoduje brak redukcji strat (zachowawcze). Można dodać mapowanie fallback w `getDefaultEngineeringParams` lub `LOAD_OFFER` — zrobię to w implementacji.
+
+---
+
+## Kolejność
+
+```
+1. src/types/configurator.ts          — zmiana typu PoolCover
+2. src/lib/poolEngineeringCalcs.ts    — aktualizacja COVER_COEFFICIENTS i COVER_LABELS
+```
