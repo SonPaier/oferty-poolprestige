@@ -1,189 +1,161 @@
 
-# Wdrożenie nowego wzoru strat ciepła (Magnus + ASHRAE)
+# Bilans uzupełnienia wody — moc do podgrzania wody uzupełnianej
 
-## Zakres zmian
+## Cel
 
-Zastępujemy stary uproszczony wzór:
-```
-q2 = A × 0.012 × ΔT × K_wiatru
-```
-nowym fizykalnym modelem opartym na ciśnieniach par (Magnus) i normie ASHRAE. K z `WIND_EXPOSURE_COEFFICIENTS` (0.5, 1, 1.5, 2, 3, 4) jest użyte bezpośrednio jako prędkość wiatru [m/s].
+Do obecnego bilansu cieplnego (q1 + q2) dodajemy trzecią składową: **q3 — moc potrzebna do podgrzania wody uzupełnianej** (wody „zimnej" wchodzącej w miejsce utraconej).
 
----
+Woda uzupełniana pochodzi z trzech źródeł:
+- **Płukanie filtra** — raz w tygodniu, objętość już wyliczona (`flushWaterPerFilterM3` z modułu filtracji)
+- **Parowanie** — objętość już wyliczona (`evaporationLDay` z modelu Magnus/ASHRAE)
+- **Wychlapanie** — 2 l na osobę (N osób) × liczba godzin odkrytych / dobę
 
-## 1. `src/types/configurator.ts` — rozszerzenie `EngineeringResults`
-
-Do interfejsu `EngineeringResults` (linie 542–560) dodajemy 6 nowych pól wynikowych:
-
-```typescript
-// Parowanie (model Magnus/ASHRAE)
-evaporationLH: number;       // odparowana woda przy pełnym odkryciu [l/h]
-evaporationLDay: number;     // ważona dobowo [l/dobę]
-pSatWaterHPa: number;        // P_sat(T_wody) [hPa]
-pPartialAirHPa: number;      // P_sat(T_powietrza) × RH/100 [hPa]
-deltaPHPa: number;           // ΔP = P_w − P_a [hPa]
-q2MaxKW: number;             // strata maks. bez przykrycia [kW]
-```
+Wszystkie trzy dają dzienną objętość wody do uzupełnienia → wyliczamy moc potrzebną do jej podgrzania do temperatury zadanej.
 
 ---
 
-## 2. `src/lib/poolEngineeringCalcs.ts` — nowa logika
+## Wzory
 
-### 2a. Nowy interfejs i funkcja `calculateEvaporation()`
+```text
+─── Objętości dobowe [m³/d] ───────────────────────────────
 
-Dodajemy przed `calculateHeating()`:
+Płukanie (przeliczone na dobę):
+  V_flush_day = flushWaterPerFilterM3 / 7        [m³/d]  (1 raz na tydzień, 1 filtr)
+
+Parowanie:
+  V_evap_day = evaporationLDay / 1000            [m³/d]  (evaporationLDay jest w [l/d])
+
+Wychlapanie:
+  V_splash_day = N × 2L × (hoursOpenPerDay / 24) / 1000  [m³/d]
+  (N = personCount z filtracji, 2 l/os, ważone godzinami odkrytymi)
+
+Łącznie:
+  V_makeup_day = V_flush_day + V_evap_day + V_splash_day  [m³/d]
+
+─── Moc do podgrzania wody uzupełnianej [kW] ──────────────
+
+  q3kW = V_makeup_day × 1.163 × (targetTemp − initialTemp) / 24
+         (1.163 kWh/(m³·K) = c_p × ρ wody; dzielimy przez 24h → kW)
+
+─── Moc grzewcza (zaktualizowana) ─────────────────────────
+
+  heatingPowerKW = ceil(q1 + q2 + q3)
+```
+
+> **Uwaga:** `flushWaterPerFilterM3` jest zawsze wyliczana (zarówno dla skimmerowego jak i przelewowego — taki sam filtr), więc q3 obejmuje oba typy basenów.
+
+---
+
+## Pliki do zmiany
+
+### 1. `src/lib/poolEngineeringCalcs.ts`
+
+**a) Nowy interfejs `WaterMakeupResult`** — wyniki uzupełniania wody:
 
 ```typescript
-export interface EvaporationResult {
-  pSatWaterHPa: number;
-  pPartialAirHPa: number;
-  deltaPHPa: number;
-  evaporationLH: number;    // W_odkryty [l/h]
-  evaporationLDay: number;  // ważone godzinami [l/dobę]
-  q2MaxKW: number;          // strata bez przykrycia
-  q2kW: number;             // strata ważona dobowo
+export interface WaterMakeupResult {
+  flushDayM3: number;       // płukanie / dobę [m³/d]
+  evapDayM3: number;        // parowanie / dobę [m³/d]
+  splashDayM3: number;      // wychlapanie / dobę [m³/d]
+  totalMakeupDayM3: number; // suma [m³/d]
+  q3kW: number;             // moc do podgrzania [kW]
 }
+```
 
-function calculateEvaporation(
-  targetTemp: number,
-  airTemp: number,
-  surfaceAreaM2: number,
-  windExposure: WindExposure,
-  poolCover: PoolCover,
+**b) Nowa funkcja `calculateWaterMakeup()`:**
+
+```typescript
+export function calculateWaterMakeup(
+  personCount: number,
+  evaporationLDay: number,
+  flushWaterPerFilterM3: number,
   hoursOpenPerDay: number,
-  hoursCoveredPerDay: number
-): EvaporationResult
+  targetTemp: number,
+  initialTemp: number
+): WaterMakeupResult
 ```
 
-**Logika wewnętrzna:**
-
-```
-Wilgotność RH:
-  wewnetrzny lub zadaszony → RH = 60%
-  pozostałe               → RH = 55%
-
-Magnus:
-  getPsat(T) = 6.11 × exp(17.62 × T / (243.12 + T))
-  P_w = getPsat(targetTemp)
-  P_a = getPsat(airTemp) × RH/100
-  ΔP  = max(0, P_w − P_a)
-
-Prędkość wiatru:
-  v = WIND_EXPOSURE_COEFFICIENTS[windExposure]   (0.5 … 4)
-
-Parowanie odkryte [l/h]:
-  W_odkryty = A × ΔP × (0.045 + 0.041 × v)
-
-Konwekcja:
-  Q_conv = A × 0.005 × (targetTemp − airTemp)
-  (max 0 — basen nie pobiera ciepła z powietrza przy doborze grzałki)
-
-Straty odkryte:
-  q2_max = W_odkryty × 0.68 + max(0, Q_conv)
-
-Straty ważone dobowo:
-  K_cover = COVER_COEFFICIENTS[poolCover]   (brak=1.0 … roleta=0.15)
-  q2 = q2_max × (hoursOpenPerDay/24)
-     + q2_max × K_cover × (hoursCoveredPerDay/24)
-  q2 = max(0, q2)
-
-Parowanie l/dobę (ważone):
-  W_day = W_odkryty × hoursOpenPerDay
-        + W_odkryty × K_cover × hoursCoveredPerDay
-```
-
-### 2b. Refaktoryzacja `calculateHeating()`
-
-Obecna funkcja `calculateHeating()` (linie 127–172) zastępuje swój własny wzór `q2` wywołaniem `calculateEvaporation()`. Zwraca to samo `{ q1kW, q2kW, heatingPowerKW }`, plus nowe pole `evaporation: EvaporationResult`.
+**c) Aktualizacja `HeatingResult`** — dodanie `q3kW` i `makeup`:
 
 ```typescript
 export interface HeatingResult {
   q1kW: number;
   q2kW: number;
-  heatingPowerKW: number;
-  evaporation: EvaporationResult;   // ← nowe
+  q3kW: number;              // ← nowe
+  heatingPowerKW: number;    // teraz ceil(q1+q2+q3)
+  evaporation: EvaporationResult;
+  makeup: WaterMakeupResult; // ← nowe
 }
 ```
 
-### 2c. Aktualizacja `calculateAllEngineering()`
+**d) Aktualizacja `calculateHeating()`:**
+- Wymaga `personCount`, `flushWaterPerFilterM3`, `hoursOpenPerDay` jako dodatkowych parametrów
+- Wylicza `calculateWaterMakeup()` i sumuje do `heatingPowerKW`
 
-Funkcja główna (linie 274–298) przekazuje `heating.evaporation` w zwracanym obiekcie:
+**e) Aktualizacja `calculateAllEngineering()`:**
+- Przekazuje `filtration.personCount` i `filtration.filterAreaEachM2 * 6` (czyli `flushWaterPerFilterM3`) do `calculateHeating()`
+
+### 2. `src/types/configurator.ts` — `EngineeringResults`
+
+Dodajemy pola wynikowe q3 i szczegóły makeup:
 
 ```typescript
-return { freshWater, heating, filtration, overflow };
-// heating.evaporation zawiera wszystkie dane o parowaniu
+// Uzupełnianie wody
+q3kW: number;
+makeupFlushDayM3: number;
+makeupEvapDayM3: number;
+makeupSplashDayM3: number;
+makeupTotalDayM3: number;
 ```
 
----
+### 3. `src/components/steps/EngineeringCalcsPanel.tsx`
 
-## 3. `src/components/steps/EngineeringCalcsPanel.tsx`
+**a) Dispatch** — dodanie 5 nowych pól do `SET_ENGINEERING_RESULTS`
 
-### 3a. Dispatch — nowe pola w `SET_ENGINEERING_RESULTS` (linie 140–163)
+**b) Wyświetlenie q3** — w sekcji "Grzanie wody":
+- Dodajemy `ResultBox` dla `q3` w istniejącym gridzie `q1 / q2 / heatingPower` → układ 2×2 lub 4-kolumnowy
+- Pole `heatingPowerKW` (highlight) pozostaje jako wynik sumaryczny
 
-Dodajemy do payloadu:
-```typescript
-evaporationLH: results.heating.evaporation.evaporationLH,
-evaporationLDay: results.heating.evaporation.evaporationLDay,
-pSatWaterHPa: results.heating.evaporation.pSatWaterHPa,
-pPartialAirHPa: results.heating.evaporation.pPartialAirHPa,
-deltaPHPa: results.heating.evaporation.deltaPHPa,
-q2MaxKW: results.heating.evaporation.q2MaxKW,
-```
-
-### 3b. Nowe ResultBoxy w sekcji "Grzanie wody" (po liniach 334–345)
-
-Obecny grid `q1 / q2 / heatingPower` zostaje. Poniżej niego, po linii zamykającej `</div>`, dodajemy nowy blok z opisem i wynikami parowania:
+**c) Nowy podblok "Uzupełnianie wody" pod "Parowanie wody (Magnus/ASHRAE)":**
 
 ```
-─── Parowanie wody (Magnus / ASHRAE) ───────────────────────
-[ ΔP [hPa]       ]  [ P_wody [hPa]  ]  [ P_powietrza [hPa] ]
-[ Parowanie [l/h]]  [ Parowanie [l/dobę]       ]
-[ q2 maks. [kW]  ]  — strata przy 24h odkrytym
+─── Uzupełnianie wody (dobowe) ─────────────────────────────
+[ Płukanie filtra ]  [ Parowanie  ]  [ Wychlapanie ]
+[ Łącznie [m³/d]  ]  [ q3 moc    ]
 ```
-
-Etykieta nad blokiem: mały nagłówek `"Parowanie wody (model Magnus/ASHRAE)"` w stylu `text-xs text-muted-foreground`.
-
-Blok jest widoczny wyłącznie gdy `res` nie jest null (tak samo jak istniejące ResultBoxy).
 
 ---
 
 ## Kolejność implementacji
 
 ```
-1. src/types/configurator.ts
-   └── dodaj 6 pól do EngineeringResults
+1. src/lib/poolEngineeringCalcs.ts
+   ├── dodaj WaterMakeupResult + calculateWaterMakeup()
+   ├── rozszerz HeatingResult o q3kW i makeup
+   ├── zaktualizuj calculateHeating() — przyjmuje personCount + flushWaterPerFilterM3
+   └── zaktualizuj calculateAllEngineering() — oblicza filtration PRZED heating
+       i przekazuje personCount + flushWaterPerFilterM3
 
-2. src/lib/poolEngineeringCalcs.ts
-   ├── dodaj EvaporationResult + calculateEvaporation()
-   ├── zrefaktoryzuj calculateHeating() → wywołuje calculateEvaporation()
-   └── calculateAllEngineering() bez zmian (evaporation jest w heating)
+2. src/types/configurator.ts
+   └── dodaj 5 pól do EngineeringResults
 
 3. src/components/steps/EngineeringCalcsPanel.tsx
-   ├── dispatch: dodaj 6 nowych pól
-   └── UI: nowy blok ResultBoxów pod q1/q2/heatingPower
+   ├── dispatch: +5 pól makeup
+   └── UI: zaktualizowany grid q1/q2/q3/heatingPower + podblok makeup
 ```
 
 ---
 
-## Techniczne szczegóły wzorów
+## Techniczne szczegóły
 
 ```text
-Magnus (ciśnienie pary nasyconej):
-  P_sat(T) = 6.11 × exp(17.62 × T / (243.12 + T))   [hPa]
+Kolejność obliczeń w calculateAllEngineering():
+  1. filtration = calculateDINFiltration(...)   ← personCount i flushWaterPerFilterM3
+  2. heating    = calculateHeating(..., filtration.personCount,
+                                       filtration.filterAreaEachM2 × 6)
+  3. freshWater = calculateFreshWater(...)
+  4. overflow   = calculateOverflowTank(...)    (bez zmian)
 
-RH:
-  wewnetrzny / zadaszony → 60%
-  zewnętrzny             → 55%
-
-Parowanie odkryte [l/h]:
-  W = A × ΔP × (0.045 + 0.041 × K)
-
-Konwekcja [kW]:
-  Q_conv = A × 0.005 × (T_wody − T_powietrza)
-
-Straty odkryte [kW]:
-  q2_max = W × 0.68 + max(0, Q_conv)
-
-Straty ważone [kW]:
-  q2 = q2_max × (h_open/24) + q2_max × K_cover × (h_covered/24)
+Uwaga: flushWaterPerFilterM3 = filterAreaEachM2 × 6 (taki sam wzór jak w overflow tank),
+ale wyliczamy go zawsze — niezależnie od tego czy basen skimmerowy czy przelewowy.
 ```
