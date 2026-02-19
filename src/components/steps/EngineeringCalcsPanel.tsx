@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ChevronDown, ChevronUp, Droplets, Flame, Filter, Container } from 'lucide-react';
+import { ChevronDown, ChevronUp, Droplets, Flame, Filter, Container, RotateCcw } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
@@ -255,6 +255,40 @@ export function EngineeringCalcsPanel() {
               className="h-8 text-sm"
             />
           </ParamRow>
+          {/* Wilgotność powietrza RH */}
+          <div className="flex items-center justify-between gap-2">
+            <Label className="text-xs text-muted-foreground flex-1 leading-tight">
+              Wilgotność powietrza [%]
+              <br />
+              <span className="text-[10px]">
+                domyślnie:{' '}
+                {(engineeringParams.windExposure === 'wewnetrzny' || engineeringParams.windExposure === 'zadaszony') ? '60%' : '55%'}
+              </span>
+            </Label>
+            <div className="flex items-center gap-1 w-36 shrink-0">
+              <Input
+                type="number"
+                min={10}
+                max={100}
+                value={engineeringParams.airHumidityPercent}
+                onChange={(e) =>
+                  updateParam('airHumidityPercent', Math.min(100, Math.max(10, Number(e.target.value))))
+                }
+                className="h-8 text-sm flex-1 min-w-0"
+              />
+              <button
+                type="button"
+                title="Przywróć wartość domyślną"
+                onClick={() => {
+                  const defaultRH = (engineeringParams.windExposure === 'wewnetrzny' || engineeringParams.windExposure === 'zadaszony') ? 60 : 55;
+                  updateParam('airHumidityPercent', defaultRH);
+                }}
+                className="h-8 w-8 flex items-center justify-center rounded-md border border-border hover:bg-muted/50 text-muted-foreground hover:text-foreground shrink-0"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
           <ParamRow label="Czas podgrzewu [h]">
             <Input
               type="number"
