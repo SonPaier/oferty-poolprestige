@@ -1,73 +1,55 @@
 
-# Poprawka logiki UI — Sekcja "Grzanie wody" w EngineeringCalcsPanel
+# Zmiana opcji "Osłonięcie basenu" — dodanie K=0,5 i rozróżnienie nazw
 
-## Problem
+## Co się zmienia
 
-Obecna kolejność pól i ich widoczność jest logicznie niepoprawna:
+Obecna lista opcji `WindExposure`:
 
-1. "Godzin odkrytego / dobę" wyświetla się **zawsze** — nawet gdy nie ma przykrycia (wtedy jest to zbędne, bo zawsze = 24h i nie wpływa na q2 bez przykrycia).
-2. "Typ przykrycia" pojawia się **po** polu z godzinami — powinno być odwrotnie (typ przykrycia warunkuje resztę).
-3. "Godzin pod przykryciem / dobę" jest edytowalne — powinno być **automatycznie wyliczane** jako `24 − hoursOpenPerDay` i wyświetlone jako informacja, nie input.
+| Klucz | K | Etykieta |
+|---|---|---|
+| `wewnetrzny` | 1 | Wewnętrzny / zadaszony |
+| `osloniety3` | 1.5 | Osłonięty z 3 stron |
+| `osloniety2` | 2 | Osłonięty z 2 stron |
+| `nieosloniety` | 3 | Nieosłonięty |
+| `ekstremalny` | 4 | Ekstremalny |
 
-## Nowa logika UI — kolejność i warunkowe wyświetlanie
+Docelowa lista:
 
-```text
-Temperatura zadana [°C]         ← zawsze
-Temperatura startowa wody [°C]  ← zawsze
-Temperatura powietrza [°C]      ← zawsze
-Czas podgrzewu [h]              ← zawsze
-Osłonięcie basenu               ← zawsze (Select, K_odkryty)
+| Klucz | K | Etykieta |
+|---|---|---|
+| `wewnetrzny` | **0.5** | **Basen wewnętrzny (K=0,5)** |
+| `zadaszony` (nowy) | **1** | **Basen pod zadaszeniem (K=1)** |
+| `osloniety3` | 1.5 | Osłonięty z 3 stron (K=1,5) |
+| `osloniety2` | 2 | Osłonięty z 2 stron (K=2) |
+| `nieosloniety` | 3 | Nieosłonięty (K=3) |
+| `ekstremalny` | 4 | Ekstremalny — morze, skarpa (K=4) |
 
-Typ przykrycia                  ← zawsze (brak / folia solarna / roleta PVC)
+## Szczegóły techniczne
 
-  [jeśli poolCover !== 'brak']
-  Godzin odkrytego / dobę       ← pojawia się TYLKO gdy jest przykrycie
-  Godzin pod przykryciem / dobę ← WYLICZANE AUTOMATYCZNIE: 24 − hoursOpenPerDay
-                                   wyświetlone jako tylko-do-odczytu info-box
+### 1. `src/types/configurator.ts`
 
-  [jeśli poolCover === 'brak']
-  — brak dodatkowych pól (odkryty = 24h/dobę = domyślne)
+Typ `WindExposure` rozszerzony o nowy klucz `'zadaszony'`:
+
+```typescript
+export type WindExposure =
+  | 'wewnetrzny'   // K=0.5 (basen wewnętrzny)
+  | 'zadaszony'    // K=1   (basen pod zadaszeniem) — NOWY
+  | 'osloniety3'   // K=1.5
+  | 'osloniety2'   // K=2
+  | 'nieosloniety' // K=3
+  | 'ekstremalny'; // K=4
 ```
 
-## Zmiany w `q2` obliczeniu
+### 2. `src/lib/poolEngineeringCalcs.ts`
 
-Gdy `poolCover === 'brak'`:
-- `hoursOpenPerDay` = 24 (cały dzień odkryty)
-- `hoursCoveredPerDay` = 0
-- q2 = A × 0.012 × ΔT × (K_odkryty × 24 / 24) = A × 0.012 × ΔT × K_odkryty
+- `WIND_EXPOSURE_COEFFICIENTS` — zmiana wartości `wewnetrzny` z `1` na `0.5`, dodanie `zadaszony: 1`
+- `WIND_EXPOSURE_LABELS` — zmiana etykiety `wewnetrzny`, dodanie `zadaszony`
+- `getDefaultEngineeringParams()` — domyślny `windExposure` dla basenu wewnętrznego pozostaje `'wewnetrzny'` (nowa wartość K=0,5 jest bardziej precyzyjna)
 
-Gdy jest przykrycie:
-- użytkownik wpisuje `hoursOpenPerDay` (ile godzin bez przykrycia)
-- `hoursCoveredPerDay` = 24 − hoursOpenPerDay (wyliczone automatycznie)
-- q2 = A × 0.012 × ΔT × ((K_odkryty × h_open + K_cover × h_covered) / 24)
+## Brak zmian w UI
 
-## Szczegóły implementacji
+`EngineeringCalcsPanel.tsx` renderuje opcje dynamicznie przez `Object.keys(WIND_EXPOSURE_LABELS)`, więc nowa pozycja pojawi się automatycznie bez żadnej edycji tego pliku.
 
-### Plik: `src/components/steps/EngineeringCalcsPanel.tsx`
+## Kolejność wyświetlania
 
-**Sekcja grzania wody** — zmiany kolejności i warunkowego renderowania:
-
-1. Kolejność pól: temperatury → czas podgrzewu → osłoniecie → **typ przykrycia** → (warunkowo) godziny odkrytego → (info) godziny pod przykryciem
-2. Pole "Godzin odkrytego / dobę" pokazuje się **tylko gdy** `poolCover !== 'brak'`
-3. Pole "Godzin pod przykryciem / dobę" zastąpione przez info-box tylko do odczytu: `"= 24 − {hoursOpenPerDay} = {24 - hoursOpenPerDay} h"` — widoczne tylko gdy jest przykrycie
-4. Gdy `poolCover` zmienia się na `'brak'`, dispatch aktualizuje `hoursOpenPerDay = 24` i `hoursCoveredPerDay = 0`
-5. Gdy użytkownik zmienia `hoursOpenPerDay`, automatycznie aktualizuje `hoursCoveredPerDay = 24 − hoursOpenPerDay` (obcinając do 0 jeśli ujemne)
-
-### Przykład renderowania (z przykryciem = folia solarna, hoursOpen = 8)
-
-```
-Typ przykrycia:        [Folia solarna ▼]
-Godzin odkrytego/dobę: [8            ]
-Godzin pod przykryciem/dobę:  = 24 − 8 = 16 h  (info, nieedytowalne)
-```
-
-### Przykład renderowania (bez przykrycia)
-
-```
-Typ przykrycia:        [Brak         ▼]
-(brak dodatkowych pól — odkryty cały czas)
-```
-
-## Tylko jeden plik do zmiany
-
-`src/components/steps/EngineeringCalcsPanel.tsx` — wyłącznie sekcja sekcji "Grzanie wody" (linie ~260–340), bez zmian w logice obliczeń ani pozostałych sekcjach.
+JavaScript `Object.keys()` zachowuje kolejność wstawiania, więc kolejność w obiekcie `WIND_EXPOSURE_LABELS` wyznacza kolejność w dropdownie — nowy klucz `zadaszony` będzie na drugiej pozycji (po `wewnetrzny`).
