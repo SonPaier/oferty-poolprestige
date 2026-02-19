@@ -150,7 +150,9 @@ function calculateEvaporation(
   const v = WIND_EXPOSURE_COEFFICIENTS[windExposure];
 
   // Parowanie odkryte [l/h]
-  const evaporationLH = surfaceAreaM2 * deltaPHPa * (0.045 + 0.041 * v);
+  // Stałe ASHRAE (0.045 + 0.041×v) są skalibrowane dla ΔP w kPa → dzielimy hPa przez 10
+  const deltaPkPa = deltaPHPa / 10;
+  const evaporationLH = surfaceAreaM2 * deltaPkPa * (0.045 + 0.041 * v);
 
   // Konwekcja [kW] — tylko przy ΔT > 0 (basen cieplejszy od powietrza)
   const qConvKW = Math.max(0, surfaceAreaM2 * 0.005 * (targetTemp - airTemp));
