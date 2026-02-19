@@ -117,11 +117,77 @@ export function calculateFreshWater(
   return { minFlowM3H };
 }
 
+// ─── Parowanie wody (Magnus + ASHRAE) ────────────────────────────────────────
+export interface EvaporationResult {
+  pSatWaterHPa: number;
+  pPartialAirHPa: number;
+  deltaPHPa: number;
+  evaporationLH: number;    // W_odkryty [l/h]
+  evaporationLDay: number;  // ważone godzinami [l/dobę]
+  q2MaxKW: number;          // strata bez przykrycia [kW]
+  q2kW: number;             // strata ważona dobowo [kW]
+}
+
+function calculateEvaporation(
+  targetTemp: number,
+  airTemp: number,
+  surfaceAreaM2: number,
+  windExposure: WindExposure,
+  poolCover: PoolCover,
+  hoursOpenPerDay: number,
+  hoursCoveredPerDay: number
+): EvaporationResult {
+  // Wilgotność względna
+  const RH = (windExposure === 'wewnetrzny' || windExposure === 'zadaszony') ? 0.60 : 0.55;
+
+  // Magnus — ciśnienie pary nasyconej [hPa]
+  const getPsat = (T: number) => 6.11 * Math.exp((17.62 * T) / (243.12 + T));
+  const pSatWaterHPa = getPsat(targetTemp);
+  const pPartialAirHPa = getPsat(airTemp) * RH;
+  const deltaPHPa = Math.max(0, pSatWaterHPa - pPartialAirHPa);
+
+  // Prędkość wiatru = K z WIND_EXPOSURE_COEFFICIENTS [m/s]
+  const v = WIND_EXPOSURE_COEFFICIENTS[windExposure];
+
+  // Parowanie odkryte [l/h]
+  const evaporationLH = surfaceAreaM2 * deltaPHPa * (0.045 + 0.041 * v);
+
+  // Konwekcja [kW] — tylko przy ΔT > 0 (basen cieplejszy od powietrza)
+  const qConvKW = Math.max(0, surfaceAreaM2 * 0.005 * (targetTemp - airTemp));
+
+  // Straty odkryte [kW]: latent heat of vaporization ≈ 0.68 kW·h/l
+  const q2MaxKW = evaporationLH * 0.68 + qConvKW;
+
+  // Współczynnik redukcji przykrycia
+  const kCover = COVER_COEFFICIENTS[poolCover] ?? 1.0;
+
+  // Straty ważone dobowo [kW]
+  const q2kW = Math.max(
+    0,
+    q2MaxKW * (hoursOpenPerDay / 24) + q2MaxKW * kCover * (hoursCoveredPerDay / 24)
+  );
+
+  // Parowanie l/dobę (ważone)
+  const evaporationLDay =
+    evaporationLH * hoursOpenPerDay + evaporationLH * kCover * hoursCoveredPerDay;
+
+  return {
+    pSatWaterHPa: Math.round(pSatWaterHPa * 100) / 100,
+    pPartialAirHPa: Math.round(pPartialAirHPa * 100) / 100,
+    deltaPHPa: Math.round(deltaPHPa * 100) / 100,
+    evaporationLH: Math.round(evaporationLH * 10) / 10,
+    evaporationLDay: Math.round(evaporationLDay * 10) / 10,
+    q2MaxKW: Math.round(q2MaxKW * 100) / 100,
+    q2kW: Math.round(q2kW * 100) / 100,
+  };
+}
+
 // ─── Grzanie wody ─────────────────────────────────────────────────────────────
 export interface HeatingResult {
   q1kW: number;            // ciepło do nagrzania wody
   q2kW: number;            // straty ciepła z powierzchni
   heatingPowerKW: number;  // ceil(q1 + q2)
+  evaporation: EvaporationResult;
 }
 
 export function calculateHeating(
@@ -149,25 +215,20 @@ export function calculateHeating(
     (volumeM3 * 1.163 * Math.max(targetTemp - initialTemp, 0)) /
     Math.max(heatingTimeH, 0.1);
 
-  // q2 — straty ciepła z powierzchni lustra wody
-  const deltaT = targetTemp - airTemp;
-  let q2kW = 0;
-  if (deltaT > 0) {
-    const kOpen = WIND_EXPOSURE_COEFFICIENTS[windExposure];
-    const kCover = COVER_COEFFICIENTS[poolCover];
-    q2kW =
-      surfaceAreaM2 *
-      0.012 *
-      deltaT *
-      ((kOpen * hoursOpenPerDay + kCover * hoursCoveredPerDay) / 24);
-  }
+  // q2 — straty ciepła (model Magnus + ASHRAE)
+  const evaporation = calculateEvaporation(
+    targetTemp, airTemp, surfaceAreaM2,
+    windExposure, poolCover, hoursOpenPerDay, hoursCoveredPerDay
+  );
+  const q2kW = evaporation.q2kW;
 
   const heatingPowerKW = Math.ceil(q1kW + q2kW);
 
   return {
     q1kW: Math.round(q1kW * 100) / 100,
-    q2kW: Math.round(q2kW * 100) / 100,
+    q2kW,
     heatingPowerKW,
+    evaporation,
   };
 }
 
