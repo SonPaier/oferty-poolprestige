@@ -237,9 +237,16 @@ function configuratorReducer(state: ExtendedConfiguratorState, action: Configura
           shareUid: offer.shareUid,
         },
         // Odtwórz parametry inżynierskie z oferty (jeśli zapisane)
-        engineeringParams:
-          (offer as any).engineeringParams ??
-          getDefaultEngineeringParams(offer.poolType, offer.dimensions.location),
+        engineeringParams: (() => {
+          const params =
+            (offer as any).engineeringParams ??
+            getDefaultEngineeringParams(offer.poolType, offer.dimensions.location);
+          // Fallback: stary klucz 'folia_solarna' → 'folia_komorkowa'
+          if ((params.poolCover as string) === 'folia_solarna') {
+            params.poolCover = 'folia_komorkowa';
+          }
+          return params;
+        })(),
         engineeringResults: (offer as any).engineeringResults ?? null,
       };
     }

@@ -20,16 +20,19 @@ export const WIND_EXPOSURE_LABELS: Record<WindExposure, string> = {
 };
 
 // ─── Współczynniki przykrycia ─────────────────────────────────────────────────
+// Wartości = współczynnik redukcji strat (ile strat POZOSTAJE gdy basen jest przykryty)
 export const COVER_COEFFICIENTS: Record<PoolCover, number> = {
-  brak: 0,
-  folia_solarna: 0.3,
+  brak: 1.00,
+  folia_komorkowa: 0.35,
+  pianka_izolacyjna: 0.25,
   roleta_pvc: 0.15,
 };
 
 export const COVER_LABELS: Record<PoolCover, string> = {
   brak: 'Brak przykrycia',
-  folia_solarna: 'Folia solarna (K=0,3)',
-  roleta_pvc: 'Roleta PVC (K=0,15)',
+  folia_komorkowa: 'Folia komórkowa (bąbelkowa) — redukcja ~60%',
+  pianka_izolacyjna: 'Pianka izolacyjna (GeoBubble) — redukcja ~75%',
+  roleta_pvc: 'Roleta profilowa PVC / Poliwęglan — redukcja ~80%',
 };
 
 // ─── Domyślne wartości parametrów ────────────────────────────────────────────
