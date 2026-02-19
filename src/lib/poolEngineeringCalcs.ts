@@ -2,7 +2,8 @@ import { PoolType, PoolLocation, WindExposure, PoolCover, EngineeringParams } fr
 
 // ─── Współczynniki wiatru ────────────────────────────────────────────────────
 export const WIND_EXPOSURE_COEFFICIENTS: Record<WindExposure, number> = {
-  wewnetrzny: 1,
+  wewnetrzny: 0.5,
+  zadaszony: 1,
   osloniety3: 1.5,
   osloniety2: 2,
   nieosloniety: 3,
@@ -10,7 +11,8 @@ export const WIND_EXPOSURE_COEFFICIENTS: Record<WindExposure, number> = {
 };
 
 export const WIND_EXPOSURE_LABELS: Record<WindExposure, string> = {
-  wewnetrzny: 'Wewnętrzny / zadaszony (K=1)',
+  wewnetrzny: 'Basen wewnętrzny (K=0,5)',
+  zadaszony: 'Basen pod zadaszeniem (K=1)',
   osloniety3: 'Osłonięty z 3 stron (K=1,5)',
   osloniety2: 'Osłonięty z 2 stron (K=2)',
   nieosloniety: 'Nieosłonięty (K=3)',

@@ -503,7 +503,8 @@ export const liningTypeLabels: Record<PoolLiningType, string> = {
 // ─── Wyliczenia inżynierskie ─────────────────────────────────────────────────
 
 export type WindExposure =
-  | 'wewnetrzny'   // K=1 (wewnętrzny lub zadaszony)
+  | 'wewnetrzny'   // K=0.5 (basen wewnętrzny)
+  | 'zadaszony'    // K=1   (basen pod zadaszeniem)
   | 'osloniety3'   // K=1.5 (osłonięty z 3 stron)
   | 'osloniety2'   // K=2 (osłonięty z 2 stron)
   | 'nieosloniety' // K=3 (nieosłonięty)
