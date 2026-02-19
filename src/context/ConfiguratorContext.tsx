@@ -245,6 +245,11 @@ function configuratorReducer(state: ExtendedConfiguratorState, action: Configura
           if ((params.poolCover as string) === 'folia_solarna') {
             params.poolCover = 'folia_komorkowa';
           }
+          // Fallback: nowe pole airHumidityPercent dla starych ofert
+          if (params.airHumidityPercent == null) {
+            const isIndoorOrCovered = params.windExposure === 'wewnetrzny' || params.windExposure === 'zadaszony';
+            params.airHumidityPercent = isIndoorOrCovered ? 60 : 55;
+          }
           return params;
         })(),
         engineeringResults: (offer as any).engineeringResults ?? null,

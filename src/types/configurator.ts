@@ -523,6 +523,7 @@ export interface EngineeringParams {
   targetTemp: number;
   initialTemp: number;
   airTemp: number;
+  airHumidityPercent: number;   // wilgotność powietrza [%], domyślnie 60 (wewn.) lub 55 (zewn.)
   heatingTimeH: number;
   windExposure: WindExposure;
   hoursOpenPerDay: number;

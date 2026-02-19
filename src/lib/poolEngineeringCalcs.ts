@@ -50,6 +50,7 @@ export function getDefaultEngineeringParams(
     targetTemp: 28,
     initialTemp: 10,
     airTemp: 20,
+    airHumidityPercent: isIndoor ? 60 : 55,
     heatingTimeH: 96,
     windExposure: isIndoor ? 'wewnetrzny' : 'nieosloniety',
     hoursOpenPerDay: isIndoor ? 0 : 24,
@@ -135,10 +136,11 @@ function calculateEvaporation(
   windExposure: WindExposure,
   poolCover: PoolCover,
   hoursOpenPerDay: number,
-  hoursCoveredPerDay: number
+  hoursCoveredPerDay: number,
+  airHumidityPercent: number
 ): EvaporationResult {
-  // Wilgotność względna
-  const RH = (windExposure === 'wewnetrzny' || windExposure === 'zadaszony') ? 0.60 : 0.55;
+  // Wilgotność względna — z parametru (zakres 1–100 → 0.01–1.0)
+  const RH = Math.min(100, Math.max(1, airHumidityPercent)) / 100;
 
   // Magnus — ciśnienie pary nasyconej [hPa]
   const getPsat = (T: number) => 6.11 * Math.exp((17.62 * T) / (243.12 + T));
@@ -198,6 +200,7 @@ export function calculateHeating(
     | 'targetTemp'
     | 'initialTemp'
     | 'airTemp'
+    | 'airHumidityPercent'
     | 'heatingTimeH'
     | 'windExposure'
     | 'hoursOpenPerDay'
@@ -208,7 +211,7 @@ export function calculateHeating(
   volumeM3: number
 ): HeatingResult {
   const {
-    targetTemp, initialTemp, airTemp, heatingTimeH,
+    targetTemp, initialTemp, airTemp, airHumidityPercent, heatingTimeH,
     windExposure, hoursOpenPerDay, poolCover, hoursCoveredPerDay,
   } = params;
 
@@ -220,7 +223,8 @@ export function calculateHeating(
   // q2 — straty ciepła (model Magnus + ASHRAE)
   const evaporation = calculateEvaporation(
     targetTemp, airTemp, surfaceAreaM2,
-    windExposure, poolCover, hoursOpenPerDay, hoursCoveredPerDay
+    windExposure, poolCover, hoursOpenPerDay, hoursCoveredPerDay,
+    airHumidityPercent
   );
   const q2kW = evaporation.q2kW;
 
