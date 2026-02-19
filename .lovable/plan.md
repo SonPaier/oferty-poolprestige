@@ -1,77 +1,189 @@
 
-# Aktualizacja przykryć basenu — 4 typy z nowymi współczynnikami
+# Wdrożenie nowego wzoru strat ciepła (Magnus + ASHRAE)
 
-## Co się zmienia
+## Zakres zmian
 
-Obecna lista `PoolCover` jest zastąpiona nową, opartą na podanych przez Ciebie danych:
-
-| Klucz | Etykieta | Redukcja strat | wsp_przykrycia |
-|---|---|---|---|
-| `brak` | Brak przykrycia | 0% | **1.00** |
-| `folia_komorkowa` | Folia komórkowa (bąbelkowa) | ~60–65% | **0.35** |
-| `pianka_izolacyjna` | Pianka izolacyjna (GeoBubble) | ~70–75% | **0.25** |
-| `roleta_pvc` | Roleta profilowa PVC / Poliwęglan | ~80–85% | **0.15** |
-
-Stary klucz `folia_solarna` zostaje zastąpiony przez `folia_komorkowa` i `pianka_izolacyjna`. Klucz `roleta_pvc` pozostaje — zmienia się tylko etykieta i wartość współczynnika (z `0.15` na `0.15` — bez zmian).
-
-## Uwaga: wartość COVER_COEFFICIENTS w nowym modelu
-
-Zgodnie z planem wymiany wzoru q2 (Magnus + ASHRAE), `COVER_COEFFICIENTS` będzie teraz przechowywać **wsp_przykrycia** jako współczynnik redukcji strat (ile strat zostaje gdy basen jest przykryty), a nie dawny K do starego wzoru. Wartości już są właściwe:
-
+Zastępujemy stary uproszczony wzór:
 ```
-brak:             1.00  ← 100% strat (brak redukcji)
-folia_komorkowa:  0.35  ← zostaje 35% strat (60-65% redukcja)
-pianka_izolacyjna: 0.25 ← zostaje 25% strat (70-75% redukcja)
-roleta_pvc:       0.15  ← zostaje 15% strat (80-85% redukcja)
+q2 = A × 0.012 × ΔT × K_wiatru
 ```
+nowym fizykalnym modelem opartym na ciśnieniach par (Magnus) i normie ASHRAE. K z `WIND_EXPOSURE_COEFFICIENTS` (0.5, 1, 1.5, 2, 3, 4) jest użyte bezpośrednio jako prędkość wiatru [m/s].
 
 ---
 
-## Pliki do zmiany
+## 1. `src/types/configurator.ts` — rozszerzenie `EngineeringResults`
 
-### 1. `src/types/configurator.ts` — typ `PoolCover`
+Do interfejsu `EngineeringResults` (linie 542–560) dodajemy 6 nowych pól wynikowych:
 
 ```typescript
-export type PoolCover =
-  | 'brak'              // brak przykrycia
-  | 'folia_komorkowa'   // folia komórkowa/bąbelkowa, redukcja ~60-65%
-  | 'pianka_izolacyjna' // pianka izolacyjna GeoBubble, redukcja ~70-75%
-  | 'roleta_pvc';       // roleta profilowa PVC/Poliwęglan, redukcja ~80-85%
+// Parowanie (model Magnus/ASHRAE)
+evaporationLH: number;       // odparowana woda przy pełnym odkryciu [l/h]
+evaporationLDay: number;     // ważona dobowo [l/dobę]
+pSatWaterHPa: number;        // P_sat(T_wody) [hPa]
+pPartialAirHPa: number;      // P_sat(T_powietrza) × RH/100 [hPa]
+deltaPHPa: number;           // ΔP = P_w − P_a [hPa]
+q2MaxKW: number;             // strata maks. bez przykrycia [kW]
 ```
 
-### 2. `src/lib/poolEngineeringCalcs.ts` — stałe
+---
+
+## 2. `src/lib/poolEngineeringCalcs.ts` — nowa logika
+
+### 2a. Nowy interfejs i funkcja `calculateEvaporation()`
+
+Dodajemy przed `calculateHeating()`:
 
 ```typescript
-export const COVER_COEFFICIENTS: Record<PoolCover, number> = {
-  brak: 1.0,
-  folia_komorkowa: 0.35,
-  pianka_izolacyjna: 0.25,
-  roleta_pvc: 0.15,
-};
+export interface EvaporationResult {
+  pSatWaterHPa: number;
+  pPartialAirHPa: number;
+  deltaPHPa: number;
+  evaporationLH: number;    // W_odkryty [l/h]
+  evaporationLDay: number;  // ważone godzinami [l/dobę]
+  q2MaxKW: number;          // strata bez przykrycia
+  q2kW: number;             // strata ważona dobowo
+}
 
-export const COVER_LABELS: Record<PoolCover, string> = {
-  brak: 'Brak przykrycia',
-  folia_komorkowa: 'Folia komórkowa (bąbelkowa) — redukcja ~60%',
-  pianka_izolacyjna: 'Pianka izolacyjna (GeoBubble) — redukcja ~75%',
-  roleta_pvc: 'Roleta profilowa PVC / Poliwęglan — redukcja ~80%',
-};
+function calculateEvaporation(
+  targetTemp: number,
+  airTemp: number,
+  surfaceAreaM2: number,
+  windExposure: WindExposure,
+  poolCover: PoolCover,
+  hoursOpenPerDay: number,
+  hoursCoveredPerDay: number
+): EvaporationResult
 ```
 
-### 3. Żadnych zmian w UI (`EngineeringCalcsPanel.tsx`)
+**Logika wewnętrzna:**
 
-Dropdown renderuje opcje dynamicznie przez `Object.keys(COVER_LABELS)` — nowe pozycje pojawią się automatycznie.
+```
+Wilgotność RH:
+  wewnetrzny lub zadaszony → RH = 60%
+  pozostałe               → RH = 55%
+
+Magnus:
+  getPsat(T) = 6.11 × exp(17.62 × T / (243.12 + T))
+  P_w = getPsat(targetTemp)
+  P_a = getPsat(airTemp) × RH/100
+  ΔP  = max(0, P_w − P_a)
+
+Prędkość wiatru:
+  v = WIND_EXPOSURE_COEFFICIENTS[windExposure]   (0.5 … 4)
+
+Parowanie odkryte [l/h]:
+  W_odkryty = A × ΔP × (0.045 + 0.041 × v)
+
+Konwekcja:
+  Q_conv = A × 0.005 × (targetTemp − airTemp)
+  (max 0 — basen nie pobiera ciepła z powietrza przy doborze grzałki)
+
+Straty odkryte:
+  q2_max = W_odkryty × 0.68 + max(0, Q_conv)
+
+Straty ważone dobowo:
+  K_cover = COVER_COEFFICIENTS[poolCover]   (brak=1.0 … roleta=0.15)
+  q2 = q2_max × (hoursOpenPerDay/24)
+     + q2_max × K_cover × (hoursCoveredPerDay/24)
+  q2 = max(0, q2)
+
+Parowanie l/dobę (ważone):
+  W_day = W_odkryty × hoursOpenPerDay
+        + W_odkryty × K_cover × hoursCoveredPerDay
+```
+
+### 2b. Refaktoryzacja `calculateHeating()`
+
+Obecna funkcja `calculateHeating()` (linie 127–172) zastępuje swój własny wzór `q2` wywołaniem `calculateEvaporation()`. Zwraca to samo `{ q1kW, q2kW, heatingPowerKW }`, plus nowe pole `evaporation: EvaporationResult`.
+
+```typescript
+export interface HeatingResult {
+  q1kW: number;
+  q2kW: number;
+  heatingPowerKW: number;
+  evaporation: EvaporationResult;   // ← nowe
+}
+```
+
+### 2c. Aktualizacja `calculateAllEngineering()`
+
+Funkcja główna (linie 274–298) przekazuje `heating.evaporation` w zwracanym obiekcie:
+
+```typescript
+return { freshWater, heating, filtration, overflow };
+// heating.evaporation zawiera wszystkie dane o parowaniu
+```
 
 ---
 
-## Wpływ na istniejące oferty
+## 3. `src/components/steps/EngineeringCalcsPanel.tsx`
 
-Oferty zapisane w bazie z wartością `poolCover: 'folia_solarna'` będą miały nierozpoznany klucz po zmianie. Ryzyko jest niskie — to parametr inżynieryjny, a fallback w obliczeniach (nieznany klucz → `undefined` → `0`) spowoduje brak redukcji strat (zachowawcze). Można dodać mapowanie fallback w `getDefaultEngineeringParams` lub `LOAD_OFFER` — zrobię to w implementacji.
+### 3a. Dispatch — nowe pola w `SET_ENGINEERING_RESULTS` (linie 140–163)
+
+Dodajemy do payloadu:
+```typescript
+evaporationLH: results.heating.evaporation.evaporationLH,
+evaporationLDay: results.heating.evaporation.evaporationLDay,
+pSatWaterHPa: results.heating.evaporation.pSatWaterHPa,
+pPartialAirHPa: results.heating.evaporation.pPartialAirHPa,
+deltaPHPa: results.heating.evaporation.deltaPHPa,
+q2MaxKW: results.heating.evaporation.q2MaxKW,
+```
+
+### 3b. Nowe ResultBoxy w sekcji "Grzanie wody" (po liniach 334–345)
+
+Obecny grid `q1 / q2 / heatingPower` zostaje. Poniżej niego, po linii zamykającej `</div>`, dodajemy nowy blok z opisem i wynikami parowania:
+
+```
+─── Parowanie wody (Magnus / ASHRAE) ───────────────────────
+[ ΔP [hPa]       ]  [ P_wody [hPa]  ]  [ P_powietrza [hPa] ]
+[ Parowanie [l/h]]  [ Parowanie [l/dobę]       ]
+[ q2 maks. [kW]  ]  — strata przy 24h odkrytym
+```
+
+Etykieta nad blokiem: mały nagłówek `"Parowanie wody (model Magnus/ASHRAE)"` w stylu `text-xs text-muted-foreground`.
+
+Blok jest widoczny wyłącznie gdy `res` nie jest null (tak samo jak istniejące ResultBoxy).
 
 ---
 
-## Kolejność
+## Kolejność implementacji
 
 ```
-1. src/types/configurator.ts          — zmiana typu PoolCover
-2. src/lib/poolEngineeringCalcs.ts    — aktualizacja COVER_COEFFICIENTS i COVER_LABELS
+1. src/types/configurator.ts
+   └── dodaj 6 pól do EngineeringResults
+
+2. src/lib/poolEngineeringCalcs.ts
+   ├── dodaj EvaporationResult + calculateEvaporation()
+   ├── zrefaktoryzuj calculateHeating() → wywołuje calculateEvaporation()
+   └── calculateAllEngineering() bez zmian (evaporation jest w heating)
+
+3. src/components/steps/EngineeringCalcsPanel.tsx
+   ├── dispatch: dodaj 6 nowych pól
+   └── UI: nowy blok ResultBoxów pod q1/q2/heatingPower
+```
+
+---
+
+## Techniczne szczegóły wzorów
+
+```text
+Magnus (ciśnienie pary nasyconej):
+  P_sat(T) = 6.11 × exp(17.62 × T / (243.12 + T))   [hPa]
+
+RH:
+  wewnetrzny / zadaszony → 60%
+  zewnętrzny             → 55%
+
+Parowanie odkryte [l/h]:
+  W = A × ΔP × (0.045 + 0.041 × K)
+
+Konwekcja [kW]:
+  Q_conv = A × 0.005 × (T_wody − T_powietrza)
+
+Straty odkryte [kW]:
+  q2_max = W × 0.68 + max(0, Q_conv)
+
+Straty ważone [kW]:
+  q2 = q2_max × (h_open/24) + q2_max × K_cover × (h_covered/24)
 ```
