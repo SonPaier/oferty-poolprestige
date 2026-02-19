@@ -511,9 +511,10 @@ export type WindExposure =
   | 'ekstremalny'; // K=4 (morze, wzgórze, skarpa)
 
 export type PoolCover =
-  | 'brak'         // brak przykrycia
-  | 'folia_solarna' // K_przykryty=0.3
-  | 'roleta_pvc';  // K_przykryty=0.15
+  | 'brak'              // brak przykrycia — K_przykrycia=1.00
+  | 'folia_komorkowa'   // folia komórkowa/bąbelkowa — K_przykrycia=0.35 (redukcja ~60-65%)
+  | 'pianka_izolacyjna' // pianka izolacyjna GeoBubble — K_przykrycia=0.25 (redukcja ~70-75%)
+  | 'roleta_pvc';       // roleta profilowa PVC/Poliwęglan — K_przykrycia=0.15 (redukcja ~80-85%)
 
 export interface EngineeringParams {
   // Woda świeża
