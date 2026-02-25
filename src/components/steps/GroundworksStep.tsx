@@ -1967,11 +1967,11 @@ export function GroundworksStep({ onNext, onBack, excavationSettings }: Groundwo
                   <Input
                     id="sand-height-exc"
                     type="number"
-                    min="5"
+                    min="0"
                     max="30"
                     step="1"
                     value={Math.round(sandBeddingHeight * 100)}
-                    onChange={(e) => setSandBeddingHeight((parseFloat(e.target.value) || 10) / 100)}
+                    onChange={(e) => setSandBeddingHeight(Math.max(0, parseFloat(e.target.value) || 0) / 100)}
                     className="input-field w-20"
                   />
                   <span className="text-sm text-muted-foreground">cm</span>
