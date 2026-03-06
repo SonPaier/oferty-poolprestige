@@ -1,4 +1,4 @@
-import { useMemo, useState, useCallback, useRef, useEffect } from 'react';
+import { useMemo, useState, useCallback, useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
 import { PoolDimensions, CustomPoolVertex, getCornerLabel } from '@/types/configurator';
 import { DimensionDisplay } from '@/components/Pool3DVisualization';
 import { getStairsRenderData, StairsPath2D } from '@/components/pool/StairsPath2D';
@@ -308,14 +308,18 @@ function transformCustomVertices(
   }));
 }
 
-export default function Pool2DPreview({ 
+export interface Pool2DPreviewHandle {
+  getSvgElement: () => SVGSVGElement | null;
+}
+
+const Pool2DPreview = forwardRef<Pool2DPreviewHandle, Pool2DPreviewProps>(function Pool2DPreview({ 
   dimensions, 
   height = 300, 
   dimensionDisplay = 'pool', 
   showColumns = false,
   customColumnCounts,
   onColumnCountsChange 
-}: Pool2DPreviewProps) {
+}, ref) {
   const poolPoints = useMemo(() => getPoolPoints(dimensions), [dimensions]);
   const outerShellPoints = useMemo(() => getOuterShellPoints(dimensions), [dimensions]);
   // Zoom state
@@ -324,6 +328,10 @@ export default function Pool2DPreview({
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const svgRef = useRef<SVGSVGElement>(null);
+  
+  useImperativeHandle(ref, () => ({
+    getSvgElement: () => svgRef.current,
+  }), []);
   
   // Reset zoom/pan when dimensions change significantly
   useEffect(() => {
@@ -1171,4 +1179,6 @@ export default function Pool2DPreview({
       </div>
     </div>
   );
-}
+});
+
+export default Pool2DPreview;

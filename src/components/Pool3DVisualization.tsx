@@ -1,4 +1,4 @@
-import { useRef, useMemo, Suspense, useState } from 'react';
+import { useRef, useMemo, Suspense, useState, forwardRef, useImperativeHandle } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, Html, Line } from '@react-three/drei';
 import * as THREE from 'three';
@@ -2152,7 +2152,11 @@ function LoadingFallback() {
   );
 }
 
-export function Pool3DVisualization({ 
+export interface Pool3DVisualizationHandle {
+  getCanvasElement: () => HTMLCanvasElement | null;
+}
+
+export const Pool3DVisualization = forwardRef<Pool3DVisualizationHandle, Pool3DVisualizationProps>(function Pool3DVisualization({ 
   dimensions, 
   calculations,
   rollWidth = 1.65,
@@ -2160,7 +2164,9 @@ export function Pool3DVisualization({
   height = 400,
   dimensionDisplay: externalDimensionDisplay,
   onDimensionDisplayChange,
-}: Pool3DVisualizationProps) {
+}, ref) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  
   // Use external state if provided, otherwise use internal state
   const [internalDimensionDisplay, setInternalDimensionDisplay] = useState<DimensionDisplay>('pool');
   const dimensionDisplay = externalDimensionDisplay ?? internalDimensionDisplay;
@@ -2175,13 +2181,19 @@ export function Pool3DVisualization({
   const hasWadingPool = dimensions.wadingPool?.enabled || 
     (dimensions.shape === 'nieregularny' && dimensions.customWadingPoolVertices?.some(arr => arr.length >= 3));
 
+  useImperativeHandle(ref, () => ({
+    getCanvasElement: () => containerRef.current?.querySelector('canvas') ?? null,
+  }), []);
+
   return (
     <div 
+      ref={containerRef}
       className="relative w-full rounded-lg border border-border overflow-hidden"
       style={{ height, backgroundColor: '#a8c8a0' }}
     >
       <Suspense fallback={<LoadingFallback />}>
         <Canvas
+          gl={{ preserveDrawingBuffer: true }}
           camera={{
             // Natural top-down view - looking into the pool from above at an angle
             position: [cameraDistance * 0.6, cameraDistance * 0.9, cameraDistance * 0.6],
@@ -2205,4 +2217,4 @@ export function Pool3DVisualization({
       </div>
     </div>
   );
-}
+});

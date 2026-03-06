@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { useConfigurator } from '@/context/ConfiguratorContext';
 import { useSettings } from '@/context/SettingsContext';
 import { Input } from '@/components/ui/input';
@@ -21,10 +21,13 @@ import {
   Calculator,
   Footprints,
   Baby,
-  AlertTriangle
+  AlertTriangle,
+  FileDown
 } from 'lucide-react';
-import { Pool3DVisualization, DimensionDisplay } from '@/components/Pool3DVisualization';
-import Pool2DPreview from '@/components/Pool2DPreview';
+import { Pool3DVisualization, Pool3DVisualizationHandle, DimensionDisplay } from '@/components/Pool3DVisualization';
+import Pool2DPreview, { Pool2DPreviewHandle } from '@/components/Pool2DPreview';
+import { svgToDataUrl } from '@/lib/svgToImage';
+import jsPDF from 'jspdf';
 import { 
   PoolType, 
   PoolShape, 
@@ -130,6 +133,81 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
   const { dimensions, poolType, calculations } = state;
   const [showCustomDrawer, setShowCustomDrawer] = useState(false);
   const [dimensionDisplay, setDimensionDisplay] = useState<DimensionDisplay>('pool');
+  const pool2DRef = useRef<Pool2DPreviewHandle>(null);
+  const pool3DRef = useRef<Pool3DVisualizationHandle>(null);
+  const [isExporting, setIsExporting] = useState(false);
+
+  const handleExportVisualizationPDF = useCallback(async () => {
+    setIsExporting(true);
+    try {
+      const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+      const pageW = doc.internal.pageSize.getWidth();
+      const pageH = doc.internal.pageSize.getHeight();
+      const margin = 15;
+      let y = margin;
+
+      // Header
+      doc.setFontSize(16);
+      doc.setFont('helvetica', 'bold');
+      doc.text('Wizualizacja basenu', margin, y + 5);
+      
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(100, 100, 100);
+      const poolTypeLabelsMap: Record<string, string> = { prywatny: 'Prywatny', polprywatny: 'Polprywatny', hotelowy: 'Hotelowy / Publiczny' };
+      const info = `${poolTypeLabelsMap[poolType] || poolType} | ${dimensions.length} x ${dimensions.width} x ${dimensions.depth}m` +
+        (dimensions.hasSlope && dimensions.depthDeep ? ` → ${dimensions.depthDeep}m` : '') +
+        (calculations ? ` | ${calculations.volume.toFixed(1)} m³` : '');
+      doc.text(info, margin, y + 11);
+      doc.setTextColor(0, 0, 0);
+      
+      y += 18;
+      doc.setDrawColor(200, 200, 200);
+      doc.line(margin, y, pageW - margin, y);
+      y += 5;
+
+      const imgWidth = pageW - margin * 2;
+
+      // 2D
+      const svgEl = pool2DRef.current?.getSvgElement();
+      if (svgEl) {
+        try {
+          const rect = svgEl.getBoundingClientRect();
+          const dataUrl2D = await svgToDataUrl(svgEl, rect.width || 800, rect.height || 400);
+          const img2DHeight = Math.min(70, (pageH - y - 10) * 0.4);
+          doc.setFontSize(9);
+          doc.text('Widok z góry (2D)', margin, y + 3);
+          y += 5;
+          doc.addImage(dataUrl2D, 'PNG', margin, y, imgWidth, img2DHeight);
+          y += img2DHeight + 5;
+        } catch (e) {
+          console.warn('Nie udało się wyeksportować widoku 2D:', e);
+        }
+      }
+
+      // 3D
+      const canvasEl = pool3DRef.current?.getCanvasElement();
+      if (canvasEl) {
+        try {
+          const dataUrl3D = canvasEl.toDataURL('image/png');
+          const remaining = pageH - y - margin;
+          const img3DHeight = Math.min(remaining, 90);
+          doc.setFontSize(9);
+          doc.text('Wizualizacja 3D', margin, y + 3);
+          y += 5;
+          doc.addImage(dataUrl3D, 'PNG', margin, y, imgWidth, img3DHeight);
+        } catch (e) {
+          console.warn('Nie udało się wyeksportować widoku 3D:', e);
+        }
+      }
+
+      doc.save(`Wizualizacja_${dimensions.length}x${dimensions.width}x${dimensions.depth}m.pdf`);
+    } catch (err) {
+      console.error('Export PDF error:', err);
+    } finally {
+      setIsExporting(false);
+    }
+  }, [dimensions, poolType, calculations]);
   
   // Geometry validation
   const geometryWarnings = usePoolGeometryValidation(dimensions);
@@ -1679,9 +1757,22 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
                 </RadioGroup>
               </div>
               
+              <div className="flex justify-end mb-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleExportVisualizationPDF}
+                  disabled={isExporting}
+                >
+                  <FileDown className="w-4 h-4 mr-1" />
+                  {isExporting ? 'Eksportowanie...' : 'Eksportuj PDF'}
+                </Button>
+              </div>
+
               <div className="flex flex-col gap-4">
                 <div>
                   <Pool2DPreview 
+                    ref={pool2DRef}
                     dimensions={dimensions}
                     height={200}
                     dimensionDisplay={dimensionDisplay}
@@ -1692,6 +1783,7 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
                 </div>
                 <div>
                   <Pool3DVisualization 
+                    ref={pool3DRef}
                     dimensions={dimensions}
                     calculations={calculations}
                     showFoilLayout={false}
