@@ -166,20 +166,35 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
       doc.line(margin, y, pageW - margin, y);
       y += 5;
 
-      const imgWidth = pageW - margin * 2;
+      const maxImgWidth = pageW - margin * 2;
+
+      // Helper: fit image preserving aspect ratio
+      const fitImage = (srcW: number, srcH: number, maxW: number, maxH: number) => {
+        const ratio = srcW / srcH;
+        let w = maxW;
+        let h = w / ratio;
+        if (h > maxH) {
+          h = maxH;
+          w = h * ratio;
+        }
+        return { w, h };
+      };
 
       // 2D
       const svgEl = pool2DRef.current?.getSvgElement();
       if (svgEl) {
         try {
           const rect = svgEl.getBoundingClientRect();
-          const dataUrl2D = await svgToDataUrl(svgEl, rect.width || 800, rect.height || 400);
-          const img2DHeight = Math.min(70, (pageH - y - 10) * 0.4);
+          const srcW = rect.width || 800;
+          const srcH = rect.height || 400;
+          const dataUrl2D = await svgToDataUrl(svgEl, srcW, srcH);
+          const max2DH = Math.min(70, (pageH - y - 10) * 0.4);
+          const { w: w2D, h: h2D } = fitImage(srcW, srcH, maxImgWidth, max2DH);
           doc.setFontSize(9);
           doc.text('Widok z góry (2D)', margin, y + 3);
           y += 5;
-          doc.addImage(dataUrl2D, 'PNG', margin, y, imgWidth, img2DHeight);
-          y += img2DHeight + 5;
+          doc.addImage(dataUrl2D, 'PNG', margin, y, w2D, h2D);
+          y += h2D + 5;
         } catch (e) {
           console.warn('Nie udało się wyeksportować widoku 2D:', e);
         }
@@ -191,11 +206,12 @@ export function DimensionsStep({ onNext, onBack }: DimensionsStepProps) {
         try {
           const dataUrl3D = canvasEl.toDataURL('image/png');
           const remaining = pageH - y - margin;
-          const img3DHeight = Math.min(remaining, 90);
+          const max3DH = Math.min(remaining, 90);
+          const { w: w3D, h: h3D } = fitImage(canvasEl.width, canvasEl.height, maxImgWidth, max3DH);
           doc.setFontSize(9);
           doc.text('Wizualizacja 3D', margin, y + 3);
           y += 5;
-          doc.addImage(dataUrl3D, 'PNG', margin, y, imgWidth, img3DHeight);
+          doc.addImage(dataUrl3D, 'PNG', margin, y, w3D, h3D);
         } catch (e) {
           console.warn('Nie udało się wyeksportować widoku 3D:', e);
         }
